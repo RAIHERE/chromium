@@ -2407,9 +2407,9 @@ try {
 };
 
 // Make sure that FLEDGE has protections against making local network requests..
-class InterestGroupPrivateNetworkBrowserTest : public InterestGroupBrowserTest {
+class InterestGroupLocalNetworkBrowserTest : public InterestGroupBrowserTest {
  protected:
-  InterestGroupPrivateNetworkBrowserTest()
+  InterestGroupLocalNetworkBrowserTest()
       : remote_test_server_(net::test_server::EmbeddedTestServer::TYPE_HTTPS) {
     base::FieldTrialParams params;
     params["LocalNetworkAccessChecksWarn"] = "false";
@@ -18516,10 +18516,10 @@ IN_PROC_BROWSER_TEST_F(InterestGroupBrowserTest, FinalizeAdWorks) {
             FinalizeAdAndWait());
 }
 
-// The bidder worklet is served from a private network, everything else from a
+// The bidder worklet is served from a local network, everything else from a
 // public network. The auction should fail.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
-                       BidderOnPrivateNetwork) {
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
+                       BidderOnLocalNetwork) {
   URLLoaderMonitor url_loader_monitor;
 
   // Learn the bidder IG, served from the loopback server.
@@ -18571,12 +18571,12 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
             bidder_status.error_code);
   EXPECT_THAT(bidder_status.cors_error_status,
               Optional(network::CorsErrorStatus(
-                  network::mojom::CorsError::kInsecurePrivateNetwork,
+                  network::mojom::CorsError::kInsecureLocalNetwork,
                   network::mojom::IPAddressSpace::kLoopback)));
 }
 
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
-                       SellerOnPrivateNetwork) {
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
+                       SellerOnLocalNetwork) {
   GURL seller_url = embedded_https_test_server().GetURL(
       "b.test", "/interest_group/decision_logic.js");
 
@@ -18633,9 +18633,9 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
 }
 
 // Have the auction and worklets server from public IPs, but send reports to a
-// private network. The reports should be blocked.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
-                       ReportToPrivateNetwork) {
+// local network. The reports should be blocked.
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
+                       ReportToLocalNetwork) {
   // Use `remote_test_server_` exclusively with hostname "a.test" for root page
   // and script URLs.
   GURL test_url =
@@ -18707,7 +18707,7 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
               report_status.error_code);
     EXPECT_THAT(report_status.cors_error_status,
                 Optional(network::CorsErrorStatus(
-                    network::mojom::CorsError::kInsecurePrivateNetwork,
+                    network::mojom::CorsError::kInsecureLocalNetwork,
                     network::mojom::IPAddressSpace::kLoopback)));
   }
 }
@@ -18715,7 +18715,7 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
 // Have all requests for an auction served from a public network, and all
 // reports send there as well. The auction should succeed, and all reports
 // should be sent.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
                        ReportToPublicNetwork) {
   // Use `remote_test_server_` exclusively with hostname "a.test" for root page
   // and script URLs.
@@ -18821,8 +18821,8 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
 // those from needing preflights. Checks the IPAddressSpace passed to the
 // network layer, though, to make sure the correct one is passed in. Have to use
 // two interest groups to avoid the delay between updates.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
-                       UpdatePublicVsPrivateNetwork) {
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
+                       UpdatePublicVsLocalNetwork) {
   const char kPubliclyUpdateGroupName[] = "Publicly updated group";
   const char kLocallyUpdateGroupName[] = "Locally updated group";
 
@@ -18927,11 +18927,11 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
 }
 
 // Create three interest groups, each belonging to different origins. Update one
-// on a private network, but delay its server response. Update the second on a
+// on a local network, but delay its server response. Update the second on a
 // public network. Update the final interest group on a private interest group
 // -- it should be updated after the first two. After the server responds to the
 // first update request, all updates should proceed, and succeed.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
                        PrivateNetProtectionsApplyToSubsequentUpdates) {
   constexpr char kLocallyUpdateGroupName[] = "Locally updated group";
   constexpr char kPubliclyUpdateGroupName[] = "Publicly updated group";
@@ -19066,14 +19066,14 @@ IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
           }));
 }
 
-// Join interest groups with local (private) update URLs, and run auctions from
-// both a a main frame loaded with public address space, and with a private
-// address space. Check that the address space of the main frame is always used
-// for the updated.
+// Join interest groups with local update URLs, and run auctions from both a a
+// main frame loaded with public address space, and with a local address space.
+// Check that the address space of the main frame is always used for the
+// updated.
 //
 // Different interest groups (with different origins) are used for the public
 // and private auction, to avoid running into update rate limits.
-IN_PROC_BROWSER_TEST_F(InterestGroupPrivateNetworkBrowserTest,
+IN_PROC_BROWSER_TEST_F(InterestGroupLocalNetworkBrowserTest,
                        PrivateNetProtectionsApplyToPostAuctionUpdates) {
   // Fetches for the interest group-related scripts and updates are always
   // local, it's where they're updated from that matters. Interest group A will
@@ -22563,163 +22563,6 @@ IN_PROC_BROWSER_TEST_F(InterestGroupBiddingAndAuctionServerBrowserTest,
   content::FetchHistogramsFromChildProcesses();
   histogram_tester.ExpectTotalCount(
       "Ads.InterestGroup.GetInterestGroupAdAuctionData.TimeToResolve", 0);
-}
-
-IN_PROC_BROWSER_TEST_F(InterestGroupBiddingAndAuctionServerBrowserTest,
-                       Preconnects) {
-  GURL test_url = embedded_https_test_server().GetURL(
-      "a.test", "/interest_group/empty.html");
-  url::Origin test_origin = url::Origin::Create(test_url);
-  GURL ad_url =
-      embedded_https_test_server().GetURL("c.test", "/echo?render_cars");
-  ProvideKeys();
-  ASSERT_TRUE(NavigateToURL(shell(), test_url));
-  EXPECT_EQ(
-      kSuccess,
-      JoinInterestGroupAndVerify(
-          blink::TestInterestGroupBuilder(/*owner=*/test_origin,
-                                          /*name=*/"cars")
-              .SetBiddingUrl(embedded_https_test_server().GetURL(
-                  "a.test", "/interest_group/bidding_logic.js"))
-              .SetAds(
-                  {{{ad_url, /*metadata=*/std::nullopt,
-                     /*size_group=*/std::nullopt,
-                     /*buyer_reporting_id=*/std::nullopt,
-                     /*buyer_and_seller_reporting_id=*/std::nullopt,
-                     /*selectable_buyer_and_seller_reporting_ids=*/std::nullopt,
-                     /*ad_render_id=*/"buyCars"}}})
-              .Build()));
-
-  class PreconnectCheckingNetworkContext : public network::TestNetworkContext {
-   public:
-    explicit PreconnectCheckingNetworkContext(GURL expected_url)
-        : expected_url_(std::move(expected_url)) {}
-    ~PreconnectCheckingNetworkContext() override = default;
-
-    void PreconnectSockets(
-        uint32_t num_streams,
-        const GURL& url,
-        network::mojom::CredentialsMode credentials_mode,
-        const net::NetworkAnonymizationKey& network_anonymization_key,
-        const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
-        const std::optional<net::ConnectionKeepAliveConfig>& keepalive_config,
-        mojo::PendingRemote<network::mojom::ConnectionChangeObserverClient>
-            observer_client) override {
-      EXPECT_EQ(1u, num_streams);
-      EXPECT_EQ(expected_url_, url);
-      EXPECT_EQ(credentials_mode, network::mojom::CredentialsMode::kInclude);
-      run_loop_.Quit();
-    }
-
-    base::RunLoop& run_loop() { return run_loop_; }
-
-   private:
-    base::RunLoop run_loop_;
-    const GURL expected_url_;
-  };
-
-  mojo::PendingRemote<network::mojom::NetworkContext> pending_remote;
-  auto preconnect_check = mojo::MakeSelfOwnedReceiver(
-      std::make_unique<PreconnectCheckingNetworkContext>(test_origin.GetURL()),
-      pending_remote.InitWithNewPipeAndPassReceiver());
-
-  shell()
-      ->web_contents()
-      ->GetBrowserContext()
-      ->GetDefaultStoragePartition()
-      ->SetNetworkContextForTesting(std::move(pending_remote));
-
-  std::ignore = GetInterestGroupAdAuctionData(test_origin, std::nullopt);
-
-  static_cast<PreconnectCheckingNetworkContext*>(preconnect_check->impl())
-      ->run_loop()
-      .Run();
-}
-
-IN_PROC_BROWSER_TEST_F(InterestGroupBiddingAndAuctionServerBrowserTest,
-                       UsesRequestSize) {
-  GURL test_url = embedded_https_test_server().GetURL(
-      "a.test", "/interest_group/empty.html");
-  url::Origin test_origin = url::Origin::Create(test_url);
-  url::Origin test_origin2 = embedded_https_test_server().GetOrigin("b.test");
-  const unsigned int kRequestSize = 1024;
-  GURL ad_url =
-      embedded_https_test_server().GetURL("c.test", "/echo?render_cars");
-  ProvideKeys();
-  ASSERT_TRUE(NavigateToURL(shell(), test_url));
-  EXPECT_EQ(
-      kSuccess,
-      JoinInterestGroupAndVerify(
-          blink::TestInterestGroupBuilder(/*owner=*/test_origin,
-                                          /*name=*/"cars")
-              .SetBiddingUrl(embedded_https_test_server().GetURL(
-                  "a.test", "/interest_group/bidding_logic.js"))
-              .SetAds(
-                  {{{ad_url, /*metadata=*/std::nullopt,
-                     /*size_group=*/std::nullopt,
-                     /*buyer_reporting_id=*/std::nullopt,
-                     /*buyer_and_seller_reporting_id=*/std::nullopt,
-                     /*selectable_buyer_and_seller_reporting_ids=*/std::nullopt,
-                     /*ad_render_id=*/"buyCars"}}})
-              .Build()));
-
-  blink::mojom::AuctionDataConfig config;
-  config.request_size = kRequestSize;
-  config.per_buyer_configs.emplace(test_origin,
-                                   blink::mojom::AuctionDataBuyerConfig::New());
-  config.per_buyer_configs.emplace(
-      test_origin2, blink::mojom::AuctionDataBuyerConfig::New(kRequestSize));
-  std::string result = GetInterestGroupAdAuctionData(
-      test_origin, std::nullopt, /*sellers=*/std::nullopt, &config);
-
-  const unsigned int kCharsInUUID = 36;
-  const unsigned int kCharsInSeparator = 1;
-  const unsigned int kRequestBase64SizeChars =
-      std::ceil(kRequestSize / 3.0) * 4;
-  EXPECT_EQ(kRequestBase64SizeChars + kCharsInSeparator + kCharsInUUID,
-            result.size());
-}
-
-IN_PROC_BROWSER_TEST_F(InterestGroupBiddingAndAuctionServerBrowserTest,
-                       UsesImplicitRequestSize) {
-  GURL test_url = embedded_https_test_server().GetURL(
-      "a.test", "/interest_group/empty.html");
-  url::Origin test_origin = url::Origin::Create(test_url);
-  url::Origin test_origin2 = embedded_https_test_server().GetOrigin("b.test");
-  const unsigned int kRequestSize = 1024;
-  GURL ad_url =
-      embedded_https_test_server().GetURL("c.test", "/echo?render_cars");
-  ProvideKeys();
-  ASSERT_TRUE(NavigateToURL(shell(), test_url));
-  EXPECT_EQ(
-      kSuccess,
-      JoinInterestGroupAndVerify(
-          blink::TestInterestGroupBuilder(/*owner=*/test_origin,
-                                          /*name=*/"cars")
-              .SetBiddingUrl(embedded_https_test_server().GetURL(
-                  "a.test", "/interest_group/bidding_logic.js"))
-              .SetAds(
-                  {{{ad_url, /*metadata=*/std::nullopt,
-                     /*size_group=*/std::nullopt,
-                     /*buyer_reporting_id=*/std::nullopt,
-                     /*buyer_and_seller_reporting_id=*/std::nullopt,
-                     /*selectable_buyer_and_seller_reporting_ids=*/std::nullopt,
-                     /*ad_render_id=*/"buyCars"}}})
-              .Build()));
-
-  blink::mojom::AuctionDataConfig config;
-  config.per_buyer_configs.emplace(
-      test_origin,
-      blink::mojom::AuctionDataBuyerConfig::New(/*target_size=*/kRequestSize));
-  std::string result = GetInterestGroupAdAuctionData(
-      test_origin, std::nullopt, /*sellers=*/std::nullopt, &config);
-
-  const unsigned int kCharsInUUID = 36;
-  const unsigned int kCharsInSeparator = 1;
-  const unsigned int kRequestBase64SizeChars =
-      std::ceil(kRequestSize / 3.0) * 4;
-  EXPECT_EQ(kRequestBase64SizeChars + kCharsInSeparator + kCharsInUUID,
-            result.size());
 }
 
 IN_PROC_BROWSER_TEST_F(InterestGroupBiddingAndAuctionServerBrowserTest,
@@ -26445,7 +26288,8 @@ IN_PROC_BROWSER_TEST_F(InterestGroupOOPIFBrowserTest,
       blink::mojom::AuctionAdConfigAuctionId::NewMainAuction(0), "adSlot1");
 
   run_loop.Run();
-  if (SiteIsolationPolicy::AreOriginKeyedProcessesEnabledByDefault()) {
+  if (SiteIsolationPolicy::AreOriginKeyedProcessesEnabledByDefault(
+          shell()->web_contents()->GetBrowserContext())) {
     // With Origin Isolation enabled, the cross-origin, same-site navigation
     // ends up being cross-process, so a config value is expected.
     EXPECT_TRUE(maybe_config.has_value());
@@ -28760,10 +28604,10 @@ IN_PROC_BROWSER_TEST_F(InterestGroupTrustedSignalsKVv2DisabledTest,
 
 // The test parameter indicates whether the browser process's
 // TrustedSignalsCache should be enabled. Inherit from
-// InterestGroupPrivateNetworkBrowserTest to enable testing the KVv2 paths
+// InterestGroupLocalNetworkBrowserTest to enable testing the KVv2 paths
 // correctly implement local network protections.
 class InterestGroupTrustedSignalsKVv2BrowserTest
-    : public InterestGroupPrivateNetworkBrowserTest,
+    : public InterestGroupLocalNetworkBrowserTest,
       public testing::WithParamInterface<bool> {
  public:
   InterestGroupTrustedSignalsKVv2BrowserTest() {
@@ -28791,7 +28635,7 @@ class InterestGroupTrustedSignalsKVv2BrowserTest
         &InterestGroupTrustedSignalsKVv2BrowserTest::HandleTrustedKVv2Signals,
         base::Unretained(this)));
 
-    InterestGroupPrivateNetworkBrowserTest::SetUpOnMainThread();
+    InterestGroupLocalNetworkBrowserTest::SetUpOnMainThread();
   }
 
   // Sets up default public keys for `signals_origins` using
@@ -29510,7 +29354,7 @@ IN_PROC_BROWSER_TEST_P(InterestGroupTrustedSignalsKVv2BrowserTest,
 
 IN_PROC_BROWSER_TEST_P(
     InterestGroupTrustedSignalsKVv2BrowserTest,
-    TrustedKVv2BiddingSignalsCrossOriginPrivateNetworkPrivateNetworkFailure) {
+    TrustedKVv2BiddingSignalsCrossOriginLocalNetworkLocalNetworkFailure) {
   TestTrustedKVv2BiddingSignalsCrossOrigin(
       /*expect_success=*/false,
       /*add_access_control_allow_origin_header=*/true,
@@ -29560,7 +29404,7 @@ IN_PROC_BROWSER_TEST_P(InterestGroupTrustedSignalsKVv2BrowserTest,
 
 IN_PROC_BROWSER_TEST_P(
     InterestGroupTrustedSignalsKVv2BrowserTest,
-    TrustedKVv2ScoringSignalsCrossOriginPrivateNetworkPrivateNetworkFailure) {
+    TrustedKVv2ScoringSignalsCrossOriginLocalNetworkLocalNetworkFailure) {
   TestTrustedKVv2ScoringSignalsCrossOrigin(
       /*expect_success=*/false,
       /*add_access_control_allow_origin_header=*/true,
@@ -29689,7 +29533,7 @@ class InterestGroupTrustedSignalsKVv2ContextualDataBrowserTest
     embedded_https_test_server().RegisterRequestHandler(
         base::BindRepeating(&HandleTrustedKVv2Signals));
 
-    InterestGroupPrivateNetworkBrowserTest::SetUpOnMainThread();
+    InterestGroupLocalNetworkBrowserTest::SetUpOnMainThread();
   }
 
   void TestPerBuyerTKVSignals(const std::string& expected_bidding_key,

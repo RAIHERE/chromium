@@ -19,6 +19,7 @@
 #include "third_party/blink/public/mojom/ai/ai_common.mojom-blink.h"
 #include "third_party/blink/public/mojom/ai/ai_language_model.mojom-blink.h"
 #include "third_party/blink/public/mojom/ai/model_streaming_responder.mojom-blink.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-blink.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_promise_resolver.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_create_options.h"
 #include "third_party/blink/renderer/bindings/modules/v8/v8_language_model_message_content.h"
@@ -30,6 +31,7 @@
 #include "third_party/blink/renderer/core/execution_context/execution_context.h"
 #include "third_party/blink/renderer/core/fileapi/blob.h"
 #include "third_party/blink/renderer/core/fileapi/file_reader_client.h"
+#include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/streams/readable_stream_default_controller.h"
 #include "third_party/blink/renderer/core/streams/readable_stream_default_controller_with_script_scope.h"
@@ -38,6 +40,7 @@
 #include "third_party/blink/renderer/modules/ai/ai_metrics.h"
 #include "third_party/blink/renderer/modules/ai/ai_utils.h"
 #include "third_party/blink/renderer/modules/ai/exception_helpers.h"
+#include "third_party/blink/renderer/modules/ai/feedback_helpers.h"
 #include "third_party/blink/renderer/modules/ai/language_model_create_client.h"
 #include "third_party/blink/renderer/modules/ai/language_model_prompt_builder.h"
 #include "third_party/blink/renderer/modules/ai/model_execution_responder.h"
@@ -315,7 +318,7 @@ class AppendClient : public GarbageCollected<AppendClient>,
     NOTREACHED() << "Append() should not invoke `OnStreaming()`";
   }
 
-  void OnQuotaOverflow() override {
+  void OnContextOverflow() override {
     if (overflow_callback_) {
       overflow_callback_.Run();
     }
@@ -435,6 +438,7 @@ ScriptPromise<LanguageModel> LanguageModel::create(
     ScriptState* script_state,
     LanguageModelCreateOptions* options,
     ExceptionState& exception_state) {
+  MaybeRequestFeedback(script_state, AIMetrics::AISessionType::kLanguageModel);
   if (!script_state->ContextIsValid()) {
     ThrowInvalidContextException(exception_state);
     return EmptyPromise();
@@ -456,6 +460,16 @@ ScriptPromise<LanguageModel> LanguageModel::create(
     resolver->Reject(MakeGarbageCollected<DOMException>(
         DOMExceptionCode::kNotAllowedError, kExceptionMessagePermissionPolicy));
     return promise;
+  }
+
+  if (options->hasTopK()) {
+    Deprecation::CountDeprecation(
+        execution_context, mojom::blink::WebFeature::kLanguageModel_TopK);
+  }
+  if (options->hasTemperature()) {
+    Deprecation::CountDeprecation(
+        execution_context,
+        mojom::blink::WebFeature::kLanguageModel_Temperature);
   }
 
   LogCreateOptionMetrics(*options, "create");
@@ -506,6 +520,17 @@ ScriptPromise<V8Availability> LanguageModel::availability(
     return EmptyPromise();
   }
 
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
+  if (options->hasTopK()) {
+    Deprecation::CountDeprecation(
+        execution_context, mojom::blink::WebFeature::kLanguageModel_TopK);
+  }
+  if (options->hasTemperature()) {
+    Deprecation::CountDeprecation(
+        execution_context,
+        mojom::blink::WebFeature::kLanguageModel_Temperature);
+  }
+
   if (!ValidateAndCanonicalizeExpectedInputLanguages(script_state->GetIsolate(),
                                                      options)) {
     return EmptyPromise();
@@ -516,9 +541,8 @@ ScriptPromise<V8Availability> LanguageModel::availability(
   auto promise = resolver->Promise();
 
   // Return unavailable if the Permission Policy is not enabled.
-  if (!ExecutionContext::From(script_state)
-           ->IsFeatureEnabled(
-               network::mojom::PermissionsPolicyFeature::kLanguageModel)) {
+  if (!execution_context->IsFeatureEnabled(
+          network::mojom::PermissionsPolicyFeature::kLanguageModel)) {
     resolver->Resolve(AvailabilityToV8(Availability::kUnavailable));
     return promise;
   }
@@ -578,6 +602,10 @@ ScriptPromise<IDLNullable<LanguageModelParams>> LanguageModel::params(
     return EmptyPromise();
   }
 
+  ExecutionContext* execution_context = ExecutionContext::From(script_state);
+  Deprecation::CountDeprecation(
+      execution_context, mojom::blink::WebFeature::kLanguageModel_Params);
+
   auto* resolver = MakeGarbageCollected<
       ScriptPromiseResolver<IDLNullable<LanguageModelParams>>>(script_state);
   auto promise = resolver->Promise();
@@ -627,7 +655,7 @@ ScriptPromise<V8LanguageModelPromptResult> LanguageModel::prompt(
       AIMetrics::AISessionType::kLanguageModel,
       BindOnce(&LanguageModel::ResolvePromiseOnComplete, WrapPersistent(this),
                WrapPersistent(resolver)),
-      BindRepeating(&LanguageModel::OnQuotaOverflow, WrapPersistent(this)),
+      BindRepeating(&LanguageModel::OnContextOverflow, WrapPersistent(this)),
       BindOnce(&RejectPromiseOnError<V8LanguageModelPromptResult>,
                WrapPersistent(resolver)),
       BindOnce(&RejectPromiseOnAbort<V8LanguageModelPromptResult>,
@@ -663,7 +691,7 @@ ReadableStream* LanguageModel::promptStreaming(
       script_state, options->getSignalOr(nullptr), task_runner_,
       AIMetrics::AISessionType::kLanguageModel,
       BindOnce(&LanguageModel::OnResponseComplete, WrapPersistent(this)),
-      BindRepeating(&LanguageModel::OnQuotaOverflow, WrapPersistent(this)));
+      BindRepeating(&LanguageModel::OnContextOverflow, WrapPersistent(this)));
 
   String json_schema = GetSchemaForInput(*processed_constraint, options);
   ConvertPromptInputsToMojo(
@@ -819,7 +847,7 @@ ScriptPromise<IDLUndefined> LanguageModel::append(
                       WrapPersistent(signal),
                       BindOnce(&LanguageModel::OnResponseComplete,
                                WrapWeakPersistent(this)),
-                      BindRepeating(&LanguageModel::OnQuotaOverflow,
+                      BindRepeating(&LanguageModel::OnContextOverflow,
                                     WrapWeakPersistent(this))),
       BindOnce(&RejectResolver, WrapPersistent(resolver)));
   return promise;
@@ -856,6 +884,14 @@ ScriptPromise<LanguageModel> LanguageModel::clone(
 }
 
 ScriptPromise<IDLDouble> LanguageModel::measureInputUsage(
+    ScriptState* script_state,
+    const V8LanguageModelPrompt* input,
+    const LanguageModelPromptOptions* options,
+    ExceptionState& exception_state) {
+  return measureContextUsage(script_state, input, options, exception_state);
+}
+
+ScriptPromise<IDLDouble> LanguageModel::measureContextUsage(
     ScriptState* script_state,
     const V8LanguageModelPrompt* input,
     const LanguageModelPromptOptions* options,
@@ -928,8 +964,15 @@ scoped_refptr<base::SequencedTaskRunner> LanguageModel::GetTaskRunner() {
   return task_runner_;
 }
 
-void LanguageModel::OnQuotaOverflow() {
-  DispatchEvent(*Event::Create(event_type_names::kQuotaoverflow));
+void LanguageModel::OnContextOverflow() {
+  ExecutionContext* execution_context = GetExecutionContext();
+
+  if (execution_context &&
+      RuntimeEnabledFeatures::LanguageModelLegacyParamsAndAttributesEnabled(
+          execution_context)) {
+    DispatchEvent(*Event::Create(event_type_names::kQuotaoverflow));
+  }
+  DispatchEvent(*Event::Create(event_type_names::kContextoverflow));
 }
 
 }  // namespace blink

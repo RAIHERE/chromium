@@ -102,7 +102,7 @@ public class HubCoordinator implements PaneHubController, BackPressHandler, OnPa
             SearchActivityClient searchActivityClient,
             MonotonicObservableSupplier<EdgeToEdgeController> edgeToEdgeSupplier,
             HubColorMixer hubColorMixer,
-            @Nullable MonotonicObservableSupplier<Boolean> xrSpaceModeObservableSupplier,
+            NonNullObservableSupplier<Boolean> xrSpaceModeObservableSupplier,
             @PaneId int defaultPaneId) {
         Context context = containerView.getContext();
         mBackPressStateChangeCallback = (ignored) -> updateHandleBackPressSupplier();
@@ -112,7 +112,7 @@ public class HubCoordinator implements PaneHubController, BackPressHandler, OnPa
                         .getFocusedPaneSupplier()
                         .createTransitiveNonNull(
                                 false, BackPressHandler::getHandleBackPressChangedSupplier);
-        mFocusedPaneHandleBackPressSupplier.addObserver(
+        mFocusedPaneHandleBackPressSupplier.addSyncObserverAndPostIfNonNull(
                 castCallback(mBackPressStateChangeCallback));
 
         mContainerView = containerView;
@@ -195,14 +195,14 @@ public class HubCoordinator implements PaneHubController, BackPressHandler, OnPa
         mPaneBackStackHandler = new PaneBackStackHandler(paneManager);
         mPaneBackStackHandler
                 .getHandleBackPressChangedSupplier()
-                .addObserver(castCallback(mBackPressStateChangeCallback));
+                .addSyncObserverAndPostIfNonNull(castCallback(mBackPressStateChangeCallback));
 
         mCurrentTabSupplier = currentTabSupplier;
         setCurrentTabSupplierObserver();
 
         mHubLayoutController
                 .getPreviousLayoutTypeSupplier()
-                .addObserver(castCallback(mBackPressStateChangeCallback));
+                .addSyncObserverAndPostIfNonNull(castCallback(mBackPressStateChangeCallback));
 
         updateHandleBackPressSupplier();
 
@@ -211,7 +211,8 @@ public class HubCoordinator implements PaneHubController, BackPressHandler, OnPa
 
     @SuppressWarnings("NullAway")
     private void setCurrentTabSupplierObserver() {
-        mCurrentTabSupplier.addObserver(castCallback(mBackPressStateChangeCallback));
+        mCurrentTabSupplier.addSyncObserverAndPostIfNonNull(
+                castCallback(mBackPressStateChangeCallback));
     }
 
     /** Removes the hub from the layout tree and cleans up resources. */

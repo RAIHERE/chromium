@@ -47,6 +47,22 @@ namespace base {
 
 namespace {
 
+const char* HistogramValidityToString(
+    Histogram::ConstructionArgumentsValidity validity) {
+  switch (validity) {
+    case Histogram::kOK:
+      return "OK";
+    case Histogram::kRangeSwapped:
+      return "RangeSwapped";
+    case Histogram::kRangeTooBig:
+      return "RangeTooBig";
+    case Histogram::kTooManyBuckets:
+      return "TooManyBuckets";
+    case Histogram::kBucketsInvalid:
+      return "BucketsInvalid";
+  }
+}
+
 bool ReadHistogramArguments(PickleIterator* iter,
                             std::string* histogram_name,
                             int* flags,
@@ -462,16 +478,17 @@ size_t Histogram::bucket_count() const {
 }
 
 // static
-bool Histogram::InspectConstructionArguments(std::string_view name,
-                                             Sample32* minimum,
-                                             Sample32* maximum,
-                                             size_t* bucket_count) {
-  bool check_okay = true;
+Histogram::ConstructionArgumentsValidity
+Histogram::InspectConstructionArguments(std::string_view name,
+                                        Sample32* minimum,
+                                        Sample32* maximum,
+                                        size_t* bucket_count) {
+  std::optional<ConstructionArgumentsValidity> error;
 
   // Checks below must be done after any min/max swap.
   if (*minimum > *maximum) {
     DLOG(ERROR) << "Histogram: " << name << " has swapped minimum/maximum";
-    check_okay = false;
+    error = error.value_or(kRangeSwapped);
     std::swap(*minimum, *maximum);
   }
 
@@ -497,38 +514,38 @@ bool Histogram::InspectConstructionArguments(std::string_view name,
       DLOG(ERROR) << "Histogram: " << name
                   << " has bad bucket_count: " << *bucket_count << " (limit "
                   << kBucketCount_MAX << ")";
+      error = error.value_or(kTooManyBuckets);
 
       // Assume it's a mistake and limit to 100 buckets, plus under and over.
       // If the DCHECK doesn't alert the user then hopefully the small number
       // will be obvious on the dashboard. If not, then it probably wasn't
       // important.
       *bucket_count = 102;
-      check_okay = false;
     }
   }
 
   // Ensure parameters are sane.
   if (*maximum == *minimum) {
-    check_okay = false;
+    error = error.value_or(kBucketsInvalid);
     *maximum = *minimum + 1;
   }
   if (*bucket_count < 3) {
-    check_okay = false;
+    error = error.value_or(kBucketsInvalid);
     *bucket_count = 3;
   }
   // The swap at the top of the function guarantees this cast is safe.
   const size_t max_buckets = static_cast<size_t>(*maximum - *minimum + 2);
   if (*bucket_count > max_buckets) {
-    check_okay = false;
+    error = error.value_or(kBucketsInvalid);
     *bucket_count = max_buckets;
   }
 
-  if (!check_okay) {
+  if (error.has_value()) {
     UmaHistogramSparse("Histogram.BadConstructionArguments",
                        static_cast<Sample32>(HashMetricName(name)));
   }
 
-  return check_okay;
+  return error.value_or(kOK);
 }
 
 uint64_t Histogram::name_hash() const {
@@ -676,10 +693,6 @@ Histogram::Histogram(DurableStringView durable_name,
 
 Histogram::~Histogram() = default;
 
-std::string Histogram::GetAsciiBucketRange(size_t i) const {
-  return GetSimpleAsciiBucketRange(ranges(i));
-}
-
 //------------------------------------------------------------------------------
 // Private methods
 
@@ -718,13 +731,14 @@ HistogramBase* Histogram::FactoryGetInternal(std::string_view name,
                                              Sample32 maximum,
                                              size_t bucket_count,
                                              int32_t flags) {
-  bool valid_arguments =
+  const auto validity =
       InspectConstructionArguments(name, &minimum, &maximum, &bucket_count);
-  if (!valid_arguments) {
+  if (validity != kOK) {
     // Produce a crash dump with the histogram name, so that we can detect cases
-    // where there is a coding error where a histogram is logged from multiple
-    // places with different params.
-    SCOPED_CRASH_KEY_STRING32("BadHistogramArgs", "name", std::string(name));
+    // where there is a coding error and a histogram is logged with bad params.
+    SCOPED_CRASH_KEY_STRING256("BadHistogramArgs", "name", std::string(name));
+    SCOPED_CRASH_KEY_STRING256("BadHistogramArgs", "validity",
+                               HistogramValidityToString(validity));
     base::debug::DumpWithoutCrashing();
     DLOG(ERROR) << "Histogram " << name << " dropped for invalid parameters.";
     return DummyHistogram::GetInstance();
@@ -793,16 +807,13 @@ class LinearHistogram::Factory : public Histogram::Factory {
           Sample32 minimum,
           Sample32 maximum,
           size_t bucket_count,
-          int32_t flags,
-          const DescriptionPair* descriptions)
+          int32_t flags)
       : Histogram::Factory(name,
                            LINEAR_HISTOGRAM,
                            minimum,
                            maximum,
                            bucket_count,
-                           flags) {
-    descriptions_ = descriptions;
-  }
+                           flags) {}
 
   Factory(const Factory&) = delete;
   Factory& operator=(const Factory&) = delete;
@@ -818,27 +829,6 @@ class LinearHistogram::Factory : public Histogram::Factory {
       const BucketRanges* ranges) override {
     return WrapUnique(new LinearHistogram(GetPermanentName(name_), ranges));
   }
-
-  void FillHistogram(HistogramBase* base_histogram) override {
-    Histogram::Factory::FillHistogram(base_histogram);
-    // Normally, |base_histogram| should have type LINEAR_HISTOGRAM or be
-    // inherited from it. However, if it's expired, it will actually be a
-    // DUMMY_HISTOGRAM. Skip filling in that case.
-    if (base_histogram->GetHistogramType() == DUMMY_HISTOGRAM) {
-      return;
-    }
-    LinearHistogram* histogram = static_cast<LinearHistogram*>(base_histogram);
-    // Set range descriptions.
-    if (descriptions_) {
-      for (int i = 0; UNSAFE_TODO(descriptions_[i].description); ++i) {
-        UNSAFE_TODO(histogram->bucket_description_[descriptions_[i].sample] =
-                        descriptions_[i].description);
-      }
-    }
-  }
-
- private:
-  raw_ptr<const DescriptionPair, AllowPtrArithmetic> descriptions_;
 };
 
 LinearHistogram::~LinearHistogram() = default;
@@ -902,41 +892,6 @@ std::unique_ptr<HistogramBase> LinearHistogram::PersistentCreate(
                                         logged_counts, meta, logged_meta));
 }
 
-HistogramBase* LinearHistogram::FactoryGetWithRangeDescription(
-    std::string_view name,
-    Sample32 minimum,
-    Sample32 maximum,
-    size_t bucket_count,
-    int32_t flags,
-    const DescriptionPair descriptions[]) {
-  // Originally, histograms were required to have at least one sample value
-  // plus underflow and overflow buckets. For single-entry enumerations,
-  // that one value is usually zero (which IS the underflow bucket)
-  // resulting in a |maximum| value of 1 (the exclusive upper-bound) and only
-  // the two outlier buckets. Handle this by making max==2 and buckets==3.
-  // This usually won't have any cost since the single-value-optimization
-  // will be used until the count exceeds 16 bits.
-  if (maximum == 1 && bucket_count == 2) {
-    maximum = 2;
-    bucket_count = 3;
-  }
-
-  bool valid_arguments = Histogram::InspectConstructionArguments(
-      name, &minimum, &maximum, &bucket_count);
-  if (!valid_arguments) {
-    // Produce a crash dump with the histogram name, so that we can detect cases
-    // where there is a coding error where a histogram is logged from multiple
-    // places with different params.
-    SCOPED_CRASH_KEY_STRING32("BadHistogramArgs", "name", std::string(name));
-    base::debug::DumpWithoutCrashing();
-    DLOG(ERROR) << "Histogram " << name << " dropped for invalid parameters.";
-    return DummyHistogram::GetInstance();
-  }
-
-  return Factory(name, minimum, maximum, bucket_count, flags, descriptions)
-      .Build();
-}
-
 HistogramType LinearHistogram::GetHistogramType() const {
   return LINEAR_HISTOGRAM;
 }
@@ -958,15 +913,6 @@ LinearHistogram::LinearHistogram(
                 logged_counts,
                 meta,
                 logged_meta) {}
-
-std::string LinearHistogram::GetAsciiBucketRange(size_t i) const {
-  int range = ranges(i);
-  BucketDescriptionMap::const_iterator it = bucket_description_.find(range);
-  if (it == bucket_description_.end()) {
-    return Histogram::GetAsciiBucketRange(i);
-  }
-  return it->second;
-}
 
 // static
 void LinearHistogram::InitializeBucketRanges(Sample32 minimum,
@@ -992,8 +938,32 @@ HistogramBase* LinearHistogram::FactoryGetInternal(std::string_view name,
                                                    Sample32 maximum,
                                                    size_t bucket_count,
                                                    int32_t flags) {
-  return FactoryGetWithRangeDescription(name, minimum, maximum, bucket_count,
-                                        flags, nullptr);
+  // Originally, histograms were required to have at least one sample value
+  // plus underflow and overflow buckets. For single-entry enumerations,
+  // that one value is usually zero (which IS the underflow bucket)
+  // resulting in a |maximum| value of 1 (the exclusive upper-bound) and only
+  // the two outlier buckets. Handle this by making max==2 and buckets==3.
+  // This usually won't have any cost since the single-value-optimization
+  // will be used until the count exceeds 16 bits.
+  if (maximum == 1 && bucket_count == 2) {
+    maximum = 2;
+    bucket_count = 3;
+  }
+
+  const auto validity = Histogram::InspectConstructionArguments(
+      name, &minimum, &maximum, &bucket_count);
+  if (validity != Histogram::kOK) {
+    // Produce a crash dump with the histogram name, so that we can detect cases
+    // where there is a coding error and a histogram is logged with bad params.
+    SCOPED_CRASH_KEY_STRING256("BadHistogramArgs", "name", std::string(name));
+    SCOPED_CRASH_KEY_STRING256("BadHistogramArgs", "validity",
+                               HistogramValidityToString(validity));
+    base::debug::DumpWithoutCrashing();
+    DLOG(ERROR) << "Histogram " << name << " dropped for invalid parameters.";
+    return DummyHistogram::GetInstance();
+  }
+
+  return Factory(name, minimum, maximum, bucket_count, flags).Build();
 }
 
 // static

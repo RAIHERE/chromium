@@ -234,6 +234,7 @@ android_library("chrome_test_java_helper") {
     "//chrome/test/android/test_trusted_web_activity:test_trusted_web_activity_java",
     "//components/android_autofill/browser:features_java",
     "//components/android_autofill/browser/test_support:java",
+    "//components/autofill/android:autofill_ai_test_utils_java",
     "//components/autofill/android:autofill_features_java",
     "//components/autofill/android:autofill_java",
     "//components/autofill/android:payments_interfaces_java",
@@ -454,6 +455,18 @@ android_library("chrome_test_java_helper") {
   }
 }
 
+android_library("chrome_test_java_org.chromium.chrome.browser.actor") {
+  resources_package = "org.chromium.chrome.test"
+
+  sources = [ "src/org/chromium/chrome/browser/actor/ActorOverlayPTTest.java" ]
+
+  deps = [
+    ":chrome_test_java_helper",
+    "//chrome/browser/actor/android:java",
+    "//chrome/test/android:chrome_java_transit",
+  ]
+}
+
 # Partition tests into one target per-package to keep incremental build times down.
 android_library("chrome_test_java_org.chromium.chrome.browser") {
   resources_package = "org.chromium.chrome.test"
@@ -626,6 +639,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.compositor") {
     "src/org/chromium/chrome/browser/compositor/PerformancePTTest.java",
     "src/org/chromium/chrome/browser/compositor/layouts/LayoutManagerTest.java",
     "src/org/chromium/chrome/browser/compositor/layouts/content/TabContentManagerTest.java",
+    "src/org/chromium/chrome/browser/compositor/overlays/strip/TabStripContextMenuTest.java",
     "src/org/chromium/chrome/browser/compositor/overlays/strip/TabStripGroupContextMenuTest.java",
     "src/org/chromium/chrome/browser/compositor/overlays/strip/TabStripPinUnpinTabsTest.java",
     "src/org/chromium/chrome/browser/compositor/overlays/strip/TabStripTest.java",
@@ -687,7 +701,6 @@ android_library("chrome_test_java_org.chromium.chrome.browser.customtabs") {
     "src/org/chromium/chrome/browser/customtabs/CustomTabFromChromeExternalNavigationTest.java",
     "src/org/chromium/chrome/browser/customtabs/CustomTabModalDialogTest.java",
     "src/org/chromium/chrome/browser/customtabs/CustomTabPostMessageTest.java",
-    "src/org/chromium/chrome/browser/customtabs/CustomTabPrivacySandboxDialogTest.java",
     "src/org/chromium/chrome/browser/customtabs/CustomTabTabPersistenceIntegrationTest.java",
     "src/org/chromium/chrome/browser/customtabs/CustomTabTabPersistencePolicyTest.java",
     "src/org/chromium/chrome/browser/customtabs/CustomTabTaskDescriptionHelperTest.java",
@@ -740,6 +753,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.dom_distiller") {
     "src/org/chromium/chrome/browser/dom_distiller/DistillabilityServiceTest.java",
     "src/org/chromium/chrome/browser/dom_distiller/DistilledPagePrefsTest.java",
     "src/org/chromium/chrome/browser/dom_distiller/ReaderModeBottomSheetRenderTest.java",
+    "src/org/chromium/chrome/browser/dom_distiller/ReaderModePrefsRenderTest.java",
     "src/org/chromium/chrome/browser/dom_distiller/ReaderModeTest.java",
   ]
 
@@ -853,6 +867,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.media") {
 
   sources = [
     "src/org/chromium/chrome/browser/media/AutoPipPermissionDialogViewRenderTest.java",
+    "src/org/chromium/chrome/browser/media/DocumentPictureInPictureActivityTest.java",
     "src/org/chromium/chrome/browser/media/MediaLauncherActivityTest.java",
     "src/org/chromium/chrome/browser/media/MediaViewerUtilsTest.java",
     "src/org/chromium/chrome/browser/media/PictureInPictureActivityBrowserTest.java",
@@ -863,7 +878,10 @@ android_library("chrome_test_java_org.chromium.chrome.browser.media") {
     "src/org/chromium/chrome/browser/media/ui/MediaSessionTest.java",
   ]
 
-  deps = [ ":chrome_test_java_helper" ]
+  deps = [
+    ":chrome_test_java_helper",
+    "//base:flagged_apis_java",
+  ]
 }
 
 android_library("chrome_test_java_org.chromium.chrome.browser.metrics") {
@@ -919,6 +937,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.ntp") {
     ":chrome_test_java_helper",
     "//chrome/android/feed:chrome_feed_java_resources",
     "//chrome/browser/composeplate/android:java",
+    "//chrome/browser/ntp_customization:java",
     "//chrome/browser/ui/android/logo:utils_java",
   ]
 }
@@ -1097,6 +1116,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.permissions") {
   resources_package = "org.chromium.chrome.test"
 
   sources = [
+    "src/org/chromium/chrome/browser/permissions/ApproximateGeolocationTest.java",
     "src/org/chromium/chrome/browser/permissions/AutomaticEmbargoTest.java",
     "src/org/chromium/chrome/browser/permissions/EmbeddedPermissionPromptTest.java",
     "src/org/chromium/chrome/browser/permissions/GeolocationTest.java",
@@ -1104,7 +1124,9 @@ android_library("chrome_test_java_org.chromium.chrome.browser.permissions") {
     "src/org/chromium/chrome/browser/permissions/MIDITest.java",
     "src/org/chromium/chrome/browser/permissions/MediaTest.java",
     "src/org/chromium/chrome/browser/permissions/NotificationTest.java",
+    "src/org/chromium/chrome/browser/permissions/PermissionClapperLoudTest.java",
     "src/org/chromium/chrome/browser/permissions/PermissionClapperQuietTest.java",
+    "src/org/chromium/chrome/browser/permissions/PermissionGestureGatedTest.java",
     "src/org/chromium/chrome/browser/permissions/PermissionNavigationTest.java",
     "src/org/chromium/chrome/browser/permissions/PermissionPromptRenderTest.java",
     "src/org/chromium/chrome/browser/permissions/PermissionUpdateMessageTest.java",
@@ -1186,6 +1208,7 @@ android_library("chrome_test_java_org.chromium.chrome.browser.settings") {
     "src/org/chromium/chrome/browser/settings/MainSettingsFragmentTest.java",
     "src/org/chromium/chrome/browser/settings/MultiColumnSettingsUnitTest.java",
     "src/org/chromium/chrome/browser/settings/SettingsActivityTest.java",
+    "src/org/chromium/chrome/browser/settings/search/SearchIndexProviderRegistryTest.java",
   ]
 
   deps = [ ":chrome_test_java_helper" ]
@@ -1233,7 +1256,10 @@ android_library("chrome_test_java_org.chromium.chrome.browser.signin") {
     "src/org/chromium/chrome/browser/signin/SigninSurveyControllerTest.java",
   ]
 
-  deps = [ ":chrome_test_java_helper" ]
+  deps = [
+    ":chrome_test_java_helper",
+    "//chrome/browser/prefs/android:java",
+  ]
 }
 
 android_library("chrome_test_java_org.chromium.chrome.browser.site_settings") {
@@ -1429,7 +1455,6 @@ android_library("chrome_test_java_org.chromium.chrome.browser.tasks") {
     "//chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabGroupListRenderTest.java",
     "//chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabGroupRowViewRenderTest.java",
     "//chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/TabSwitcherPanePublicTransitTest.java",
-    "//chrome/android/features/tab_ui/java/src/org/chromium/chrome/browser/tasks/tab_management/tab_bottom_sheet/TabBottomSheetManagerTest.java",
     "//chrome/android/features/tab_ui/javatests/src/org/chromium/chrome/browser/tasks/tab_management/ArchivedTabsCardRenderTest.java",
     "//chrome/android/features/tab_ui/javatests/src/org/chromium/chrome/browser/tasks/tab_management/ArchivedTabsDialogCoordinatorTest.java",
     "//chrome/android/features/tab_ui/javatests/src/org/chromium/chrome/browser/tasks/tab_management/ClosableTabListEditorTest.java",
@@ -1591,7 +1616,6 @@ android_library("chrome_test_java_various") {
     "src/org/chromium/chrome/browser/policy/PolicyAuditorBridgeTest.java",
     "src/org/chromium/chrome/browser/previewtab/PreviewTabTest.java",
     "src/org/chromium/chrome/browser/printing/PrintingControllerTest.java",
-    "src/org/chromium/chrome/browser/privacy_sandbox/PrivacySandboxSurveyControllerIntegrationTest.java",
     "src/org/chromium/chrome/browser/push_messaging/PushMessagingTest.java",
     "src/org/chromium/chrome/browser/read_later/ReadLaterContextMenuTest.java",
     "src/org/chromium/chrome/browser/reengagement/ReengagementNotificationControllerIntegrationTest.java",
@@ -1780,6 +1804,16 @@ java_group("common_unit_test_deps_java") {
 }
 
 # Partition tests into one target per-package to keep incremental build times down.
+android_library("chrome_unit_test_java_org.chromium.chrome.browser.actor") {
+  resources_package = "org.chromium.chrome"
+
+  sources = [
+    "src/org/chromium/chrome/browser/actor/ActorForegroundServiceTest.java",
+  ]
+
+  deps = [ ":common_unit_test_deps_java" ]
+}
+
 android_library(
     "chrome_unit_test_java_org.chromium.chrome.browser.compositor") {
   resources_package = "org.chromium.chrome"

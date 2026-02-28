@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <string>
 
+#include "base/check_deref.h"
 #include "base/command_line.h"
 #include "base/debug/debugging_buildflags.h"
 #include "base/debug/profiler.h"
@@ -23,14 +24,11 @@
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/actor/ui/actor_overlay_web_view.h"
 #include "chrome/browser/browser_process.h"
-#include "chrome/browser/commerce/browser_utils.h"
 #include "chrome/browser/defaults.h"
-#if !BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/devtools/devtools_policy_dialog.h"
-#endif
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/feedback/public/feedback_source.h"
+#include "chrome/browser/feedback/show_feedback_page.h"
 #include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profile.h"
@@ -64,20 +62,21 @@
 #include "chrome/browser/ui/profiles/profile_view_utils.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_entry_point_controller.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/singleton_tabs.h"
 #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
 #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_prefs.h"
 #include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/split_tab_metrics.h"
+#include "chrome/browser/ui/tabs/tab_change_type.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/toolbar/chrome_labs/chrome_labs_utils.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
 #include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
@@ -113,6 +112,7 @@
 #include "content/public/common/profiling.h"
 #include "content/public/common/url_constants.h"
 #include "extensions/browser/extension_registrar.h"
+#include "extensions/browser/extension_registry.h"
 #include "extensions/common/extension_urls.h"
 #include "printing/buildflags/buildflags.h"
 #include "ui/accessibility/accessibility_features.h"
@@ -120,6 +120,10 @@
 #include "ui/base/ui_base_features.h"
 #include "ui/base/window_open_disposition.h"
 #include "ui/events/keycodes/keyboard_codes.h"
+
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/devtools/devtools_policy_dialog.h"
+#endif
 
 #if BUILDFLAG(IS_MAC)
 #include "chrome/browser/ui/browser_commands_mac.h"
@@ -163,6 +167,12 @@
 #include "chrome/browser/glic/widget/glic_window_controller.h"
 #endif
 
+static_assert(BUILDFLAG(ENABLE_EXTENSIONS));
+
+using Extension = extensions::Extension;
+using ExtensionRegistry = extensions::ExtensionRegistry;
+using ExtensionRegistryObserver = extensions::ExtensionRegistryObserver;
+using UnloadedExtensionReason = extensions::UnloadedExtensionReason;
 using WebExposedIsolationLevel = content::WebExposedIsolationLevel;
 
 namespace chrome {
@@ -222,6 +232,38 @@ void InvokeAction(actions::ActionId id, actions::ActionItem* scope) {
 }
 
 }  // namespace
+
+///////////////////////////////////////////////////////////////////////////////
+// BrowserCommandController::ExtensionStateObserver
+
+// Observes for extension state changes and notifies the controller.
+class BrowserCommandController::ExtensionStateObserver
+    : public ExtensionRegistryObserver {
+ public:
+  ExtensionStateObserver(BrowserCommandController* controller, Profile* profile)
+      : controller_(CHECK_DEREF(controller)) {
+    registry_observation_.Observe(ExtensionRegistry::Get(profile));
+  }
+  ExtensionStateObserver(const ExtensionStateObserver&) = delete;
+  ExtensionStateObserver& operator=(const ExtensionStateObserver&) = delete;
+  ~ExtensionStateObserver() override = default;
+
+  // ExtensionRegistryObserver:
+  void OnExtensionLoaded(content::BrowserContext* browser_context,
+                         const Extension* extension) override {
+    controller_->ExtensionStateChanged();
+  }
+  void OnExtensionUnloaded(content::BrowserContext* browser_context,
+                           const Extension* extension,
+                           UnloadedExtensionReason reason) override {
+    controller_->ExtensionStateChanged();
+  }
+
+ private:
+  raw_ref<BrowserCommandController> controller_;
+  base::ScopedObservation<ExtensionRegistry, ExtensionRegistryObserver>
+      registry_observation_{this};
+};
 
 ///////////////////////////////////////////////////////////////////////////////
 // BrowserCommandController, public:
@@ -336,9 +378,13 @@ BrowserCommandController::BrowserCommandController(BrowserWindowInterface* bwi)
       tab_restore_service->LoadTabsFromLastSession();
     }
   }
+
+  extension_state_observer_ =
+      std::make_unique<ExtensionStateObserver>(this, profile());
 }
 
 BrowserCommandController::~BrowserCommandController() {
+  extension_state_observer_.reset();
   // TabRestoreService may have been shutdown by the time we get here. Don't
   // trigger creating it.
   sessions::TabRestoreService* tab_restore_service =
@@ -591,7 +637,13 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
     case IDC_TOGGLE_VERTICAL_TABS:
       ToggleVerticalTabs(browser_);
       break;
-
+    case IDC_VERTICAL_TABS_SEND_FEEDBACK:
+      chrome::ShowFeedbackPage(browser_, feedback::kFeedbackSourceVerticalTabs,
+                               /*description_template=*/"",
+                               /*description_placeholder_text=*/"",
+                               /*category_tag=*/"vertical_tabs",
+                               /*extra_diagnostics=*/"");
+      break;
     // Window management commands
     case IDC_NEW_WINDOW:
       NewWindow(browser_);
@@ -996,15 +1048,15 @@ bool BrowserCommandController::ExecuteCommandWithDisposition(
     case IDC_FEEDBACK:
       OpenFeedbackDialog(browser_, feedback::kFeedbackSourceBrowserCommand);
       break;
+    case IDC_REPORT_UNSAFE_SITE:
+      OpenReportUnsafeSiteDialog(browser_);
+      break;
 #endif
     case IDC_SHOW_CHROME_LABS:
       window()->ShowChromeLabs();
       break;
     case IDC_SHOW_BOOKMARK_BAR:
       ToggleBookmarkBar(browser_);
-      break;
-    case IDC_SHOW_ALL_COMPARISON_TABLES:
-      ShowAllComparisonTables(browser_);
       break;
     case IDC_SHOW_FULL_URLS:
       ToggleShowFullURLs(browser_);
@@ -1415,12 +1467,15 @@ void BrowserCommandController::OnTabStripModelChanged(
   UpdateCommandsForTabStripStateChanged();
 }
 
-void BrowserCommandController::OnTabBlockedStateChanged(tabs::TabInterface* tab,
-                                                        int index) {
-  PrintingStateChanged();
-  FullscreenStateChanged();
-  UpdateCommandsForFind();
-  UpdateCommandsForMediaRouter();
+void BrowserCommandController::OnTabChangedAt(tabs::TabInterface* tab,
+                                              int index,
+                                              TabChangeType change_type) {
+  if (change_type == TabChangeType::kBlockedOnly) {
+    PrintingStateChanged();
+    FullscreenStateChanged();
+    UpdateCommandsForFind();
+    UpdateCommandsForMediaRouter();
+  }
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -1501,6 +1556,7 @@ void BrowserCommandController::InitCommandState() {
   command_updater_.UpdateCommandEnabled(IDC_ORGANIZE_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_DECLUTTER_TABS, true);
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_VERTICAL_TABS, true);
+  command_updater_.UpdateCommandEnabled(IDC_VERTICAL_TABS_SEND_FEEDBACK, true);
 #if BUILDFLAG(IS_CHROMEOS)
   command_updater_.UpdateCommandEnabled(IDC_TOGGLE_MULTITASK_MENU, true);
   command_updater_.UpdateCommandEnabled(IDC_MINIMIZE_WINDOW, true);
@@ -1740,13 +1796,6 @@ void BrowserCommandController::InitCommandState() {
     command_updater_.UpdateCommandEnabled(IDC_SHOW_CHROME_LABS, true);
   }
 
-  // Compare commands.
-  command_updater_.UpdateCommandEnabled(IDC_COMPARE_MENU, true);
-  command_updater_.UpdateCommandEnabled(IDC_SHOW_ALL_COMPARISON_TABLES, true);
-  command_updater_.UpdateCommandEnabled(IDC_ADD_TO_COMPARISON_TABLE_MENU, true);
-  command_updater_.UpdateCommandEnabled(
-      IDC_CREATE_NEW_COMPARISON_TABLE_WITH_TAB, true);
-
 #if BUILDFLAG(ENABLE_GLIC)
   // Glic commands.
   command_updater_.UpdateCommandEnabled(
@@ -1962,13 +2011,6 @@ void BrowserCommandController::UpdateCommandsForTabState() {
         DevToolsWindow::AllowDevToolsFor(
             profile(), browser_->tab_strip_model()->GetActiveWebContents()));
   }
-
-  // Disable the add to comparison table menu when the page is not a standard
-  // webpage.
-  command_updater_.UpdateCommandEnabled(
-      IDC_ADD_TO_COMPARISON_TABLE_MENU,
-      commerce::IsUrlEligibleForProductSpecs(
-          current_web_contents->GetLastCommittedURL()));
 }
 
 void BrowserCommandController::UpdateCommandsForZoomState() {
@@ -2096,6 +2138,7 @@ void BrowserCommandController::UpdateCommandsForFullscreenMode() {
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
   command_updater_.UpdateCommandEnabled(
       IDC_FEEDBACK, show_main_ui || browser_->is_type_devtools());
+  command_updater_.UpdateCommandEnabled(IDC_REPORT_UNSAFE_SITE, show_main_ui);
 #endif
 
   command_updater_.UpdateCommandEnabled(IDC_EDIT_SEARCH_ENGINES, show_main_ui);
@@ -2286,7 +2329,8 @@ void BrowserCommandController::UpdateCommandsForFind() {
   bool is_actor_overlay_visible = false;
 
   // If the actor overlay is visible, we disable find and close it if it's open.
-  if (features::kGlicActorUiOverlay.Get()) {
+  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
+      features::kGlicActorUiOverlay.Get()) {
     if (BrowserView* browser_view =
             BrowserView::GetBrowserViewForBrowser(browser_)) {
       if (auto* active_container =

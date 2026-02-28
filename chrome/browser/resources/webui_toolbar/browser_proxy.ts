@@ -4,19 +4,41 @@
 
 import '//resources/js/cr.js';
 
-import {
-  BrowserControlsFactory,
-  BrowserControlsObserverCallbackRouter,
-  BrowserControlsServiceRemote,
-} from './browser_controls_api.mojom-webui.js';
+import {BrowserControlsService} from './browser_controls_api.mojom-webui.js';
 import type {BrowserControlsServiceInterface} from './browser_controls_api.mojom-webui.js';
-import {ClickDispositionFlag, ContextMenuType, DevToolsState, NavigationState} from './browser_controls_api_data_model.mojom-webui.js';
+import {ClickDispositionFlag} from './browser_controls_api_data_model.mojom-webui.js';
+import {
+  ToolbarUIObserverCallbackRouter,
+  ToolbarUIService,
+} from './toolbar_ui_api.mojom-webui.js';
+import type {ToolbarUIServiceInterface} from './toolbar_ui_api.mojom-webui.js';
+import {
+  ContextMenuType,
+} from './toolbar_ui_api_data_model.mojom-webui.js';
+import type {
+  NavigationControlsState,
+  ReloadControlState,
+} from './toolbar_ui_api_data_model.mojom-webui.js';
 
-export {ClickDispositionFlag, ContextMenuType, DevToolsState, NavigationState};
+export {
+  ClickDispositionFlag,
+  ContextMenuType,
+};
+export type {
+  NavigationControlsState,
+  ReloadControlState,
+};
+
+export type NavigationControlsStateListener =
+    (state: NavigationControlsState) => void;
+
+export type NavigationControlsStateListenerHandle = number;
+export const INVALID_NAVIGATION_CONTROLS_STATE_LISTENER_HANDLE:
+    NavigationControlsStateListenerHandle = -1;
 
 export interface BrowserProxy {
-  callbackRouter: BrowserControlsObserverCallbackRouter;
-  handler: BrowserControlsServiceInterface;
+  browserControlsHandler: BrowserControlsServiceInterface;
+  toolbarUIHandler: ToolbarUIServiceInterface;
 
   /**
    * Records a value in a histogram.
@@ -26,19 +48,23 @@ export interface BrowserProxy {
    */
   recordInHistogram(histogramName: string, value: number, maxValue: number):
       void;
+
+  addNavigationStateListener(listener: NavigationControlsStateListener):
+      NavigationControlsStateListenerHandle;
+
+  removeNavigationStateListener(handle: NavigationControlsStateListenerHandle):
+      void;
 }
 
 export class BrowserProxyImpl implements BrowserProxy {
-  callbackRouter: BrowserControlsObserverCallbackRouter;
-  handler: BrowserControlsServiceInterface;
+  private callbackRouter: ToolbarUIObserverCallbackRouter;
+  browserControlsHandler: BrowserControlsServiceInterface;
+  toolbarUIHandler: ToolbarUIServiceInterface;
 
   private constructor() {
-    this.callbackRouter = new BrowserControlsObserverCallbackRouter();
-    this.handler = new BrowserControlsServiceRemote();
-    BrowserControlsFactory.getRemote().createBrowserControls(
-        this.callbackRouter.$.bindNewPipeAndPassRemote(),
-        (this.handler as BrowserControlsServiceRemote)
-            .$.bindNewPipeAndPassReceiver());
+    this.callbackRouter = new ToolbarUIObserverCallbackRouter();
+    this.browserControlsHandler = BrowserControlsService.getRemote();
+    this.toolbarUIHandler = ToolbarUIService.getRemote();
   }
 
   /**
@@ -50,6 +76,23 @@ export class BrowserProxyImpl implements BrowserProxy {
   recordInHistogram(histogramName: string, value: number, maxValue: number) {
     chrome.send(
         'metricsHandler:recordInHistogram', [histogramName, value, maxValue]);
+  }
+
+  addNavigationStateListener(listener: NavigationControlsStateListener) {
+    const handle =
+        this.callbackRouter.onNavigationControlsStateChanged.addListener(
+            listener);
+    this.toolbarUIHandler.bind().then(fence => {
+      listener(fence.state);
+      this.callbackRouter.$.bindHandle(fence.updateStream.handle);
+    });
+    return handle;
+  }
+
+  removeNavigationStateListener(handle: NavigationControlsStateListenerHandle) {
+    if (handle !== INVALID_NAVIGATION_CONTROLS_STATE_LISTENER_HANDLE) {
+      this.callbackRouter.removeListener(handle);
+    }
   }
 
   static getInstance(): BrowserProxy {

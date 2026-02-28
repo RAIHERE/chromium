@@ -226,9 +226,13 @@ class NavigationCapturingProcess
   MaybeNavigationCapturingOverride ForcedNewAppContext(
       blink::mojom::DisplayMode app_display_mode,
       Browser* host_browser);
+  MaybeNavigationCapturingOverride ForcedNewIwaAppContextWithScopeExtendedUrl(
+      blink::mojom::DisplayMode app_display_mode);
   MaybeNavigationCapturingOverride CapturedNewClient(
       blink::mojom::DisplayMode app_display_mode,
       Browser* host_browser);
+  MaybeNavigationCapturingOverride CapturedNewIwaClientWithScopeExtendedUrl(
+      blink::mojom::DisplayMode app_display_mode);
   MaybeNavigationCapturingOverride CapturedNavigateExisting(
       Browser* app_browser,
       int browser_tab);
@@ -272,6 +276,8 @@ class NavigationCapturingProcess
   const WindowOpenDisposition disposition_;
   const raw_ptr<Browser> navigation_params_browser_;
   std::optional<webapps::AppId> first_navigation_app_id_;
+  // If exists, should be the same origin as first_navigation_app_id_.
+  std::optional<webapps::AppId> first_navigation_parent_app_id_;
   std::optional<blink::mojom::DisplayMode> first_navigation_app_display_mode_;
 
   bool isolated_web_app_navigation_ = false;

@@ -34,6 +34,7 @@
 #include "third_party/blink/renderer/core/css/css_numeric_literal_value.h"
 #include "third_party/blink/renderer/core/css/css_primitive_value.h"
 #include "third_party/blink/renderer/core/css/css_unparsed_declaration_value.h"
+#include "third_party/blink/renderer/core/css/media_feature_names.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_context.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_impl.h"
 #include "third_party/blink/renderer/core/css/parser/css_parser_token.h"
@@ -46,6 +47,7 @@
 #include "third_party/blink/renderer/platform/wtf/decimal.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_buffer.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/text/wtf_string.h"
 
 namespace blink {
 
@@ -58,7 +60,7 @@ static inline bool FeatureWithValidIdent(const String& media_feature,
                                          const CSSParserContext& context) {
   if (media_feature == media_feature_names::kDisplayModeMediaFeature) {
     return ident == CSSValueID::kFullscreen ||
-           ident == CSSValueID::kBorderless ||
+           ident == CSSValueID::kBorderless || ident == CSSValueID::kUnframed ||
            ident == CSSValueID::kStandalone ||
            ident == CSSValueID::kMinimalUi ||
            ident == CSSValueID::kWindowControlsOverlay ||
@@ -252,8 +254,7 @@ static inline bool FeatureWithValidIdent(const String& media_feature,
     }
   }
 
-  if (RuntimeEnabledFeatures::CSSFallbackContainerQueriesEnabled() &&
-      media_feature == media_feature_names::kFallbackMediaFeature) {
+  if (media_feature == media_feature_names::kFallbackMediaFeature) {
     return ident == CSSValueID::kNone;
   }
 
@@ -518,7 +519,7 @@ std::optional<MediaQueryExpValue> MediaQueryExpValue::Consume(
   // TODO(crbug.com/475808971): We don't have property name for random in media
   // query, this should probably be specified.
   CSSParserLocalContext local_context =
-      CSSParserLocalContext::CreateWithoutPropertyForMediaQueries();
+      CSSParserLocalContext::CreateWithoutPropertyForAtRules();
   if (media_feature == media_feature_names::kFallbackMediaFeature) {
     if (CSSValue* fallback_value =
             css_parsing_utils::ConsumeAnchoredFallbackQueryValue(
@@ -553,7 +554,10 @@ std::optional<MediaQueryExpValue> MediaQueryExpValue::Consume(
     return std::nullopt;
   }
 
-  if (!supports_element_dependent && value->IsElementDependent()) {
+  // TODO(crbug.com/475808971): We don't support random() outside element
+  // context except container style queries for now.
+  if (value->HasRandomFunctions() ||
+      (!supports_element_dependent && value->IsElementDependent())) {
     return std::nullopt;
   }
 

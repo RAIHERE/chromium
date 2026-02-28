@@ -71,12 +71,16 @@ enum class IOSDeviceRestoreSignedinState : int {
   kMaxValue = kUserSignedInBeforeAndAfterDeviceRestore,
 };
 
-// Returns the account id associated with `identity`.
-CoreAccountId SystemIdentityToAccountID(
-    signin::IdentityManager* identity_manager,
-    id<SystemIdentity> identity) {
-  std::string email = base::SysNSStringToUTF8([identity userEmail]);
-  return identity_manager->PickAccountIdForAccount(identity.gaiaId, email);
+// Same as signin::MultiProfileSignOutForProfile, but does nothing if the
+// profile is deallocated.
+void MultiProfileSignOutForProfile(
+    base::WeakPtr<ProfileIOS> profile,
+    signin_metrics::ProfileSignout signout_source,
+    base::OnceClosure signout_completion_closure) {
+  if (profile) {
+    signin::MultiProfileSignOutForProfile(
+        profile.get(), signout_source, std::move(signout_completion_closure));
+  }
 }
 
 }  // namespace
@@ -359,7 +363,7 @@ void AuthenticationService::SignIn(id<SystemIdentity> identity,
                                    signin_metrics::AccessPoint access_point) {
   CHECK(SigninEnabled()) << "Service status "
                          << static_cast<int>(GetServiceStatus());
-  DCHECK(account_manager_service_->IsValidIdentity(identity));
+  DCHECK(account_manager_service_->IsValidIdentity(identity.gaiaId));
 
   primary_account_was_restricted_ = false;
 
@@ -374,8 +378,7 @@ void AuthenticationService::SignIn(id<SystemIdentity> identity,
   identity_manager_->GetDeviceAccountsSynchronizer()
       ->ReloadAllAccountsFromSystemWithPrimaryAccount(CoreAccountId());
 
-  const CoreAccountId account_id = identity_manager_->PickAccountIdForAccount(
-      identity.gaiaId, base::SysNSStringToUTF8(identity.userEmail));
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId(identity.gaiaId);
 
   // Ensure that the account the user is trying to sign into has been loaded
   // from the SSO library.
@@ -463,10 +466,9 @@ void AuthenticationService::SignOut(
   base::OnceClosure callback_closure =
       completion ? base::BindOnce(completion) : base::DoNothing();
 
-  // Note: Once `kSeparateProfilesForManagedAccounts` is launched, the "clear
-  // browsing data" cases are only reachable for managed accounts that were
-  // already signed in before that feature was enabled. Once those users have
-  // been migrated, this code can be cleaned up.
+  // TODO(crbug.com/407498240): Once all users are migrated to multiple
+  // profiles, the "clear browsing data" cases will be unused and can be cleaned
+  // up.
   if (is_managed && is_migrated_from_syncing) {
     // If `is_clear_data_feature_for_managed_users_enabled` is false, browsing
     // data for managed account needs to be cleared only if sync has started at
@@ -510,13 +512,6 @@ AuthenticationService::PerformProfileInitializationIfNecessary() {
   const bool was_already_initialized =
       attributes_storage->GetAttributesForProfileWithName(profile_name)
           .IsFullyInitialized();
-
-  if (!AreSeparateProfilesForManagedAccountsEnabled()) {
-    return was_already_initialized
-               ? ProfileInitializationOutcome::
-                     kFeatureDisabledAlreadyInitialized
-               : ProfileInitializationOutcome::kFeatureDisabledNewlyInitialized;
-  }
 
   // When opening a managed profile for the first time, the user needs to be
   // signed in automatically.
@@ -565,8 +560,7 @@ AuthenticationService::PerformProfileInitializationIfNecessary() {
 
 id<RefreshAccessTokenError> AuthenticationService::GetCachedMDMError(
     id<SystemIdentity> identity) {
-  CoreAccountId account_id =
-      SystemIdentityToAccountID(identity_manager_, identity);
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId(identity.gaiaId);
   auto it = cached_mdm_errors_.find(account_id);
   if (it == cached_mdm_errors_.end()) {
     return nil;
@@ -642,8 +636,7 @@ bool AuthenticationService::HandleMDMError(id<SystemIdentity> identity,
           identity, ActiveIdentities(), error,
           base::BindOnce(&AuthenticationService::MDMErrorHandled,
                          weak_pointer_factory_.GetWeakPtr(), identity))) {
-    CoreAccountId account_id =
-        SystemIdentityToAccountID(identity_manager_, identity);
+    const CoreAccountId account_id = CoreAccountId::FromGaiaId(identity.gaiaId);
     DUMP_WILL_BE_CHECK(!account_id.empty())
         << "Unexpected identity with empty account id: [gaiaID = "
         << identity.gaiaId.ToNSString()
@@ -671,8 +664,7 @@ void AuthenticationService::MDMErrorHandled(id<SystemIdentity> identity,
 }
 
 void AuthenticationService::OnRefreshTokenUpdated(id<SystemIdentity> identity) {
-  const CoreAccountId account_id = identity_manager_->PickAccountIdForAccount(
-      identity.gaiaId, base::SysNSStringToUTF8(identity.userEmail));
+  const CoreAccountId account_id = CoreAccountId::FromGaiaId(identity.gaiaId);
   if (!identity_manager_->HasAccountWithRefreshToken(account_id)) {
     return;
   }
@@ -769,7 +761,7 @@ void AuthenticationService::HandleForgottenIdentity(
       base::BindOnce(&AuthenticationService::HandleForgottenIdentityCallback,
                      weak_pointer_factory_.GetWeakPtr(), account_info);
   base::OnceClosure signout =
-      base::BindOnce(&signin::MultiProfileSignOutForProfile, profile_,
+      base::BindOnce(&MultiProfileSignOutForProfile, profile_->AsWeakPtr(),
                      signout_source, std::move(closure));
   base::SingleThreadTaskRunner::GetCurrentDefault()->PostTask(
       FROM_HERE, std::move(signout));

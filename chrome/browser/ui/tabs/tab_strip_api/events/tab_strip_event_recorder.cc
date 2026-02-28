@@ -87,7 +87,8 @@ void TabStripEventRecorder::OnChildMoved(
   const tabs::TabCollection::Position& from_position = node_data.position;
   const tabs::TabCollection::NodeHandle node_handle = node_data.handle;
 
-  Handle(ToEvent(to_position, from_position, node_handle));
+  Handle(ToEvent(to_position, from_position, node_handle,
+                 tab_strip_model_adapter_));
 }
 
 void TabStripEventRecorder::OnTabStripModelChanged(
@@ -109,11 +110,6 @@ void TabStripEventRecorder::OnTabChangedAt(tabs::TabInterface* tab,
                                            int index,
                                            TabChangeType change_type) {
   Handle(ToEvent(tab_strip_model_adapter_, index, change_type));
-}
-
-void TabStripEventRecorder::OnTabBlockedStateChanged(tabs::TabInterface* tab,
-                                                     int index) {
-  OnTabChangedAt(tab, index, TabChangeType::kAll);
 }
 
 void TabStripEventRecorder::OnTabGroupChanged(const TabGroupChange& change) {

@@ -4,6 +4,7 @@
 
 package org.chromium.chrome.browser.tasks.tab_management;
 
+import static org.chromium.build.NullUtil.assertNonNull;
 import static org.chromium.build.NullUtil.assumeNonNull;
 import static org.chromium.chrome.browser.tasks.tab_management.TabGridDialogProperties.PAGE_KEY_LISTENER;
 
@@ -27,7 +28,6 @@ import org.chromium.base.Callback;
 import org.chromium.base.Token;
 import org.chromium.base.TraceEvent;
 import org.chromium.base.supplier.LazyOneshotSupplier;
-import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
@@ -50,7 +50,6 @@ import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tab_ui.TabContentManagerThumbnailProvider;
 import org.chromium.chrome.browser.tabmodel.TabGroupColorUtils;
 import org.chromium.chrome.browser.tabmodel.TabGroupModelFilter;
-import org.chromium.chrome.browser.tasks.tab_management.ColorPickerCoordinator.ColorPickerLayoutType;
 import org.chromium.chrome.browser.tasks.tab_management.TabGridDialogMediator.AnimationSourceViewProvider;
 import org.chromium.chrome.browser.tasks.tab_management.TabListCoordinator.TabListMode;
 import org.chromium.chrome.browser.tasks.tab_management.TabListEditorCoordinator.CreationMode;
@@ -59,6 +58,9 @@ import org.chromium.chrome.browser.tasks.tab_management.TabListMediator.GridCard
 import org.chromium.chrome.browser.tasks.tab_management.TabProperties.UiType;
 import org.chromium.chrome.browser.tasks.tab_management.TabSwitcherMessageManager.MessageType;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiMetricsHelper.TabGroupColorChangeActionType;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerCoordinator;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerCoordinator.ColorPickerLayoutType;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerType;
 import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.undo_tab_close_snackbar.UndoBarThrottle;
 import org.chromium.chrome.tab_ui.R;
@@ -135,8 +137,8 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
             ModalDialogManager modalDialogManager,
             @Nullable DesktopWindowStateManager desktopWindowStateManager,
             UndoBarThrottle undoBarThrottle,
-            MonotonicObservableSupplier<TabBookmarker> tabBookmarkerSupplier,
-            Supplier<ShareDelegate> shareDelegateSupplier,
+            Supplier<@Nullable TabBookmarker> tabBookmarkerSupplier,
+            Supplier<@Nullable ShareDelegate> shareDelegateSupplier,
             Callback<@Nullable View> attachViewCallback) {
         try (TraceEvent e = TraceEvent.scoped("TabGridDialogCoordinator.constructor")) {
             mActivity = activity;
@@ -184,7 +186,13 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
 
             if (!activity.isDestroyed() && !activity.isFinishing()) {
                 mSnackbarManager =
-                        new SnackbarManager(activity, mDialogView.getSnackBarContainer(), null);
+                        new SnackbarManager(
+                                activity,
+                                mDialogView.getSnackBarContainer(),
+                                null,
+                                null,
+                                modalDialogManager);
+
             } else {
                 mSnackbarManager = null;
             }
@@ -272,7 +280,7 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
 
             mTabListOnScrollListener
                     .getYOffsetNonZeroSupplier()
-                    .addObserver(
+                    .addSyncObserverAndPostIfNonNull(
                             (showHairline) ->
                                     mModel.set(
                                             TabGridDialogProperties.HAIRLINE_VISIBILITY,
@@ -281,14 +289,14 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
             recyclerView.addOnScrollListener(mTabListOnScrollListener);
 
             @LayoutRes
-            int toolbar_res_id =
+            int toolbarResId =
                     isDataSharingAndroidEnabled
                             ? R.layout.tab_grid_dialog_toolbar_two_row
                             : R.layout.tab_grid_dialog_toolbar;
             TabGridDialogToolbarView toolbarView =
                     (TabGridDialogToolbarView)
                             LayoutInflater.from(activity)
-                                    .inflate(toolbar_res_id, recyclerView, false);
+                                    .inflate(toolbarResId, recyclerView, false);
             if (isDataSharingAndroidEnabled) {
                 FrameLayout imageTilesContainer =
                         toolbarView.findViewById(R.id.image_tiles_container);
@@ -374,6 +382,7 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
                             /* desktopWindowStateManager= */ null,
                             /* edgeToEdgeSupplier= */ null,
                             CreationMode.DIALOG,
+                            /* itemPickerSelectionHandler= */ null,
                             /* undoBarExplicitTrigger= */ null,
                             /* componentName= */ null,
                             TabListEditorCoordinator.UNLIMITED_SELECTION,
@@ -398,7 +407,8 @@ public class TabGridDialogCoordinator implements TabGridDialogMediator.DialogCon
                     public void onDismiss() {
                         assumeNonNull(mColorPickerCoordinator);
                         mMediator.setSelectedTabGroupColor(
-                                mColorPickerCoordinator.getSelectedColorSupplier().get());
+                                assertNonNull(
+                                        mColorPickerCoordinator.getSelectedColorSupplier().get()));
 
                         // Only require a refresh of the tab list if accessed from the GTS,
                         // skip if this is reached from the tab strip as the color will

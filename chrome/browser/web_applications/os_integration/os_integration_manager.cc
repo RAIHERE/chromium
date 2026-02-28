@@ -54,7 +54,6 @@
 #include "chrome/browser/web_applications/web_app_registry_update.h"
 #include "chrome/browser/web_applications/web_app_sync_bridge.h"
 #include "chrome/browser/web_applications/web_app_ui_manager.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
@@ -364,11 +363,6 @@ void OsIntegrationManager::GetShortcutInfoForAppFromRegistrar(
       base::BindOnce(&OsIntegrationManager::OnIconsRead,
                      weak_ptr_factory_.GetWeakPtr(), app_id,
                      std::move(callback)));
-}
-
-bool OsIntegrationManager::IsFileHandlingAPIAvailable(
-    const webapps::AppId& app_id) {
-  return true;
 }
 
 const apps::FileHandlers* OsIntegrationManager::GetEnabledFileHandlers(

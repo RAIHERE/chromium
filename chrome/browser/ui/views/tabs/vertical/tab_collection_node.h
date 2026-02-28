@@ -23,6 +23,9 @@ class View;
 
 class VerticalTabStripController;
 
+// The individual collection node of the view model. The root
+// node also inherits from this class. It provides extensibility hooks for the
+// views to use to implement things like animations.
 class TabCollectionNode {
  public:
   // Keep the same as TabCollection::Type with a tab.
@@ -60,6 +63,8 @@ class TabCollectionNode {
   // Returns nullptr if no such node exists.
   TabCollectionNode* GetNodeForHandle(
       const tabs::TabCollectionNodeHandle& handle);
+  const TabCollectionNode* GetNodeForHandle(
+      const tabs::TabCollectionNodeHandle& handle) const;
   TabCollectionNode* GetParentNodeForHandle(
       const tabs::TabCollectionNodeHandle& handle);
   const TabCollectionNode* GetParentNodeForHandle(
@@ -132,6 +137,9 @@ class TabCollectionNode {
 
   void SetController(VerticalTabStripController* controller);
   VerticalTabStripController* GetController() { return tab_strip_controller_; }
+  const VerticalTabStripController* GetController() const {
+    return tab_strip_controller_;
+  }
 
  protected:
   // Returns the pass key to be used by derived classes so that methods such as

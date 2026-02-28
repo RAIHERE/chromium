@@ -524,8 +524,8 @@ bool LocalDOMWindow::AllowInlineJavascriptUrl(const DOMWrapperWorld* world,
   // AllowInline below will check the source's hash against CSP, which is why
   // it needs an exact script_source.
   const int kJavascriptSchemeLength = sizeof("javascript:") - 1;
-  String decoded_url = DecodeURLEscapeSequences(
-      url.GetString(), DecodeURLMode::kUTF8OrIsomorphic);
+  String decoded_url = DecodeUrlEscapeSequences(
+      url.GetString(), DecodeUrlMode::kUtf8OrIsomorphic);
   String script_source = decoded_url.Substring(kJavascriptSchemeLength);
 
   // Check the CSP of the caller (the "source browsing context") if required,
@@ -541,8 +541,8 @@ String LocalDOMWindow::CheckAndGetJavascriptUrl(
     Element* element,
     network::mojom::CSPDisposition csp_disposition) {
   const int kJavascriptSchemeLength = sizeof("javascript:") - 1;
-  String decoded_url = DecodeURLEscapeSequences(
-      url.GetString(), DecodeURLMode::kUTF8OrIsomorphic);
+  String decoded_url = DecodeUrlEscapeSequences(
+      url.GetString(), DecodeUrlMode::kUtf8OrIsomorphic);
   String script_source = decoded_url.Substring(kJavascriptSchemeLength);
 
   if (csp_disposition == network::mojom::CSPDisposition::DO_NOT_CHECK)
@@ -1026,12 +1026,8 @@ void LocalDOMWindow::EnqueueHashchangeEvent(const String& old_url,
 
 void LocalDOMWindow::DispatchPopstateEvent(
     scoped_refptr<SerializedScriptValue> state_object,
-    scheduler::TaskAttributionInfo* task_state,
     bool has_ua_visual_transition) {
   DCHECK(GetFrame());
-  std::optional<scheduler::TaskAttributionTracker::TaskScope>
-      task_attribution_scope(SetCurrentTaskStateIfTopLevel(
-          task_state, this, TaskScopeType::kPopState));
   DispatchEvent(*PopStateEvent::Create(std::move(state_object), history(),
                                        has_ua_visual_transition));
 }
@@ -2134,6 +2130,10 @@ void LocalDOMWindow::AddedEventListener(
 
   document()->AddListenerTypeIfNeeded(event_type, *this);
   document()->DidAddEventListeners(/*count*/ 1);
+  if (registered_listener.Capture() &&
+      RuntimeEnabledFeatures::SkipEventCaptureEnabled()) {
+    document()->SetHasCaptureListener();
+  }
 
   for (auto& it : event_listener_observers_) {
     it->DidAddEventListener(this, event_type);

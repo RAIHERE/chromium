@@ -485,6 +485,82 @@ For more settings that use data to improve your Chrome experience, go to <ph nam
       <message name="IDS_MANAGE_SEARCH_ENGINES_AND_SITE_SEARCH" desc="Title shown in the menu item that takes the user to 'Manage search engines and site search' in Settings.">
         Manage search engines and site search
       </message>
+      <message name="IDS_SITE_SEARCH_KEYBOARD_SHORTCUT_HEADER" desc="Header for the 'Keyboard Shortcut' section.">
+        Keyboard shortcut
+      </message>
+      <message name="IDS_SITE_SEARCH_KEYBOARD_SHORTCUT_DESCRIPTION" desc="Explanation for the 'Keyboard Shortcut' section.">
+        In the address bar, use this keyboard shortcut with shortcuts for search engines and site search
+      </message>
+      <message name="IDS_SITE_SEARCH_KEYBOARD_SHORTCUT_SPACE_OR_TAB" desc="Label for the 'Space or Tab' keyboard shortcut option.">
+        Space or Tab
+      </message>
+      <message name="IDS_SITE_SEARCH_KEYBOARD_SHORTCUT_TAB" desc="Label for the 'Tab' keyboard shortcut option.">
+        Tab
+      </message>
+      <message name="IDS_SITE_SEARCH_SEARCH_ENGINES_HEADER" desc="Header for 'Search Engines' section">
+        Search engines
+      </message>
+      <message name="IDS_SITE_SEARCH_SEARCH_ENGINES_DESCRIPTION" desc="Explanation for 'Search Engines' section">
+        To use a search engine other than the default, type its shortcut in the address bar followed by your preferred keyboard shortcut. You can also change your default search engine here.
+      </message>
+      <message name="IDS_SITE_SEARCH_SITE_SEARCH_HEADER" desc="Header for 'Site Search' section">
+        Site search
+      </message>
+      <message name="IDS_SITE_SEARCH_SITE_SEARCH_DESCRIPTION" desc="Explanation for 'Site Search' section">
+        To search a specific site or part of Chrome, type its shortcut in the address bar, followed by your preferred keyboard shortcut.
+      </message>
+      <message name="IDS_SITE_SEARCH_LIST_MENU_EDIT" desc="Option in site search list menu. User can click the 'Edit' option to edit the search engine.">
+        Edit
+      </message>
+      <message name="IDS_SITE_SEARCH_LIST_MENU_MAKE_DEFAULT" desc="Option in site search list menu. User can click the 'Make default' option to make the selected option the default search engine.">
+        Make default
+      </message>
+      <message name="IDS_SITE_SEARCH_LIST_MENU_DELETE" desc="Option in site search list menu. User can click the 'Delete' option to remove the search engine.">
+        Delete
+      </message>
+      <message name="IDS_SITE_SEARCH_ADD_SITE_SEARCH_BUTTON_LABEL" desc="Label for the 'Add site' button.">
+        Add site
+      </message>
+      <message name="IDS_SITE_SEARCH_ADDITIONAL_SITES_BUTTON_LABEL" desc="Label for the 'Additional sites' button.">
+        Additional sites
+      </message>
+      <message name="IDS_SITE_SEARCH_INACTIVE_SHORTCUTS_HEADER" desc="Header for 'Inactive Shortcuts' section">
+        Inactive shortcuts
+      </message>
+      <message name="IDS_SITE_SEARCH_EXTENSIONS_HEADER" desc="Header for 'Extensions' section">
+        Extensions
+      </message>
+      <message name="IDS_SITE_SEARCH_EXTENSIONS_DESCRIPTION" desc="Explanation for 'Extensions' section">
+        Some extensions can add search engines to Chrome
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_TITLE_ADD" desc="Title for the Add Site Search dialog.">
+        Add site search
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_TITLE_EDIT" desc="Title for the Edit Site Search dialog.">
+        Edit site search
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_HINT_NAME" desc="Hint for the name field in the Edit Site Search dialog.">
+        Name
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_HINT_SHORTCUT" desc="Hint for the shortcut field in the Edit Site Search dialog.">
+        Shortcut
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_HINT_URL" desc="Hint for the URL field in the Edit Site Search dialog.">
+        URL with <ph name="QUERY">%s</ph> in place of query
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_ADD" desc="Button label to add the changes in the Add Site Search dialog.">
+        Add
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_SAVE" desc="Button label to save the changes in the Edit Site Search dialog.">
+        Save
+      </message>
+      <message name="IDS_SITE_SEARCH_DIALOG_CANCEL" desc="Button label to cancel the changes in the Edit Site Search dialog.">
+        Cancel
+      </message>
+
+
+
+      <!-- Add Message -->
 
       <!-- Address bar settings -->
       <message name="IDS_ADDRESS_BAR_SETTINGS" desc="Title for Address Bar settings. [CHAR_LIMIT=32]">
@@ -626,6 +702,9 @@ For more settings that use data to improve your Chrome experience, go to <ph nam
       </message>
       <message name="IDS_AUTOFILL_OPTIONS_TITLE" desc="Description below switch toggling the use of third-party autofill in Chrome." formatter_data="android_java">
         Autofill services
+      </message>
+      <message name="IDS_AUTOFILL_SETTINGS_TITLE" desc="Description below switch toggling the use of third-party autofill in Chrome." formatter_data="android_java">
+        Autofill settings
       </message>
       <message name="IDS_AUTOFILL_OPTIONS_CONFIRM_RESTART" desc="Description below switch toggling the use of third-party autofill in Chrome." formatter_data="android_java">
         Restart Chrome
@@ -2847,6 +2926,9 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_ERROR_PRINTING_FAILED" desc="Generic error message shown when Chrome fails to print the current page for some reason.">
         There was a problem printing the page. Please try again.
       </message>
+      <message name="IDS_TOAST_DISALLOW_PRINT" desc="Toast message shown when a user tries to print a native page that doesn't support printing.">
+        This page can't be printed
+      </message>
       <message name="IDS_ACCESSIBILITY_MENU_BOOKMARK" desc="Content description for the bookmark button when the page is not currently bookmarked.">
         Bookmark this page
       </message>
@@ -3605,6 +3687,12 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_DEVICE_LOCK_CREATE_LOCK_BUTTON" desc="Text for the button that navigates the user to create a profile lock on the device.">
         Create a car profile lock
       </message>
+      <message name="IDS_SETTINGS_HEADING_WHEN_ON" desc="The header used above a bulleted section on a Settings page that explains the functionality of a setting.">
+        When on
+      </message>
+      <message name="IDS_SETTINGS_HEADING_CONSIDER" desc="The header used above a bulleted section on a Settings page that notes things the user might want to consider when turning this setting on or off.">
+        Things to consider
+      </message>
 
       <!-- Strings for a missing device lock. -->
       <message name="IDS_MISSING_DEVICE_LOCK_TITLE" desc="Title shown on the missing profile lock page if a user has removed a profile lock that used to be present on the device.">
@@ -3894,14 +3982,17 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_NTP_LEARN_MORE_ABOUT_SUGGESTED_CONTENT" desc="Text in the footer of the New Tab Page. Part of the text is a link to a help center page where the user can learn more about suggested content.">
         <ph name="BEGIN_LINK">&lt;link&gt;</ph>Learn more<ph name="END_LINK">&lt;/link&gt;</ph> about suggested content
       </message>
-      <message name="IDS_NTP_MANAGE_MY_ACTIVITY" desc="Content description to manage my activity from the feed header overflow menu.">
-        Manage activity
-      </message>
-      <message name="IDS_NTP_MANAGE_INTERESTS" desc="Content description to manage settings from the feed header overflow menu.">
-        Manage interests
-      </message>
       <message name="IDS_NTP_MANAGE_FEED" desc="Menu item to manage feed settings from the feed header overflow menu.">
         Manage
+      </message>
+      <message name="IDS_SYNCED_SET_UP_SNACKBAR_ASK_TO_APPLY" desc="The message text for the snackbar that prompts the user to apply their settings from another device. (Applies settings from another device when the 'apply' button is clicked.)">
+      Apply your appearance preferences?
+      </message>
+      <message name="IDS_SYNCED_SET_UP_SNACKBAR_APPLIED_CONFIRMATION" desc="Message in a snackbar confirming that settings from another device were applied (an undo button is available).">
+        Applied your appearance preferences
+      </message>
+      <message name="IDS_SYNCED_SET_UP_SNACKBAR_REMOVED_CONFIRMATION" desc="The message text for the snackbar shown after preferences have been removed (a redo button is available).">
+        Removed your appearance preferences
       </message>
       <message name="IDS_CORMORANT_CREATOR_CONTENT_UNAVAILABLE_ERROR_TITLE" desc="Creator page error title when the creator has no content available.">
         Nothing to show yet
@@ -3977,12 +4068,6 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_FEED_FOLLOW_NO_CONNECTION_ERROR" desc="Toast displayed when there is no network connection when the user tries to follow or unfollow a web feed.">
         No connection. Try again later.
-      </message>
-      <message name="IDS_NTP_TURN_OFF_FEED" desc="Content description to turn off the feed from the feed header overflow menu.">
-        Turn off
-      </message>
-      <message name="IDS_NTP_TURN_ON_FEED" desc="Content description to turn on the feed from the feed header overflow menu.">
-        Turn on
       </message>
       <message name="IDS_NTP_DISCOVER_ON" desc="Title in the feed header when the feed is turned on. Please use the branded term for Discover, as listed under Product Names in the Google Glossary Manager (TC ID 1799975766543019278).">
         Discover
@@ -4256,6 +4341,9 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_MENU_DOWNLOAD" desc="Tooltip for the button to download the current web page. [CHAR_LIMIT=27]">
         Download
       </message>
+      <message name="IDS_MENU_SAVE_AND_PRINT" desc="Parent menu item for items related to saving and printing page">
+        Save and print
+      </message>
       <message name="IDS_MENU_DOWNLOAD_PAGE" desc="Menu item for downloading the current web page. [CHAR_LIMIT=27]">
         Download page
       </message>
@@ -4345,8 +4433,17 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_MENU_AUTO_DARK_WEB_CONTENTS" desc="Menu item in Chrome's overflow/options menu. When Chrome's browser UI is set to dark theme and this option is checked, sites will have a dark theme automatically applied as well. [CHAR_LIMIT=24]">
         Dark theme
       </message>
+      <message name="IDS_MENU_MORE_TOOLS" desc="Menu item to more tools. [CHAR_LIMIT=27]">
+        More tools
+      </message>
       <message name="IDS_MENU_READER_MODE_PREFS" desc="Menu item to show reader mode preferences pane, which allows users to change the appearance (font size, theme, etc.) of the page. [CHAR_LIMIT=27]">
         Appearance
+      </message>
+      <message name="IDS_MENU_TASK_MANAGER" desc="Menu item to show the task manager. [CHAR_LIMIT=27]">
+        Task manager
+      </message>
+      <message name="IDS_MENU_DEV_TOOLS" desc="Menu item to show developer tools. [CHAR_LIMIT=27]">
+        Developer tools
       </message>
       <message name="IDS_MENU_SETTINGS" desc="Menu item for opening browser settings. [CHAR_LIMIT=27]">
         Settings
@@ -4380,12 +4477,6 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_MENU_STOP_IMAGE_DESCRIPTIONS" desc="Menu item to stop getting alt text accessibility image labels/descriptions [CHAR_LIMIT=27]">
         Stop image descriptions
       </message>
-      <message name="IDS_MENU_SWITCH_TO_INCOGNITO" desc="Menu item for switching to incognito.">
-        Switch to Incognito
-      </message>
-      <message name="IDS_MENU_SWITCH_OUT_OF_INCOGNITO" desc="Menu item for switching out of incognito.">
-        Switch out of Incognito
-      </message>
       <message name="IDS_MENU_ADD_TAB_TO_GROUP" desc="Menu item for adding a tab to a tab group.">
         Add tab to group
       </message>
@@ -4418,6 +4509,18 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_MENU_REOPEN_CLOSED_GROUP" desc="Menu item for reopening the last closed tab group.">
         Reopen closed group
+      </message>
+      <message name="IDS_MENU_BOOKMARK_ALL_TABS" desc="Menu item for bookmarking all tabs.">
+        Bookmark all tabs
+      </message>
+      <message name="IDS_MENU_UNPIN_GLIC_BUTTON" desc="Menu item for unpinning the tab strip Glic button.">
+        Unpin
+      </message>
+      <message name="IDS_MENU_PIN_GLIC" desc="Menu item for pinning the Gemini button on the tab strip.">
+        Pin Gemini
+      </message>
+      <message name="IDS_MENU_UNPIN_GLIC" desc="Menu item for unpinning the Gemini button on the tab strip.">
+        Unpin Gemini
       </message>
 
       <!-- Bookmarks strings -->
@@ -4808,6 +4911,14 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
         Preview
       </message>
 
+      <!-- Open in app -->
+      <message name="IDS_OPEN_IN_APP" desc="Chip displayed in the omnibox or item displayed in the app menu that opens the current page in the relevant app. [CHAR_LIMIT=32]">
+        Open in app
+      </message>
+      <message name="IDS_OPEN_IN_APP_DESC" desc="Content description for the chip displayed in the omnibox or item displayed in the app menu that opens the current page in the relevant app.">
+        Open in <ph name="APP_NAME">%1$s<ex>Gmail</ex></ph>
+      </message>
+
       <!-- Voice search -->
       <message name="IDS_VOICE_SEARCH_ERROR" desc="Toast when the voice search activity couldn't be started. [CHAR_LIMIT=40]">
         No enabled voice search available
@@ -4818,6 +4929,9 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_MENU_OPEN_IN_CHROME" desc="Context sensitive menu item for opening a link in Chrome. [CHAR_LIMIT=30]">
         Open in Chrome browser
+      </message>
+      <message name="IDS_MENU_OPEN_IN_NEW_TAB" desc="Context sensitive menu item for opening a link in a new tab in Chrome. [CHAR_LIMIT=30]">
+        Open in new tab
       </message>
       <message name="IDS_MENU_OPEN_IN_INCOGNITO_CHROME" desc="Context sensitive menu item for opening a link in Chrome in an Incognito tab. [CHAR_LIMIT=30]" translateable="false">
         Open in Incognito Chrome
@@ -5986,6 +6100,12 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
 
       <!-- In-Product Help strings -->
+      <message name="IDS_IPH_GLIC_PROMO_TEXT" desc="The in-product-help promotion message to try Glic.">
+        Try Gemini in Chrome to get answers, key takeaways and more.
+      </message>
+      <message name="IDS_IPH_GLIC_PROMO_ACCESSIBILITY_TEXT" desc="The in-product-help accessibility text to try Glic.">
+        Try Gemini in Chrome to get answers, key takeaways and more from the More Options button.
+      </message>
       <message name="IDS_IPH_DOWNLOAD_PAGE_FOR_OFFLINE_USAGE_TEXT" desc="The in-product-help message after a successful navigation prompting user to download the pages to view offline.">
         Download pages to use them offline
       </message>
@@ -6083,9 +6203,6 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_ACCESSIBILITY_QUICK_ACTION_SEARCH_WIDGET_START_DINO_GAME" desc="Content description for the Dino button on the Quick Action Search Widget.">
         Start Dino Game
       </message>
-      <message name="IDS_QUICK_ACTION_SEARCH_WIDGET_MESSAGE_NO_INCOGNITO" desc="Toast message shown when the user tries to open Incognito tab which is disabled on the device.">
-        Incognito is not available on this device
-      </message>
       <message name="IDS_QUICK_ACTION_SEARCH_WIDGET_MESSAGE_NO_VOICE_SEARCH" desc="Toast message shown when the user tries to use Voice Search which is disabled on the device.">
         Voice search is not available on this device
       </message>
@@ -6107,6 +6224,11 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <!-- Launcher Shortcuts -->
       <message name="IDS_DISABLED_INCOGNITO_LAUNCHER_SHORTCUT_MESSAGE" desc="Text for a toast displayed prompting the user to remove the disabled 'New Incognito tab' app shortcut and recreate it.">
         Remove and recreate this shortcut
+      </message>
+
+      <!-- Incognito Disabled -->
+      <message name="IDS_INCOGNITO_NOT_AVAILABLE_MESSAGE" desc="Toast message shown when the user tries to open Incognito tab or window which is disabled on the device.">
+        Incognito is not available on this device
       </message>
 
       <!-- SendTabToSelf -->
@@ -6500,15 +6622,6 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_REJECT_BUTTON_TEXT" desc="The text of the negative button on the notification permission prompt dialog">
         No thanks
-      </message>
-      <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_CONTENT_DESCRIPTION" desc="The content description for the notification permission rationale bottom sheet. Read as accessibility string when tapping on the bottom sheet.">
-        Notification permission flow
-      </message>
-      <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_OPENED_FULL" desc="The accessibility string read when the notification permission rationale bottom sheet is fully opened.">
-        Notification permission flow opened at full height
-      </message>
-      <message name="IDS_NOTIFICATION_PERMISSION_RATIONALE_CLOSED_DESCRIPTION" desc="The accessibility string read when the notification permission rationale bottom sheet is closed.">
-        Notification permission flow closed
       </message>
 
       <!-- Notification Trampoline Toast Messages-->
@@ -7401,6 +7514,15 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_POSITIVE_BUTTON_TEXT_LENS" desc="Button text for the Tips Promo bottom sheet to open Google Lens.">
         Open Google Lens
       </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_POSITIVE_BUTTON_TEXT_RECENT_TABS" desc="Button text for the Tips Promo bottom sheet to open the Recent Tabs page.">
+        View recent tabs
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_POSITIVE_BUTTON_TEXT_TRY_NOW" desc="Button text for the Tips Promo bottom sheet to try out the feature now.">
+        Try it now
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_POSITIVE_BUTTON_TEXT_NOOP" desc="Button text for the Tips Promo bottom sheet to exit without action.">
+        Got it
+      </message>
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_NEGATIVE_BUTTON_TEXT" desc="Button text for the Tips Promo bottom sheet to go to an education page on the tip feature usage.">
         Show me how
       </message>
@@ -7427,6 +7549,27 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_DESCRIPTION_BOTTOM_OMNIBOX" desc="Description of the Bottom Omnibox feature tip main page promo.">
         Switch the position of your address bar to the top or bottom for a customized browsing experience
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_TITLE_PASSWORD_AUTOFILL" desc="Title of the Password Autofill feature tip main page promo. [CHAR_LIMIT=32]">
+        Autofill your passwords
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_DESCRIPTION_PASSWORD_AUTOFILL" desc="Description of the Password Autofill feature tip main page promo.">
+        Create, save, and manage your passwords so you can easily sign in to sites and apps using Chrome
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_TITLE_CUSTOMIZE_MVT" desc="Title of the Customize MVT feature tip main page promo. [CHAR_LIMIT=32]">
+        Customize your shortcuts
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_DESCRIPTION_CUSTOMIZE_MVT" desc="Description of the Customize MVT feature tip main page promo.">
+        Tap and hold to pin your most visited websites for easy access next time
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_TITLE_SIGNIN_SIGNED_IN" desc="Title of the Sign in feature tip main page promo when the user is already signed in. [CHAR_LIMIT=32]">
+        You\u2019re already signed in
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_TITLE_RECENT_TABS" desc="Title of the Recent Tabs feature tip main page promo. [CHAR_LIMIT=32]">
+        Pick up where you left off
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_DESCRIPTION_RECENT_TABS" desc="Description of the Recent Tabs feature tip main page promo.">
+        You can reopen tabs that you\u2019ve recently closed from wherever you use Chrome
       </message>
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_ESB" desc="Description of the Enhanced Safe Browsing feature tip first step detail page promo.">
         Open Chrome menu > Settings
@@ -7463,6 +7606,51 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       </message>
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_BOTTOM_OMNIBOX" desc="Description of the Bottom Omnibox feature tip third step detail page promo.">
         Choose your preferred position
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_PASSWORD_AUTOFILL" desc="Description of the Password Autofill feature tip first step detail page promo.">
+        Sign in to a website
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_SECOND_STEP_PASSWORD_AUTOFILL" desc="Description of the Password Autofill feature tip second step detail page promo.">
+        Chrome will offer to save your password
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_PASSWORD_AUTOFILL" desc="Description of the Password Autofill feature tip third step detail page promo.">
+        Tap Save to easily access this password the next time you sign in
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_SIGNIN" desc="Description of the Sign in feature tip first step detail page promo.">
+        Tap profile in top right
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_SECOND_STEP_SIGNIN" desc="Description of the Sign in feature tip second step detail page promo.">
+        Select account
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_SIGNIN" desc="Description of the Sign in feature tip third step detail page promo.">
+        Press continue
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_CREATE_TAB_GROUPS" desc="Description of the Create Tab Groups feature tip first step detail page promo.">
+        Open the grid tab switcher
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_SECOND_STEP_CREATE_TAB_GROUPS" desc="Description of the Create Tab Groups feature tip second step detail page promo.">
+        Drag and drop one tab over another
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_CREATE_TAB_GROUPS" desc="Description of the Create Tab Groups feature tip third step detail page promo.">
+        Customize tab group and hit Done
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_CUSTOMIZE_MVT" desc="Description of the Customize MVT feature tip first step detail page promo.">
+        Open a new tab page
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_SECOND_STEP_CUSTOMIZE_MVT" desc="Description of the Customize MVT feature tip second step detail page promo.">
+        Long press on website and open menu
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_CUSTOMIZE_MVT" desc="Description of the Customize MVT feature tip third step detail page promo.">
+        Tap Pin this shortcut
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_FIRST_STEP_RECENT_TABS" desc="Description of the Recent tabs feature tip first step detail page promo.">
+        Open Chrome menu
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_SECOND_STEP_RECENT_TABS" desc="Description of the Recent Tabs feature tip second step detail page promo.">
+        Tap Recent tabs
+      </message>
+      <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_THIRD_STEP_RECENT_TABS" desc="Description of the Recent Tabs feature tip third step detail page promo.">
+        View recently opened tabs
       </message>
       <message name="IDS_TIPS_PROMO_BOTTOM_SHEET_TITLE_QUICK_DELETE_SHORT" desc="Title of the Quick Delete feature tip detail page promo. [CHAR_LIMIT=32]">
         Quickly delete browsing data
@@ -7514,6 +7702,43 @@ To change this setting, <ph name="BEGIN_LINK">BEGIN_LINK</ph>delete the Chrome d
       <!-- Document Picture-in-Picture -->
       <message name="IDS_DOCUMENT_PICTURE_IN_PICTURE_BACK_TO_TAB" desc="Content description for the back to tab button in the document picture-in-picture window header.">
         Back to tab
+      </message>
+
+      <!-- Tab Bottom Sheet Strings TODO(crbug.com/483420685): Move strings to somewhere better-->
+      <message name="IDS_TAB_BOTTOM_SHEET_CLOSED" desc="The announcement when the Tab Bottom Sheet is closed.">
+        Tab Bottom Sheet changes closed.
+      </message>
+      <message name="IDS_TAB_BOTTOM_SHEET_HALF_HEIGHT" desc="The announcement when the Tab Bottom Sheet is opened to half height.">
+        Tab Bottom Sheet at half height.
+      </message>
+      <message name="IDS_TAB_BOTTOM_SHEET_FULL_HEIGHT" desc="The announcement when the Tab Bottom Sheet is opened to full height.">
+        Tab Bottom Sheet at full height
+      </message>
+
+      <!-- Chrome Finds -->
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_TITLE" desc="Title of the Chrome Finds opt-in bottom sheet promo. [CHAR_LIMIT=32]">
+        Let Chrome keep looking?
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_DESCRIPTION" desc="Description of the Chrome Finds opt-in bottom sheet promo.">
+        Get notified when Chrome finds the best results for your searches while you\u2019re away.
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_POSITIVE_BUTTON_TEXT" desc="Button text for the Chrome Finds opt-in bottom sheet to accept notifications. [CHAR_LIMIT=32]">
+        Notify me
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_NEGATIVE_BUTTON_TEXT" desc="Button text for the Chrome Finds opt-in bottom sheet to reject notifications. [CHAR_LIMIT=32]">
+        No, thanks
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_CONTENT_DESCRIPTION" desc="Content description of the Chrome Finds opt-in bottom sheet informing the user on what Chrome Finds is and asking whether to opt-in.">
+        Chrome Finds opt-in bottom sheet
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_CLOSED_CONTENT_DESCRIPTION" desc="Content description of the Chrome Finds opt-in bottom sheet when closed.">
+        Chrome Finds opt-in closed
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_HALF_HEIGHT_CONTENT_DESCRIPTION" desc="Content description of the Chrome Finds opt-in bottom sheet when opened at half height.">
+        Chrome Finds opt-in opened at half height
+      </message>
+      <message name="IDS_CHROME_FINDS_OPT_IN_BOTTOM_SHEET_FULL_HEIGHT_CONTENT_DESCRIPTION" desc="Content description of the Chrome Finds opt-in bottom sheet when opened at full height.">
+        Chrome Finds opt-in opened at full height
       </message>
     </messages>
   </release>

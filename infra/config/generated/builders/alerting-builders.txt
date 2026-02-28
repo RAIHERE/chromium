@@ -281,6 +281,7 @@ ci/android-angle-chromium-arm64-builder
 ci/android-angle-chromium-arm64-pixel2
 ci/android-archive-rel
 ci/android-arm64-archive-rel
+ci/android-bfcache-rel
 ci/android-binary-size-generator
 ci/android-cast-arm-dbg
 ci/android-cast-arm-rel
@@ -447,6 +448,7 @@ try/android-angle-chromium-try
 try/android-arm-compile-dbg
 try/android-arm64-compile-dbg
 try/android-arm64-rel
+try/android-bfcache-rel
 try/android-binary-size
 try/android-cast-arm-dbg
 try/android-cast-arm-rel
@@ -634,7 +636,6 @@ try/linux-perfetto-rel
 try/linux-presubmit
 try/linux-rel
 try/linux-rel-cft
-try/linux-rel-test-selection
 try/linux-swangle-chromium-try-x64
 try/linux-swangle-chromium-try-x64-exp
 try/linux-swangle-try-tot-swiftshader-x64
@@ -650,6 +651,7 @@ try/linux-utr-tester
 try/linux-v4l2-codec-rel
 try/linux-wayland-mutter-rel
 try/linux-wayland-weston-rel
+try/linux-webium-product-rel
 try/linux-win-cross-rel
 try/linux-x64-centipede-asan-rel-tests
 try/linux-x64-libfuzzer-asan-dbg-tests
@@ -732,6 +734,7 @@ try/win-swangle-try-x86
 try/win-updater-try-builder-dbg
 try/win-updater-try-builder-rel
 try/win-utr-tester
+try/win-webium-product-rel
 try/win-x64-libfuzzer-asan-rel-tests
 try/win10-dbg
 try/win11-rel

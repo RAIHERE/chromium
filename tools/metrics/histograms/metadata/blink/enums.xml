@@ -99,6 +99,8 @@ chromium-metrics-reviews@google.com.
   <int value="11" label="Ended with teardown"/>
   <int value="12" label="Aborted because there was no surface"/>
   <int value="13" label="Ended on canvas reset"/>
+  <int value="14"
+      label="Aborted because of epoch mismatch (e.g. fg/bg transitions)"/>
 </enum>
 
 <!-- LINT.ThenChange(//third_party/blink/renderer/platform/graphics/canvas_hibernation_handler.h:CanvasHibernationEvent) -->
@@ -2278,8 +2280,8 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="1965" label="GamepadButtons"/>
   <int value="1966" label="VibrateWithoutUserGesture"/>
   <int value="1967" label="OBSOLETE_DispatchMouseEventOnDisabledFormControl"/>
-  <int value="1968" label="ElementNameDOMInvalidHTMLParserValid"/>
-  <int value="1969" label="ElementNameDOMValidHTMLParserInvalid"/>
+  <int value="1968" label="OBSOLETE_ElementNameDOMInvalidHTMLParserValid"/>
+  <int value="1969" label="OBSOLETE_ElementNameDOMValidHTMLParserInvalid"/>
   <int value="1970" label="GATTServerDisconnectedEvent"/>
   <int value="1971" label="AnchorClickDispatchForNonConnectedNode"/>
   <int value="1972" label="HTMLParseErrorNestedForm"/>
@@ -5580,7 +5582,7 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="5021" label="V8FileSystemObserver_Observe_Method"/>
   <int value="5022" label="V8FileSystemObserver_Disconnect_Method"/>
   <int value="5023" label="V8ML_CreateContext_Method"/>
-  <int value="5024" label="V8MLContext_Compute_Method"/>
+  <int value="5024" label="OBSOLETE_V8MLContext_Compute_Method"/>
   <int value="5025" label="V8MLContext_Dispatch_Method"/>
   <int value="5026" label="CSSMixins"/>
   <int value="5027" label="DurationFormat"/>
@@ -6165,18 +6167,18 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="5546" label="InputParsedParentSelect"/>
   <int value="5547" label="InputParsedAncestorSelect"/>
   <int value="5548" label="CSSSelectorPseudoHasSlotted"/>
-  <int value="5549" label="SelectMultipleShowPopup"/>
+  <int value="5549" label="OBSOLETE_SelectMultipleShowPopup"/>
   <int value="5550" label="SharedWorkerExtendedLifetimeFeatureEnabled"/>
   <int value="5551" label="SharedWorkerExtendedLifetimeIsTrue"/>
-  <int value="5552" label="EditContextTextFormatUpdateAddListener"/>
-  <int value="5553" label="EditContextTextFormatUpdateFireEvent"/>
+  <int value="5552" label="OBSOLETE_EditContextTextFormatUpdateAddListener"/>
+  <int value="5553" label="OBSOLETE_EditContextTextFormatUpdateFireEvent"/>
   <int value="5554"
-      label="EditContextTextFormatUpdateTextFormatThicknessOrStyleNotNone"/>
+      label="OBSOLETE_EditContextTextFormatUpdateTextFormatThicknessOrStyleNotNone"/>
   <int value="5555" label="C2PAManifest"/>
   <int value="5556" label="LanguageModel_Append"/>
   <int value="5557" label="IntegrityPolicyInServiceWorkerResponse"/>
-  <int value="5558" label="EditContextTextFormatUnderlineStyle"/>
-  <int value="5559" label="EditContextTextFormatUnderlineThickness"/>
+  <int value="5558" label="OBSOLETE_EditContextTextFormatUnderlineStyle"/>
+  <int value="5559" label="OBSOLETE_EditContextTextFormatUnderlineThickness"/>
   <int value="5560" label="Proofreader_IncludeCorrectionTypes"/>
   <int value="5561" label="Proofreader_IncludeCorrectionExplanations"/>
   <int value="5562" label="Proofreader_ExpectedInputLanguages"/>
@@ -6241,10 +6243,10 @@ Called by update_use_counter_feature_enum.py.-->
       label="LocalNetworkAccessNonSecureContextAllowedDeprecationTrial"/>
   <int value="5618" label="CSPUrlHashes"/>
   <int value="5619" label="CSPEvalHashes"/>
-  <int value="5620" label="WebAppManifestNameLocalized"/>
-  <int value="5621" label="WebAppManifestShortNameLocalized"/>
-  <int value="5622" label="WebAppManifestDescriptionLocalized"/>
-  <int value="5623" label="WebAppManifestIconsLocalized"/>
+  <int value="5620" label="OBSOLETE_WebAppManifestNameLocalized"/>
+  <int value="5621" label="OBSOLETE_WebAppManifestShortNameLocalized"/>
+  <int value="5622" label="OBSOLETE_WebAppManifestDescriptionLocalized"/>
+  <int value="5623" label="OBSOLETE_WebAppManifestIconsLocalized"/>
   <int value="5624" label="HTMLControlledFrameElement"/>
   <int value="5625" label="SlowDeserialization"/>
   <int value="5626" label="SharedWorkerStartOnAndroid"/>
@@ -6280,7 +6282,7 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="5656" label="MulticastControllerJoinGroupFunction"/>
   <int value="5657" label="MulticastControllerLeaveGroupFunction"/>
   <int value="5658" label="MulticastControllerJoinedGroupsAttribute"/>
-  <int value="5659" label="ContainerNameQueryFailedTreeScope"/>
+  <int value="5659" label="OBSOLETE_ContainerNameQueryFailedTreeScope"/>
   <int value="5660" label="LocalNetworkAccessWebSocketResourceNotKnownPrivate"/>
   <int value="5661" label="CSSPseudoElementUsesImplicitAnchor"/>
   <int value="5662" label="LineClampByLinesOverflows"/>
@@ -6297,7 +6299,7 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="5673" label="SmartCardEstablishContext"/>
   <int value="5674" label="SmartCardConnect"/>
   <int value="5675" label="NavigatorCPUPerformance"/>
-  <int value="5676" label="SelectionRemoveRangeNotFoundWouldThrow"/>
+  <int value="5676" label="OBSOLETE_SelectionRemoveRangeNotFoundWouldThrow"/>
   <int value="5677" label="NestedSvgCssSizingProperties"/>
   <int value="5678" label="CryptoAlgorithmChaCha20Poly1305"/>
   <int value="5679" label="CryptoAlgorithmMlDsa44"/>
@@ -6413,6 +6415,31 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="5779" label="AudioContextAsyncStateTransitions"/>
   <int value="5780" label="AudioContextAsyncTransitionToRunningStateRead"/>
   <int value="5781" label="AudioContextAsyncTransitionToSuspendedStateRead"/>
+  <int value="5782" label="GetComputedStylePseudoElementWithoutColon"/>
+  <int value="5783"
+      label="GeolocationRequestPositionWithPotentiallyUpToDateWatchedCachedPosition"/>
+  <int value="5784" label="AnchorCaseSensitiveMatch"/>
+  <int value="5785" label="AnchorCaseInsensitiveMatch"/>
+  <int value="5786" label="PrerenderActivationByFormSubmission"/>
+  <int value="5787" label="LinkRelModulePreloadStyle"/>
+  <int value="5788" label="AudioContextPlaybackStats"/>
+  <int value="5789" label="ParseFromStringXML"/>
+  <int value="5790" label="NonParentOriginInitiatedNavigationOfSubframe"/>
+  <int value="5791" label="ModelContextRegisterTool"/>
+  <int value="5792" label="ModelContextRegisterDeclarativeTool"/>
+  <int value="5793" label="LanguageModel_ContextUsage"/>
+  <int value="5794" label="LanguageModel_ContextWindow"/>
+  <int value="5795" label="LanguageModel_MeasureContextUsage"/>
+  <int value="5796" label="V8WindowClient_Navigate_Method"/>
+  <int value="5797" label="LanguageModel_OnQuotaOverflow"/>
+  <int value="5798" label="LanguageModel_OnContextOverflow"/>
+  <int value="5799" label="ModelContextExecuteTool"/>
+  <int value="5800" label="ModelContextExecuteDeclarativeTool"/>
+  <int value="5801" label="ModelContextExecuteDeclarativeAutosubmit"/>
+  <int value="5802" label="Prerender2CrossOriginIframes"/>
+  <int value="5803" label="HTMLGeolocationElement"/>
+  <int value="5804" label="HTMLInstallElement"/>
+  <int value="5805" label="HTMLUserMediaElement"/>
 </enum>
 
 <!-- LINT.ThenChange(//third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom:WebFeature) -->
@@ -6944,18 +6971,18 @@ Called by update_permissions_policy_enum.py.-->
   <int value="6" label="ManifestHttpNotFound"/>
   <int value="7" label="ManifestNoResponse"/>
   <int value="8" label="ManifestInvalidResponse"/>
-  <int value="9" label="ClientMetadataHttpNotFound"/>
-  <int value="10" label="ClientMetadataNoResponse"/>
-  <int value="11" label="ClientMetadataInvalidResponse"/>
+  <int value="9" label="(Obsolete) ClientMetadataHttpNotFound"/>
+  <int value="10" label="(Obsolete) ClientMetadataNoResponse"/>
+  <int value="11" label="(Obsolete) ClientMetadataInvalidResponse"/>
   <int value="12" label="AccountsHttpNotFound"/>
   <int value="13" label="AccountsNoResponse"/>
   <int value="14" label="AccountsInvalidResponse"/>
   <int value="15" label="IdTokenHttpNotFound"/>
   <int value="16" label="IdTokenNoResponse"/>
   <int value="17" label="IdTokenInvalidResponse"/>
-  <int value="18" label="IdTokenInvalidRequest"/>
-  <int value="19" label="ClientMetadataMissingPrivacyPolicyUrl"/>
-  <int value="20" label="ThirdPartyCookiesBlocked"/>
+  <int value="18" label="(Obsolete) IdTokenInvalidRequest"/>
+  <int value="19" label="(Obsolete) ClientMetadataMissingPrivacyPolicyUrl"/>
+  <int value="20" label="(Obsolete) ThirdPartyCookiesBlocked"/>
   <int value="21" label="DisabledInSettings"/>
   <int value="22" label="DisabledInFlags"/>
   <int value="23" label="ManifestListHttpNotFound"/>
@@ -6964,7 +6991,7 @@ Called by update_permissions_policy_enum.py.-->
   <int value="26" label="ManifestNotInManifestList"/>
   <int value="27" label="ManifestListTooBig"/>
   <int value="28" label="DisabledEmbargo"/>
-  <int value="29" label="UserInterfaceTimedOut"/>
+  <int value="29" label="(Obsolete) UserInterfaceTimedOut"/>
   <int value="30" label="RpPageNotVisible"/>
   <int value="31" label="ShouldEmbargo"/>
   <int value="32" label="NotSignedInWithIdp"/>
@@ -6983,7 +7010,7 @@ Called by update_permissions_policy_enum.py.-->
   <int value="45" label="ContinuationPopupClosedByUser"/>
   <int value="46" label="SuccessUsingIdentityProviderResolve"/>
   <int value="47" label="ContinuationPopupClosedByIdentityProviderClose"/>
-  <int value="48" label="InvalidFieldsSpecified"/>
+  <int value="48" label="(Obsolete) InvalidFieldsSpecified"/>
   <int value="49" label="RpOriginIsOpaque"/>
   <int value="50" label="ConfigNotMatchingType"/>
   <int value="51" label="LoginPopupClosedWithoutSignin"/>
@@ -8169,7 +8196,7 @@ Called by update_use_counter_css.py.-->
   <int value="842" label="corner-shape"/>
   <int value="843" label="scroll-target-group"/>
   <int value="844" label="row-rule-style"/>
-  <int value="845" label="gap-rule-overlap"/>
+  <int value="845" label="gap-rule-overlap (obsolete)"/>
   <int value="846" label="row-rule-width"/>
   <int value="847" label="row-rule-color"/>
   <int value="848" label="print-color-adjust"/>
@@ -8241,15 +8268,29 @@ Called by update_use_counter_css.py.-->
   <int value="914" label="rule-edge-inset"/>
   <int value="915" label="rule-interior-inset"/>
   <int value="916" label="page-margin-safety"/>
-  <int value="917" label="timeline-trigger-entry-range-start"/>
-  <int value="918" label="timeline-trigger-entry-range-end"/>
+  <int value="917" label="timeline-trigger-entry-range-start (obsolete)"/>
+  <int value="918" label="timeline-trigger-entry-range-end (obsolete)"/>
   <int value="919" label="timeline-trigger-active-range-start"/>
   <int value="920" label="timeline-trigger-active-range-end"/>
-  <int value="921" label="timeline-trigger-entry-range"/>
+  <int value="921" label="timeline-trigger-entry-range (obsolete)"/>
   <int value="922" label="timeline-trigger-active-range"/>
   <int value="923" label="grid-lanes-pack"/>
   <int value="924" label="text-fit"/>
   <int value="925" label="view-transition-scope"/>
+  <int value="926" label="rule-visibility-items"/>
+  <int value="927" label="frame-sizing"/>
+  <int value="928" label="image-animation"/>
+  <int value="929" label="margin-trim"/>
+  <int value="930" label="timeline-trigger-activation-range-start"/>
+  <int value="931" label="timeline-trigger-activation-range-end"/>
+  <int value="932" label="timeline-trigger-activation-range"/>
+  <int value="933" label="rule-overlap"/>
+  <int value="934" label="column-rule-inset-start"/>
+  <int value="935" label="column-rule-inset-end"/>
+  <int value="936" label="row-rule-inset-start"/>
+  <int value="937" label="row-rule-inset-end"/>
+  <int value="938" label="rule-inset-start"/>
+  <int value="939" label="rule-inset-end"/>
 </enum>
 
 <!-- LINT.ThenChange(//third_party/blink/public/mojom/use_counter/metrics/css_property_id.mojom:CSSSampleId) -->
@@ -8276,7 +8317,7 @@ Called by update_use_counter_css.py.-->
   <int value="5" label="Invalid display property"/>
 </enum>
 
-<!-- LINT.ThenChange(//third_party/blink/renderer/core/html/html_permission_element.h:InvalidStyleReason) -->
+<!-- LINT.ThenChange(//third_party/blink/renderer/core/html/html_capability_element_base.h:InvalidStyleReason) -->
 
 <!-- LINT.IfChange(PermissionElementUserInteractionDeniedReason) -->
 
@@ -8293,9 +8334,10 @@ Called by update_use_counter_css.py.-->
   <int value="7" label="Intersection visiblity out of viewport or clipped"/>
   <int value="8" label="Intersection visiblity occluded or distorted"/>
   <int value="9" label="An attribute changed"/>
+  <int value="10" label="Web app installation data error"/>
 </enum>
 
-<!-- LINT.ThenChange(//third_party/blink/renderer/core/html/html_permission_element.h:UserInteractionDeniedReason) -->
+<!-- LINT.ThenChange(//third_party/blink/renderer/core/html/html_capability_element_base.h:UserInteractionDeniedReason) -->
 
 <enum name="RaceTaskPriority">
   <int value="0" label="LowerPriority"/>
@@ -8629,7 +8671,7 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="243" label="OBSOLETE_LocaleInfoObsoletedGetters"/>
   <int value="244" label="IntlLocaleInfo"/>
   <int value="245" label="ViewTransitionClass"/>
-  <int value="246" label="DRAFT_ReferenceTarget"/>
+  <int value="246" label="Referencetarget"/>
   <int value="247" label="Fedcm"/>
   <int value="248" label="WebOtp"/>
   <int value="249" label="PreservesPitch"/>
@@ -8758,7 +8800,7 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="372" label="WasmSignExtensionOperators"/>
   <int value="373" label="DRAFT_IncomingCallNotifications"/>
   <int value="374" label="Popover"/>
-  <int value="375" label="DRAFT_WebInstallAPI"/>
+  <int value="375" label="NavigatorInstall"/>
   <int value="376" label="TopLevelAwait"/>
   <int value="377" label="AtomicsPause"/>
   <int value="378" label="LogicalAssignments"/>
@@ -8796,17 +8838,24 @@ Called by update_use_counter_feature_enum.py.-->
   <int value="410" label="Reporting"/>
   <int value="411" label="FontLanguageOverride"/>
   <int value="412" label="Webnn"/>
-  <int value="413" label="TextDetect"/>
+  <int value="413" label="TextDetection"/>
   <int value="414" label="TextJustify"/>
   <int value="415" label="Summarizer"/>
-  <int value="416" label="TranslationApi"/>
-  <int value="417" label="DRAFT_MetaTextScale"/>
+  <int value="416" label="OBSOLETE_TranslationApi"/>
+  <int value="417" label="MetaTextScale"/>
   <int value="418" label="Jpegxl"/>
   <int value="419" label="PartitionedCookies"/>
   <int value="420" label="Prompt"/>
   <int value="421" label="Proofreader"/>
   <int value="422" label="Rewriter"/>
   <int value="423" label="Writer"/>
+  <int value="424" label="DRAFT_InstallElement"/>
+  <int value="425" label="LanguageDetector"/>
+  <int value="426" label="Translator"/>
+  <int value="427" label="DRAFT_WebMCP"/>
+  <int value="428" label="DRAFT_LoadingLazyMedia"/>
+  <int value="429" label="ManifestLocalization"/>
+  <int value="430" label="ContrastColor"/>
 </enum>
 
 <!-- LINT.ThenChange(//third_party/blink/public/mojom/use_counter/metrics/webdx_feature.mojom:WebDXFeature) -->

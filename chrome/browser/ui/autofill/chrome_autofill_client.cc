@@ -37,6 +37,7 @@
 #include "chrome/browser/autofill/personal_data_manager_factory.h"
 #include "chrome/browser/autofill/ui/ui_util.h"
 #include "chrome/browser/autofill/valuables_data_manager_factory.h"
+#include "chrome/browser/autofill/wallet_pass_access_manager_factory.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/device_reauth/chrome_device_authenticator_factory.h"
 #include "chrome/browser/global_features.h"
@@ -93,6 +94,7 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/form_import/form_data_importer.h"
+#include "components/autofill/core/browser/form_predictions_tracker.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
 #include "components/autofill/core/browser/foundations/browser_autofill_manager.h"
 #include "components/autofill/core/browser/integrators/identity_credential/identity_credential_delegate.h"
@@ -261,6 +263,7 @@ bool CanTriggerAutofillAiFillingSurveyForEntityType(EntityType type) {
     case EntityTypeName::kPassport:
     case EntityTypeName::kNationalIdCard:
     case EntityTypeName::kDriversLicense:
+    case EntityTypeName::kOrder:
       return false;
   }
   NOTREACHED();
@@ -276,6 +279,7 @@ bool CanTriggerAutofillAiSavePromptSurveyForEntityType(EntityType type) {
     case EntityTypeName::kPassport:
     case EntityTypeName::kNationalIdCard:
     case EntityTypeName::kDriversLicense:
+    case EntityTypeName::kOrder:
       return false;
   }
   NOTREACHED();
@@ -515,6 +519,12 @@ EntityDataManager* ChromeAutofillClient::GetEntityDataManager() {
   Profile* profile =
       Profile::FromBrowserContext(web_contents()->GetBrowserContext());
   return AutofillEntityDataManagerFactory::GetForProfile(profile);
+}
+
+WalletPassAccessManager* ChromeAutofillClient::GetWalletPassAccessManager() {
+  Profile* profile =
+      Profile::FromBrowserContext(web_contents()->GetBrowserContext());
+  return WalletPassAccessManagerFactory::GetForProfile(profile);
 }
 
 SingleFieldFillRouter& ChromeAutofillClient::GetSingleFieldFillRouter() {
@@ -783,10 +793,22 @@ void ChromeAutofillClient::ShowAutofillSettings(
           base::UmaHistogramEnumeration(
               "Autofill.YourSavedInfoSettingsPage.VisitReferrer",
               autofill_metrics::AutofillSettingsReferrer::kFillingFlowDropdown);
-          chrome::ShowSettingsSubPage(browser, chrome::kYourSavedInfoSubPage);
+          chrome::ShowSettingsSubPage(browser, chrome::kAutofillSubPage);
         } else {
           chrome::ShowSettingsSubPage(browser, chrome::kAutofillAiSubPage);
         }
+        return;
+      case SuggestionType::kManageAutofillAiIdentityDocs:
+        base::UmaHistogramEnumeration(
+            "Autofill.YourSavedInfoSettingsPage.VisitReferrer",
+            autofill_metrics::AutofillSettingsReferrer::kFillingFlowDropdown);
+        chrome::ShowSettingsSubPage(browser, chrome::kIdentityDocsSubPage);
+        return;
+      case SuggestionType::kManageAutofillAiTravel:
+        base::UmaHistogramEnumeration(
+            "Autofill.YourSavedInfoSettingsPage.VisitReferrer",
+            autofill_metrics::AutofillSettingsReferrer::kFillingFlowDropdown);
+        chrome::ShowSettingsSubPage(browser, chrome::kTravelSubPage);
         return;
       case SuggestionType::kManagePlusAddress:
         CHECK(base::FeatureList::IsEnabled(
@@ -868,12 +890,7 @@ void ChromeAutofillClient::ShowPlusAddressEmailOverrideNotification(
       AutofillSnackbarType::kPlusAddressEmailOverride,
       std::move(email_override_undo_callback));
 #else
-  Browser* const browser = chrome::FindBrowserWithTab(web_contents());
-  if (!browser) {
-    return;
-  }
-  if (ToastController* const controller =
-          browser->browser_window_features()->toast_controller()) {
+  if (ToastController* controller = GetToastController()) {
     ToastParams params(ToastId::kPlusAddressOverride);
     params.menu_model = std::make_unique<plus_addresses::PlusAddressMenuModel>(
         base::UTF8ToUTF16(
@@ -910,7 +927,8 @@ ChromeAutofillClient::GetSessionIdForCurrentAutofillSuggestions() const {
 void ChromeAutofillClient::UpdateAutofillSuggestions(
     const std::vector<Suggestion>& suggestions,
     FillingProduct main_filling_product,
-    AutofillSuggestionTriggerSource trigger_source) {
+    AutofillSuggestionTriggerSource trigger_source,
+    AutofillSuggestionsIgnoreFocusLoss ignore_focus_loss) {
   const std::optional<SuggestionUiSessionId> session_id =
       GetSessionIdForCurrentAutofillSuggestions();
   if (!session_id) {
@@ -929,7 +947,8 @@ void ChromeAutofillClient::UpdateAutofillSuggestions(
   // Calling show will reuse the existing view automatically.
   suggestion_controller_->Show(
       *session_id, suggestions, trigger_source,
-      ShouldAutofillPopupAutoselectFirstSuggestion(trigger_source));
+      ShouldAutofillPopupAutoselectFirstSuggestion(trigger_source),
+      ignore_focus_loss);
 }
 
 void ChromeAutofillClient::HideAutofillSuggestions(
@@ -1144,7 +1163,8 @@ ChromeAutofillClient::GetDeviceAuthenticator(std::string histogram) {
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || \
     BUILDFLAG(IS_CHROMEOS)
   device_reauth::DeviceAuthParams params(
-      base::Seconds(60), device_reauth::DeviceAuthSource::kAutofill, std::move(histogram));
+      base::Seconds(60), device_reauth::DeviceAuthSource::kAutofill,
+      std::move(histogram));
 
   return ChromeDeviceAuthenticatorFactory::GetForProfile(
       Profile::FromBrowserContext(web_contents()->GetBrowserContext()),
@@ -1245,6 +1265,8 @@ ChromeAutofillClient::ChromeAutofillClient(content::WebContents* web_contents)
             base::BindRepeating(&ChromeAutofillClient::OnActorTaskStateChange,
                                 base::Unretained(this)));
   }
+
+  form_predictions_tracker_ = std::make_unique<FormPredictionsTracker>(this);
 #endif
 }
 
@@ -1255,23 +1277,17 @@ Profile* ChromeAutofillClient::GetProfile() const {
   return Profile::FromBrowserContext(web_contents()->GetBrowserContext());
 }
 
+tabs::TabInterface* ChromeAutofillClient::GetTabInterface() {
+  // Autofill is (currently) instantiated also in non-tab contexts - therefore
+  // use the `MaybeGet` function.
+  return tabs::TabInterface::MaybeGetFromContents(web_contents());
+}
+
 void ChromeAutofillClient::ShowEmailVerifiedToast() {
-  tabs::TabInterface* tab_interface =
-      tabs::TabInterface::GetFromContents(web_contents());
-  if (!tab_interface) {
-    return;
-  }
 #if !BUILDFLAG(IS_ANDROID)
   // The toast is only supported on desktop for now, since Android uses
   // snackbars instead.
-  BrowserWindowInterface* window_interface =
-      tab_interface->GetBrowserWindowInterface();
-  if (!window_interface) {
-    return;
-  }
-  ToastController* toast_controller =
-      window_interface->GetFeatures().toast_controller();
-  if (toast_controller) {
+  if (ToastController* toast_controller = GetToastController()) {
     toast_controller->MaybeShowToast(ToastParams(ToastId::kEmailVerified));
   }
 #endif
@@ -1296,7 +1312,8 @@ void ChromeAutofillClient::ShowAutofillSuggestionsImpl(
 
   suggestion_controller_->Show(
       session_id, open_args.suggestions, open_args.trigger_source,
-      ShouldAutofillPopupAutoselectFirstSuggestion(open_args.trigger_source));
+      ShouldAutofillPopupAutoselectFirstSuggestion(open_args.trigger_source),
+      AutofillSuggestionsIgnoreFocusLoss(false));
 
   // When testing, try to keep popup open when the reason to hide is one of:
   // - An external browser frame resize that is extraneous to our testing goals.
@@ -1335,6 +1352,14 @@ OtpPhishGuardDelegate* ChromeAutofillClient::GetOtpPhishGuardDelegate() {
   }
 #endif  // BUILDFLAG(IS_ANDROID)
   return nullptr;
+}
+
+FormPredictionsTracker* ChromeAutofillClient::GetFormPredictionsTracker() {
+#if !BUILDFLAG(IS_ANDROID)
+  return form_predictions_tracker_.get();
+#else
+  return nullptr;
+#endif  // !BUILDFLAG(IS_ANDROID)
 }
 
 one_time_tokens::OneTimeTokenService*
@@ -1399,19 +1424,62 @@ ChromeAutofillClient::GetMqlsUploadService() {
 void ChromeAutofillClient::ShowEntityImportBubble(
     EntityInstance new_entity,
     std::optional<EntityInstance> old_entity,
+    bool save_is_synchronous,
     EntityImportPromptResultCallback prompt_result_callback) {
 #if BUILDFLAG(IS_ANDROID)
   autofill_ai_save_update_entity_flow_manager_->OfferSave(
       new_entity, std::move(old_entity), std::move(prompt_result_callback));
 #else
   if (auto* controller = AutofillAiImportDataController::GetOrCreate(
-          &*web_contents(), GetAppLocale())) {
+          web_contents(), GetAppLocale())) {
     controller->ShowPrompt(std::move(new_entity), std::move(old_entity),
+                           /*close_on_accept=*/save_is_synchronous,
                            std::move(prompt_result_callback));
   } else {
     std::move(prompt_result_callback)
         .Run(AutofillClient::AutofillAiBubbleResult::kUnknown);
   }
+#endif  // BUILDFLAG(IS_ANDROID)
+}
+
+void ChromeAutofillClient::CloseEntityImportBubble() {
+#if !BUILDFLAG(IS_ANDROID)
+  AutofillAiImportDataController::Hide(CHECK_DEREF(web_contents()));
+#endif  // !BUILDFLAG(IS_ANDROID)
+}
+
+void ChromeAutofillClient::ShowAutofillAiLocalSaveNotification() {
+#if !BUILDFLAG(IS_ANDROID)
+  if (auto* controller = AutofillAiImportDataController::GetOrCreate(
+          web_contents(), GetAppLocale())) {
+    controller->ShowLocalSaveNotification();
+  }
+#endif  // !BUILDFLAG(IS_ANDROID)
+}
+
+void ChromeAutofillClient::ShowAutofillAiFailureNotification(
+    std::u16string message) {
+#if !BUILDFLAG(IS_ANDROID)
+  if (ToastController* toast_controller = GetToastController()) {
+    ToastParams params(ToastId::kAutofillAiWalletErrorMessage);
+    params.body_string_override = std::move(message);
+    toast_controller->MaybeShowToast(std::move(params));
+  }
+#endif  // !BUILDFLAG(IS_ANDROID)
+}
+
+ToastController* ChromeAutofillClient::GetToastController() {
+#if BUILDFLAG(IS_ANDROID)
+  return nullptr;
+#else
+  tabs::TabInterface* tab_interface = GetTabInterface();
+  if (!tab_interface) {
+    return nullptr;
+  }
+  BrowserWindowInterface* window_interface =
+      tab_interface->GetBrowserWindowInterface();
+  return window_interface ? window_interface->GetFeatures().toast_controller()
+                          : nullptr;
 #endif  // BUILDFLAG(IS_ANDROID)
 }
 
@@ -1447,8 +1515,7 @@ void ChromeAutofillClient::OnActorTaskStateChange(
     return;
   }
 
-  const tabs::TabInterface* tab_interface =
-      tabs::TabInterface::MaybeGetFromContents(web_contents());
+  const tabs::TabInterface* tab_interface = GetTabInterface();
   if (tab_interface && !task->HasTab(tab_interface->GetHandle())) {
     // The status update is for an actor that isn't interacting with this tab.
     // The value of `is_actor_mode_` shouldn't be updated.

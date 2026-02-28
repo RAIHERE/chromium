@@ -57,7 +57,6 @@ build_webui("build") {
     "a11y_page/a11y_page.ts",
     "a11y_page/a11y_page_index.ts",
     "about_page/about_page.ts",
-    "ai_page/ai_compare_subpage.ts",
     "ai_page/ai_info_card.ts",
     "ai_page/ai_logging_info_bullet.ts",
     "ai_page/ai_page.ts",
@@ -103,6 +102,8 @@ build_webui("build") {
     "controls/settings_slider.ts",
     "controls/settings_toggle_button.ts",
     "downloads_page/downloads_page.ts",
+    "glic_page/glic_page.ts",
+    "glic_page/glic_subpage.ts",
     "on_startup_page/on_startup_page.ts",
     "on_startup_page/startup_url_dialog.ts",
     "on_startup_page/startup_url_entry.ts",
@@ -265,13 +266,6 @@ build_webui("build") {
     "your_saved_info_page/your_saved_info_page_index.ts",
   ]
 
-  if (enable_glic) {
-    web_component_files += [
-      "glic_page/glic_page.ts",
-      "glic_page/glic_subpage.ts",
-    ]
-  }
-
   if (!is_chromeos) {
     web_component_files += [
       "a11y_page/live_caption.ts",
@@ -355,8 +349,6 @@ build_webui("build") {
     "privacy_page/privacy_guide/constants.ts",
     "privacy_page/privacy_guide/privacy_guide_availability_mixin.ts",
     "privacy_page/privacy_guide/privacy_guide_browser_proxy.ts",
-    "privacy_page/security/cr_lottie.html.ts",
-    "privacy_page/security/cr_lottie.ts",
     "privacy_page/security/safe_browsing_types.ts",
     "privacy_page/security/security_keys_browser_proxy.ts",
     "privacy_sandbox/privacy_sandbox_browser_proxy.ts",
@@ -433,7 +425,6 @@ build_webui("build") {
     "autofill_page/screen_reader_only.css",
     "autofill_page/your_saved_info_shared.css",
     "privacy_page/privacy_guide/privacy_guide_fragment_shared.css",
-    "privacy_page/security/cr_lottie.css",
     "search_page/search_engine_entry.css",
     "site_settings/clear_storage_dialog_shared.css",
     "site_settings/site_settings_shared.css",

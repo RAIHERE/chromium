@@ -118,7 +118,7 @@ const CGFloat kFeatureRowIconSize = 20;
 }
 
 - (BOOL)isLensAvailableForProfile {
-  return IsLensOverlayAvailable(_profilePrefs);
+  return IsLensOverlayAllowedByPolicy(_profilePrefs);
 }
 
 #pragma mark - PageActionMenuMutator
@@ -143,12 +143,7 @@ const CGFloat kFeatureRowIconSize = 20;
     return NO;
   }
 
-  if (IsGeminiImmediateOverlayEnabled()) {
-    return _BWGService->IsBwgAvailableForWebState(_webState);
-  } else {
-    return !_webState->IsLoading() &&
-           _BWGService->IsBwgAvailableForWebState(_webState);
-  }
+  return _BWGService->IsBwgAvailableForWebState(_webState);
 }
 
 - (BOOL)isReaderModeAvailable {
@@ -197,7 +192,7 @@ const CGFloat kFeatureRowIconSize = 20;
 
       // Show row only if blocking is active AND there are blocked popups.
       BlockedPopupTabHelper* helper =
-          BlockedPopupTabHelper::GetOrCreateForWebState(_webState);
+          BlockedPopupTabHelper::FromWebState(_webState);
       bool hasBlockedPopups = helper && helper->GetBlockedPopupCount() > 0;
 
       return setting == CONTENT_SETTING_BLOCK && hasBlockedPopups;
@@ -266,7 +261,7 @@ const CGFloat kFeatureRowIconSize = 20;
     return 0;
   }
   BlockedPopupTabHelper* helper =
-      BlockedPopupTabHelper::GetOrCreateForWebState(_webState);
+      BlockedPopupTabHelper::FromWebState(_webState);
   return helper ? helper->GetBlockedPopupCount() : 0;
 }
 
@@ -393,9 +388,7 @@ const CGFloat kFeatureRowIconSize = 20;
                        icon:CustomSymbolWithPointSize(kDownTrendSymbol,
                                                       kFeatureRowIconSize)
                  actionType:PageActionMenuButtonAction];
-    priceTrackingFeature.actionText =
-        l10n_util::GetNSString(IDS_IOS_AI_HUB_PRICE_TRACKING_BUTTON_LABEL);
-
+    BOOL isSubscribed = NO;
     ContextualPanelTabHelper* tabHelper =
         ContextualPanelTabHelper::FromWebState(_webState);
     if (tabHelper) {
@@ -409,13 +402,17 @@ const CGFloat kFeatureRowIconSize = 20;
         if (config->item_type == ContextualPanelItemType::PriceInsightsItem) {
           PriceInsightsItemConfiguration* priceInsightsConfig =
               static_cast<PriceInsightsItemConfiguration*>(config);
-          if (!priceInsightsConfig->is_subscribed) {
-            priceTrackingFeature.actionText = l10n_util::GetNSString(
-                IDS_IOS_AI_HUB_PRICE_TRACKING_TRACK_BUTTON_LABEL);
-          }
+          isSubscribed = priceInsightsConfig->is_subscribed;
           break;
         }
       }
+    }
+
+    if (isSubscribed) {
+      priceTrackingFeature.actionText =
+          l10n_util::GetNSString(IDS_IOS_AI_HUB_PRICE_TRACKING_BUTTON_LABEL);
+    } else {
+      priceTrackingFeature.actionText = nil;
     }
 
     [features addObject:priceTrackingFeature];
@@ -430,7 +427,7 @@ const CGFloat kFeatureRowIconSize = 20;
   }
 
   BlockedPopupTabHelper* helper =
-      BlockedPopupTabHelper::GetOrCreateForWebState(_webState);
+      BlockedPopupTabHelper::FromWebState(_webState);
   if (!helper) {
     return;
   }

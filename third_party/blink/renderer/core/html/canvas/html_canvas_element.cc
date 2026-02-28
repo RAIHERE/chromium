@@ -109,6 +109,7 @@
 #include "third_party/blink/renderer/platform/graphics/canvas_resource.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_dispatcher.h"
 #include "third_party/blink/renderer/platform/graphics/canvas_resource_provider.h"
+#include "third_party/blink/renderer/platform/graphics/compositing/paint_artifact_compositor.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_context_rate_limiter.h"
 #include "third_party/blink/renderer/platform/graphics/gpu/shared_gpu_context.h"
 #include "third_party/blink/renderer/platform/graphics/graphics_context.h"
@@ -446,15 +447,10 @@ void HTMLCanvasElement::AttributeChanged(
   HTMLElement::AttributeChanged(params);
   if (RuntimeEnabledFeatures::CanvasDrawElementEnabled() &&
       params.name == html_names::kLayoutsubtreeAttr) {
-    SetNeedsStyleRecalc(
-        kSubtreeStyleChange,
-        StyleChangeReasonForTracing::Create(style_change_reason::kAttribute));
-    SetForceReattachLayoutTree();
-    if (auto* object = GetLayoutObject()) {
-      object->SetNeedsLayout(layout_invalidation_reason::kAttributeChanged);
-      // Ensure paint artifact compositor does an update, since that's the
-      // mechanism we use to pass canvas draw element ids to the compositor.
-      object->GetFrameView()->SetPaintArtifactCompositorNeedsUpdate();
+    bool had_layoutsubtree = !params.old_value.IsNull();
+    bool has_layoutsubtree = !params.new_value.IsNull();
+    if (had_layoutsubtree != has_layoutsubtree) {
+      setLayoutSubtree(has_layoutsubtree);
     }
   }
 }
@@ -507,10 +503,23 @@ void HTMLCanvasElement::setWidth(unsigned value,
 
 void HTMLCanvasElement::setLayoutSubtree(bool value) {
   SetBooleanAttribute(html_names::kLayoutsubtreeAttr, value);
+  SetNeedsStyleRecalc(
+      kSubtreeStyleChange,
+      StyleChangeReasonForTracing::Create(style_change_reason::kAttribute));
+  SetForceReattachLayoutTree();
+  if (auto* object = GetLayoutObject()) {
+    object->SetNeedsLayout(layout_invalidation_reason::kAttributeChanged);
+  }
 }
 
 bool HTMLCanvasElement::layoutSubtree() const {
   return FastHasAttribute(html_names::kLayoutsubtreeAttr);
+}
+
+void HTMLCanvasElement::requestPaint() {
+  if (LocalFrameView* view = GetDocument().View()) {
+    view->RequestCanvasOnpaint(*this);
+  }
 }
 
 void HTMLCanvasElement::SetSize(gfx::Size new_size) {
@@ -617,6 +626,8 @@ CanvasRenderingContext* HTMLCanvasElement::GetCanvasRenderingContextInternal(
 
   context_->RecordUKMCanvasRenderingAPI();
   context_->RecordUMACanvasRenderingAPI();
+  context_->MaybeRecordUKMCanvasAccessibility();
+
   // Since the |context_| is created, free the transparent image,
   // |transparent_image_| created for this canvas if it exists.
   if (transparent_image_.get()) {
@@ -1629,6 +1640,13 @@ void HTMLCanvasElement::SetIsDisplayed(bool displayed) {
       rate_limiter_.reset(nullptr);
     }
   }
+
+  if (is_displayed_ && context_) {
+    // `MaybeRecordUKMCanvasAccessibility` records the metric only once. Since
+    // there is no specific order between creating the `context_` and setting
+    // `is_displayed_`, the function is called in both places.
+    context_->MaybeRecordUKMCanvasAccessibility();
+  }
 }
 
 cc::TextureLayer* HTMLCanvasElement::GetOrCreateCcLayerForCanvas2DIfNeeded() {
@@ -1663,6 +1681,16 @@ void HTMLCanvasElement::DiscardResources() {
   ResetLayer();
   UpdateMemoryUsage();
   dirty_rect_ = gfx::Rect();
+}
+
+std::optional<CanvasChildPaintRecord>
+HTMLCanvasElement::GetCanvasChildPaintRecord(DOMNodeId child_id) const {
+  if (auto* view = GetDocument().View()) {
+    if (auto* pac = view->GetPaintArtifactCompositor()) {
+      return pac->GetCanvasChildPaintRecord(child_id);
+    }
+  }
+  return std::nullopt;
 }
 
 void HTMLCanvasElement::UpdateSuspendOffscreenCanvasAnimation() {

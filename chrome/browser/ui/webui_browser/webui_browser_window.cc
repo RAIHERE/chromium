@@ -20,8 +20,8 @@
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
 #include "chrome/browser/ui/find_bar/find_bar.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui_base.h"
 #include "chrome/browser/ui/views/find_bar_host.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_ui_base.h"
 #include "chrome/browser/ui/web_applications/app_browser_controller.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_client_view.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_exclusive_access_context.h"
@@ -30,7 +30,7 @@
 #include "chrome/browser/ui/webui_browser/webui_browser_side_panel_ui.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_ui.h"
 #include "chrome/browser/ui/webui_browser/webui_browser_web_contents_delegate.h"
-#include "chrome/browser/ui/webui_browser/webui_location_bar.h"
+#include "chrome/browser/ui/webui_browser/webui_stub_location_bar.h"
 #include "chrome/common/chrome_render_frame.mojom.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/input/native_web_keyboard_event.h"
@@ -106,7 +106,7 @@ class WebUIBrowserWindow::WidgetDelegate : public views::WidgetDelegate {
 };
 
 WebUIBrowserWindow::WebUIBrowserWindow(Browser* browser) : browser_(browser) {
-  location_bar_ = std::make_unique<WebUILocationBar>(this);
+  location_bar_ = std::make_unique<WebUIStubLocationBar>(this);
   web_contents_delegate_ =
       std::make_unique<WebUIBrowserWebContentsDelegate>(this);
   widget_delegate_ =
@@ -148,9 +148,9 @@ WebUIBrowserWindow::WebUIBrowserWindow(Browser* browser) : browser_(browser) {
   // widget.
   ui_web_contents->SetColorProviderSource(this);
 
-  widget_->Show();
-  // Give our main web contents the focus so that accelerators work.
-  ui_web_contents->SetInitialFocus();
+  paint_as_active_subscription_ =
+      widget_->RegisterPaintAsActiveChangedCallback(base::BindRepeating(
+          &WebUIBrowserWindow::PaintAsActiveChanged, base::Unretained(this)));
 
   LoadAccelerators();
 }
@@ -201,8 +201,42 @@ WebUIBrowserWindow* WebUIBrowserWindow::FromNativeWindow(
                 : nullptr;
 }
 
+// The code about Browser's activation state is copied from
+// BrowserView::Show().
 void WebUIBrowserWindow::Show() {
-  NOTIMPLEMENTED_LOG_ONCE();
+#if !BUILDFLAG(IS_WIN) && !BUILDFLAG(IS_CHROMEOS)
+  // The Browser associated with this browser window must become the active
+  // browser at the time Show() is called. This is the natural behavior under
+  // Windows and Chrome OS, but other platforms will not trigger
+  // OnWidgetActivationChanged() until we return to the runloop. Therefore any
+  // calls to Browser::GetLastActive() will return the wrong result if we do
+  // not explicitly set it here.
+  browser_->DidBecomeActive();
+#endif
+
+  // If the window is already visible, just activate it.
+  if (widget_->IsVisible()) {
+    widget_->Activate();
+    return;
+  }
+
+  widget_->Show();
+
+  // Give our main web contents the focus so that accelerators work.
+  // This must happen after Show() since focusing triggers widget activation,
+  // which calls PaintAsActiveChanged() -> Browser::DidBecomeActive(). The
+  // Browser must be fully constructed by that point.
+  web_view_->GetWebContents()->SetInitialFocus();
+}
+
+// The code about Browser's activation state is copied from
+// BrowserView::PaintAsActiveChanged().
+void WebUIBrowserWindow::PaintAsActiveChanged() {
+  if (widget_->ShouldPaintAsActive()) {
+    browser_->DidBecomeActive();
+  } else {
+    browser_->DidBecomeInactive();
+  }
 }
 
 void WebUIBrowserWindow::ShowInactive() {
@@ -521,8 +555,7 @@ void WebUIBrowserWindow::LoadAccelerators() {
       browser_->profile()->IsOffTheRecord() &&
       browser_->profile()->GetOTRProfileID().IsCaptivePortal();
 #endif
-  const std::vector<AcceleratorMapping> accelerator_list(GetAcceleratorList());
-  for (const auto& entry : accelerator_list) {
+  for (const auto& entry : GetAcceleratorList()) {
     // In app mode, only allow accelerators of allowlisted commands to pass
     // through.
     if (is_app_mode && !IsCommandAllowedInAppMode(entry.command_id,
@@ -1076,13 +1109,9 @@ void WebUIBrowserWindow::ShowIncognitoHistoryDisclaimerDialog() {
   NOTIMPLEMENTED_LOG_ONCE();
 }
 
-bool WebUIBrowserWindow::IsBorderlessModeEnabled() const {
+bool WebUIBrowserWindow::IsUnframedModeEnabled() const {
   NOTIMPLEMENTED_LOG_ONCE();
   return false;
-}
-
-void WebUIBrowserWindow::OnWebApiWindowResizableChanged() {
-  NOTIMPLEMENTED_LOG_ONCE();
 }
 
 bool WebUIBrowserWindow::GetCanResize() {

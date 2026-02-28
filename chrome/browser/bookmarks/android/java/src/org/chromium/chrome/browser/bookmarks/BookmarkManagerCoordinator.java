@@ -304,8 +304,8 @@ public class BookmarkManagerCoordinator
                         mProfile.getOriginalProfile(),
                         activityResultTracker,
                         SigninAndHistorySyncActivityLauncherImpl.get(),
-                        bottomSheetControllerSupplier.get(),
-                        ObservableSuppliers.createNonNull(mModalDialogManager),
+                        bottomSheetControllerSupplier,
+                        ObservableSuppliers.createMonotonic(mModalDialogManager),
                         snackbarManager,
                         DeviceLockActivityLauncherImpl.get(),
                         new BookmarkSigninPromoDelegate(

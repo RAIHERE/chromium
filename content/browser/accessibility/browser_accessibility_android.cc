@@ -19,6 +19,7 @@
 #include "base/strings/utf_string_conversions.h"
 #include "content/browser/accessibility/ax_style_data.h"
 #include "content/browser/accessibility/browser_accessibility_manager_android.h"
+#include "content/common/features.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_features.h"
 #include "skia/ext/skia_utils_base.h"
@@ -522,23 +523,6 @@ bool BrowserAccessibilityAndroid::IsInterestingOnAndroid() const {
   // children of a link as not interesting to prevent double utterances.
   const BrowserAccessibility* parent = PlatformGetParent();
 
-  // When SelectMobileDesktopParity is enabled, ListBox selects are supported on
-  // android in addition to combobox/MenuList selects, in which case ListBox
-  // options should be interesting or else they can't be selected or toggled.
-  if (!base::FeatureList::IsEnabled(
-          blink::features::kSelectMobileDesktopParity)) {
-    // Should not read options in a multiselect combobox as it is invisible.
-    // Adding IsFocusable() to handle an edge case in crbug.com/395134019 to
-    // allow select options in aria list box. This is also able to handle edge
-    // case in crbug.com/358195473 to not allow TalkBack to read out collapsed
-    // multi-selectable options.
-    if (parent && parent->GetRole() == ax::mojom::Role::kListBox &&
-        parent->HasState(ax::mojom::State::kMultiselectable) &&
-        GetRole() == ax::mojom::Role::kListBoxOption && IsFocusable()) {
-      return false;
-    }
-  }
-
   while (parent) {
     // Generally, if a parent is a control (like a combobox) and the child isn't
     // focusable, the child is hidden to reduce clutter.
@@ -581,6 +565,10 @@ bool BrowserAccessibilityAndroid::IsInterestingOnAndroid() const {
   // Mark progress indicators as interesting, since they are not focusable and
   // not a control, but users should be able to swipe/navigate to them.
   if (GetRole() == ax::mojom::Role::kProgressIndicator) {
+    return true;
+  }
+
+  if (ui::IsLink(GetRole())) {
     return true;
   }
 
@@ -770,6 +758,16 @@ bool BrowserAccessibilityAndroid::IsLeaf() const {
     return GetLeafMap()[this];
   }
 
+  // Non-atomic text fields (e.g. contenteditable) should not be leaves when
+  // this flag is enabled, allowing their internal structure to be exposed.
+  // Atomic text fields like <textarea> remain leaves to maintain existing
+  // behavior.
+  if (base::FeatureList::IsEnabled(
+          features::kAccessibilityExposeNonAtomicTextFieldChildren) &&
+      GetData().IsNonAtomicTextField()) {
+    return false;
+  }
+
   if (BrowserAccessibility::IsLeaf()) {
     return true;
   }
@@ -816,7 +814,8 @@ bool BrowserAccessibilityAndroid::IsLeaf() const {
       GetNameFrom() == ax::mojom::NameFrom::kAttribute) {
     // We exclude menuItems and comboBoxMenuButtons to prevent double utterance.
     if (GetRole() != ax::mojom::Role::kMenuItem &&
-        GetRole() != ax::mojom::Role::kComboBoxMenuButton) {
+        GetRole() != ax::mojom::Role::kComboBoxMenuButton &&
+        GetRole() != ax::mojom::Role::kComboBoxSelect) {
       return false;
     }
   }
@@ -980,35 +979,6 @@ void BrowserAccessibilityAndroid::AccumulateSubstringTextContentUTF16(
   // author appends text children.
   if (GetRole() == ax::mojom::Role::kSplitter) {
     return;
-  }
-
-  // Append image description strings to the text.
-  auto* manager =
-      static_cast<BrowserAccessibilityManagerAndroid*>(this->manager());
-  if (manager->ShouldAllowImageDescriptions()) {
-    auto status = GetData().GetImageAnnotationStatus();
-    switch (status) {
-      case ax::mojom::ImageAnnotationStatus::kEligibleForAnnotation:
-      case ax::mojom::ImageAnnotationStatus::kAnnotationPending:
-      case ax::mojom::ImageAnnotationStatus::kAnnotationEmpty:
-      case ax::mojom::ImageAnnotationStatus::kAnnotationAdult:
-      case ax::mojom::ImageAnnotationStatus::kAnnotationProcessFailed:
-        AppendTextToString(GetLocalizedStringForImageAnnotationStatus(status),
-                           &text);
-        break;
-
-      case ax::mojom::ImageAnnotationStatus::kAnnotationSucceeded:
-        AppendTextToString(
-            GetString16Attribute(ax::mojom::StringAttribute::kImageAnnotation),
-            &text);
-        break;
-
-      case ax::mojom::ImageAnnotationStatus::kNone:
-      case ax::mojom::ImageAnnotationStatus::kWillNotAnnotateDueToScheme:
-      case ax::mojom::ImageAnnotationStatus::kIneligibleForAnnotation:
-      case ax::mojom::ImageAnnotationStatus::kSilentlyEligibleForAnnotation:
-        break;
-    }
   }
 
   // Compute whether this node's name attribute should override its text. This
@@ -1180,10 +1150,18 @@ std::u16string BrowserAccessibilityAndroid::GetContainerTitle() const {
 }
 
 std::u16string BrowserAccessibilityAndroid::GetContentDescription() const {
-  if (ComputeAndroidNameTo() == AndroidNameTo::kContentDescription) {
-    return GetNameAsString16();
+  if (ComputeAndroidNameTo() != AndroidNameTo::kContentDescription) {
+    return u"";
   }
-  return u"";
+
+  std::u16string name = GetNameAsString16();
+
+  // If we have explicit alt text (author intent), return it.
+  if (!name.empty()) {
+    return name;
+  }
+
+  return GetImageAnnotationText();
 }
 
 std::u16string BrowserAccessibilityAndroid::GetSupplementalDescription() const {
@@ -1199,6 +1177,13 @@ std::u16string BrowserAccessibilityAndroid::GetSupplementalDescription() const {
       ShouldExposeValueAsName(GetValueForControl()) &&
       ComputeAndroidNameTo() == AndroidNameTo::kText) {
     return GetNameAsString16();
+  }
+
+  // We only return the annotation here if the node has a name.
+  // If GetNameAsString16() is empty, the annotation was already used
+  // as the name in GetContentDescription(), so we don't want it here as well.
+  if (!GetNameAsString16().empty()) {
+    return GetImageAnnotationText();
   }
 
   return u"";
@@ -2653,6 +2638,7 @@ BrowserAccessibilityAndroid::ComputeAndroidNameTo() const {
         name_to_cache_ = AndroidNameTo::kText;
       }
       break;
+    case ax::mojom::NameFrom::kCaption:
     case ax::mojom::NameFrom::kRelatedElement:
       if (::features::IsAccessibilityLabeledByEnabled() &&
           GetData().HasIntListAttribute(
@@ -2674,7 +2660,6 @@ BrowserAccessibilityAndroid::ComputeAndroidNameTo() const {
       name_to_cache_ = AndroidNameTo::kContentDescription;
       break;
     case ax::mojom::NameFrom::kNone:
-    case ax::mojom::NameFrom::kCaption:
     case ax::mojom::NameFrom::kContents:
     case ax::mojom::NameFrom::kPlaceholder:
     case ax::mojom::NameFrom::kProhibited:
@@ -2689,10 +2674,44 @@ BrowserAccessibilityAndroid::ComputeAndroidNameTo() const {
       // For example, relatedElement's name may not be appropriate for the text
       // property and needs to be fixed. For now, let them fall through the
       // default case and return to map to the text property.
-      name_to_cache_ = AndroidNameTo::kText;
+
+      // For images, the generated annotation should map to contentDescription.
+      if (ui::IsImage(GetRole()) && !GetImageAnnotationText().empty()) {
+        name_to_cache_ = AndroidNameTo::kContentDescription;
+      } else {
+        name_to_cache_ = AndroidNameTo::kText;
+      }
       break;
   }
   return name_to_cache_.value();
+}
+
+std::u16string BrowserAccessibilityAndroid::GetImageAnnotationText() const {
+  auto* manager =
+      static_cast<BrowserAccessibilityManagerAndroid*>(this->manager());
+
+  if (!manager->ShouldAllowImageDescriptions()) {
+    return std::u16string();
+  }
+
+  auto status = GetData().GetImageAnnotationStatus();
+  switch (status) {
+    case ax::mojom::ImageAnnotationStatus::kEligibleForAnnotation:
+    case ax::mojom::ImageAnnotationStatus::kAnnotationPending:
+    case ax::mojom::ImageAnnotationStatus::kAnnotationEmpty:
+    case ax::mojom::ImageAnnotationStatus::kAnnotationAdult:
+    case ax::mojom::ImageAnnotationStatus::kAnnotationProcessFailed:
+      return GetLocalizedStringForImageAnnotationStatus(status);
+
+    case ax::mojom::ImageAnnotationStatus::kAnnotationSucceeded:
+      return GetString16Attribute(ax::mojom::StringAttribute::kImageAnnotation);
+
+    case ax::mojom::ImageAnnotationStatus::kNone:
+    case ax::mojom::ImageAnnotationStatus::kWillNotAnnotateDueToScheme:
+    case ax::mojom::ImageAnnotationStatus::kIneligibleForAnnotation:
+    case ax::mojom::ImageAnnotationStatus::kSilentlyEligibleForAnnotation:
+      return std::u16string();
+  }
 }
 
 std::u16string
@@ -2711,8 +2730,21 @@ const std::vector<int> BrowserAccessibilityAndroid::GetLabelledByAndroidIds()
   if (!::features::IsAccessibilityLabeledByEnabled()) {
     return std::vector<int>();
   }
-  const std::vector<int32_t>& ids = GetData().GetIntListAttribute(
+  std::vector<int32_t> ids = GetData().GetIntListAttribute(
       ax::mojom::IntListAttribute::kLabelledbyIds);
+
+  // If this is a table, check for a caption child that labels this table.
+  if (GetRole() == ax::mojom::Role::kTable ||
+      GetRole() == ax::mojom::Role::kGrid ||
+      GetRole() == ax::mojom::Role::kTreeGrid) {
+    if (GetNameFrom() == ax::mojom::NameFrom::kCaption) {
+      ui::AXNode* caption = node()->GetTableCaption();
+      if (caption) {
+        ids.push_back(caption->id());
+      }
+    }
+  }
+
   std::vector<int32_t> android_ids;
   android_ids.reserve(ids.size());
   for (const auto& id : ids) {
@@ -2726,6 +2758,12 @@ const std::vector<int> BrowserAccessibilityAndroid::GetLabelledByAndroidIds()
 }
 
 bool BrowserAccessibilityAndroid::ShouldExposeEditableValue() const {
+  if (base::FeatureList::IsEnabled(
+          features::kAccessibilityExposeNonAtomicTextFieldChildren) &&
+      HasState(ax::mojom::State::kEditable)) {
+    return true;
+  }
+
   // For now, only expose editable value for text field since talkback
   // only uses the editable value for `EditText`.
   return IsTextField();

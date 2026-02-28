@@ -191,9 +191,8 @@ bool IsMatchingDevice(CHROME_LUID desired_luid, ID3D11Device* device) {
     return false;
   }
   ComDXGIAdapter dxgi_adapter;
-  if (FAILED(dxgi_device->GetAdapter(&dxgi_adapter))) {
-    return false;
-  }
+  HRESULT hr = dxgi_device->GetAdapter(&dxgi_adapter);
+  CHECK_EQ(hr, S_OK);
   DXGI_ADAPTER_DESC adapter_desc{};
   if (FAILED(dxgi_adapter->GetDesc(&adapter_desc))) {
     return false;
@@ -1798,9 +1797,6 @@ HRESULT MediaFoundationVideoEncodeAccelerator::ProcessInput(
     int temporal_id = 0;
     if (input.options.quantizer.has_value()) {
       int q_val = input.options.quantizer.value();
-      if (!base::FeatureList::IsEnabled(kStandardizeVP9AndAV1Quantizer)) {
-        q_val = QuantizerToQIndex(codec_, q_val);
-      }
       quantizer = std::clamp(q_val, 1, max_quantizer);
     } else if (rate_ctrl_ && !input.discard_output) {
       VideoRateControlWrapper::FrameParams frame_params{};
@@ -1891,7 +1887,7 @@ HRESULT MediaFoundationVideoEncodeAccelerator::PopulateInputSampleBuffer(
     scoped_refptr<VideoFrame> frame) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   auto input_sample = input.input_sample;
-  if (!frame->HasMappableSharedImage() && !frame->IsMappable() &&
+  if (!frame->HasMappableSharedImage() && !frame->HasDirectCpuAccess() &&
       !input.generate_sample_on_wait_sync_token) {
     LOG(ERROR) << "Unsupported video frame storage type";
     return MF_E_INVALID_STREAM_DATA;
@@ -1957,11 +1953,11 @@ HRESULT MediaFoundationVideoEncodeAccelerator::PopulateInputSampleBuffer(
     }
 
     // ConvertToMemoryMappedFrame() doesn't copy pixel data,
-    // it just maps GPU buffer owned by |frame| and presents it as mapped
+    // it just maps the mappable SI owned by |frame| and presents it as mapped
     // view in CPU memory. |frame| will unmap the buffer when destructed.
     frame = ConvertToMemoryMappedFrame(std::move(frame));
     if (!frame) {
-      LOG(ERROR) << "Failed to map shared memory GMB";
+      LOG(ERROR) << "Failed to map shared memory SI";
       return E_FAIL;
     }
   }
@@ -2111,7 +2107,7 @@ HRESULT MediaFoundationVideoEncodeAccelerator::CopyInputSampleBufferFromGpu(
     hr = device1->OpenSharedResource1(
         buffer_handle.dxgi_handle().buffer_handle(),
         IID_PPV_ARGS(&input_texture));
-    RETURN_ON_HR_FAILURE(hr, "Failed to open shared GMB D3D texture", hr);
+    RETURN_ON_HR_FAILURE(hr, "Failed to open SharedImage's D3D texture", hr);
   } else if (input.generate_sample_on_wait_sync_token) {
     DCHECK(input_sample);
     ComMFMediaBuffer texture_buffer;
@@ -2247,7 +2243,7 @@ HRESULT MediaFoundationVideoEncodeAccelerator::PopulateInputSampleBufferGpu(
     hr = device1->OpenSharedResource1(
         buffer_handle.dxgi_handle().buffer_handle(),
         IID_PPV_ARGS(&input_texture));
-    RETURN_ON_HR_FAILURE(hr, "Failed to open shared GMB D3D texture", hr);
+    RETURN_ON_HR_FAILURE(hr, "Failed to open SharedImage's D3D texture", hr);
   } else if (input.generate_sample_on_wait_sync_token) {
     ComMFMediaBuffer texture_buffer;
     hr = input_sample->GetBufferByIndex(0, &texture_buffer);

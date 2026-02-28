@@ -28,7 +28,6 @@ import org.mockito.junit.MockitoRule;
 import org.robolectric.Robolectric;
 import org.robolectric.annotation.Config;
 
-import org.chromium.base.ContextUtils;
 import org.chromium.base.supplier.OneshotSupplierImpl;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
@@ -47,12 +46,10 @@ import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.ui.desktop_windowing.AppHeaderUtils;
 import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager;
-import org.chromium.ui.base.WindowAndroid;
 import org.chromium.ui.dragdrop.DragDropGlobalState;
 import org.chromium.ui.dragdrop.DragDropMetricUtils.DragDropResult;
 import org.chromium.ui.dragdrop.DragDropMetricUtils.DragDropType;
 
-import java.lang.ref.WeakReference;
 import java.util.Collections;
 import java.util.List;
 
@@ -68,7 +65,6 @@ public class ChromeTabbedOnDragListenerUnitTest {
     @Mock private Tab mCurrentTab;
     @Mock private NewTabPage mOriginalNtp;
     @Mock private NewTabPage mCurrentNtp;
-    @Mock private WindowAndroid mWindowAndroid;
     @Mock private LayoutStateProvider mLayoutStateProvider;
     @Mock private DragDropGlobalState mDragDropGlobalState;
     @Mock private TabGroupMetadata mTabGroupMetadata;
@@ -87,14 +83,14 @@ public class ChromeTabbedOnDragListenerUnitTest {
 
     @Before
     public void setup() {
-        mContext = ContextUtils.getApplicationContext();
+        mContext = Robolectric.setupActivity(Activity.class);
         mLayoutStateProviderSupplierImpl = new OneshotSupplierImpl<>();
         mLayoutStateProviderSupplierImpl.set(mLayoutStateProvider);
         mChromeTabbedOnDragListener =
                 new ChromeTabbedOnDragListener(
                         mMultiInstanceManager,
                         mTabModelSelector,
-                        mWindowAndroid,
+                        mContext,
                         mLayoutStateProviderSupplierImpl,
                         mDesktopWindowStateManager);
         mCompositorViewHolder = new View(mContext);
@@ -108,9 +104,6 @@ public class ChromeTabbedOnDragListenerUnitTest {
         when(mMultiInstanceManager.getCurrentInstanceId()).thenReturn(SOURCE_INSTANCE_ID);
         when(mDragDropGlobalState.isDragSourceInstance(SOURCE_INSTANCE_ID)).thenReturn(true);
         DragDropGlobalState.setInstanceForTesting(mDragDropGlobalState);
-        Activity activity = Robolectric.setupActivity(Activity.class);
-        WeakReference weakActivity = new WeakReference(activity);
-        when(mWindowAndroid.getActivity()).thenReturn(weakActivity);
         AppHeaderUtils.setAppInDesktopWindowForTesting(false);
     }
 
@@ -234,6 +227,12 @@ public class ChromeTabbedOnDragListenerUnitTest {
                                 /* result= */ false,
                                 isGroupDrag,
                                 isMultiTabDrag)));
+
+        // Assert we do not notify that Chrome has handled the drop.
+        assertFalse(
+                "Should not notify that Chrome handled drop when false returned.",
+                DragDropGlobalState.didChromeHandleDrop());
+
         // Verify histograms.
         histogramExpectation.assertExpected();
     }
@@ -271,6 +270,7 @@ public class ChromeTabbedOnDragListenerUnitTest {
                         .expectNoRecords("Android.DragDrop.TabGroup.Type.DesktopWindow")
                         .build();
         setGlobalStateData(isGroupDrag, isMultiTabDrag);
+
         // Call drag start to set states.
         assertTrue(
                 "Drag started should return true.",
@@ -281,6 +281,7 @@ public class ChromeTabbedOnDragListenerUnitTest {
                                 /* result= */ false,
                                 isGroupDrag,
                                 isMultiTabDrag)));
+
         // Drop should return false, since the destination instance is the same as the source
         // instance.
         when(mLayoutStateProvider.isLayoutVisible(LayoutType.TAB_SWITCHER)).thenReturn(false);
@@ -293,6 +294,12 @@ public class ChromeTabbedOnDragListenerUnitTest {
                                 /* result= */ false,
                                 isGroupDrag,
                                 isMultiTabDrag)));
+
+        // Assert we do notify that Chrome has handled the drop.
+        assertFalse(
+                "Should not notify that Chrome handled drop when false returned.",
+                DragDropGlobalState.didChromeHandleDrop());
+
         // Verify histograms.
         histogramExpectation.assertExpected();
     }
@@ -454,6 +461,12 @@ public class ChromeTabbedOnDragListenerUnitTest {
                                 /* result= */ false,
                                 isGroupDrag,
                                 isMultiTabDrag)));
+
+        // Assert we do notify that Chrome has handled the drop.
+        assertTrue(
+                "Should notify that Chrome handled drop when true returned.",
+                DragDropGlobalState.didChromeHandleDrop());
+
         histogramWatcher.assertExpected();
     }
 
@@ -583,6 +596,11 @@ public class ChromeTabbedOnDragListenerUnitTest {
                                 /* result= */ false,
                                 isGroupDrag,
                                 isMultiTabDrag)));
+
+        // Assert we do not notify that Chrome has handled the drop.
+        assertFalse(
+                "Should not notify that Chrome handled drop when false returned.",
+                DragDropGlobalState.didChromeHandleDrop());
     }
 
     private DragEvent mockDragEvent(

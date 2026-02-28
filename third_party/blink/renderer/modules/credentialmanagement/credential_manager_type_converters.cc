@@ -150,7 +150,7 @@ bool SortPRFValuesByCredentialId(const PRFValuesPtr& a, const PRFValuesPtr& b) {
 blink::Vector<uint8_t> Base64UnpaddedURLDecodeOrCheck(
     const blink::String& encoded) {
   blink::Vector<uint8_t> decoded;
-  CHECK(blink::Base64UnpaddedURLDecode(encoded, decoded));
+  CHECK(blink::Base64UnpaddedUrlDecode(encoded, decoded));
   return decoded;
 }
 
@@ -331,11 +331,11 @@ TypeConverter<blink::Vector<uint8_t>,
   blink::Vector<uint8_t> vector;
   switch (buffer->GetContentType()) {
     case blink::V8UnionArrayBufferOrArrayBufferView::ContentType::kArrayBuffer:
-      vector.AppendSpan(buffer->GetAsArrayBuffer()->ByteSpan());
+      vector.append_range(buffer->GetAsArrayBuffer()->ByteSpan());
       break;
     case blink::V8UnionArrayBufferOrArrayBufferView::ContentType::
         kArrayBufferView:
-      vector.AppendSpan(buffer->GetAsArrayBufferView()->ByteSpan());
+      vector.append_range(buffer->GetAsArrayBufferView()->ByteSpan());
       break;
   }
   return vector;
@@ -1251,6 +1251,19 @@ TypeConverter<LoginStatusOptionsPtr, blink::LoginStatusOptions>::Convert(
   }
 
   return mojo_options;
+}
+
+// static
+blink::mojom::blink::FedCmRedirectMethod
+TypeConverter<blink::mojom::blink::FedCmRedirectMethod,
+              blink::V8ResolveRedirectRequestMethod>::
+    Convert(const blink::V8ResolveRedirectRequestMethod& method) {
+  switch (method.AsEnum()) {
+    case blink::V8ResolveRedirectRequestMethod::Enum::kGET:
+      return blink::mojom::blink::FedCmRedirectMethod::kGet;
+    case blink::V8ResolveRedirectRequestMethod::Enum::kPOST:
+      return blink::mojom::blink::FedCmRedirectMethod::kPost;
+  }
 }
 
 }  // namespace mojo

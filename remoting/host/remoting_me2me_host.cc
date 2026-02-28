@@ -54,6 +54,7 @@
 #include "net/base/network_change_notifier.h"
 #include "remoting/base/authentication_method.h"
 #include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/base/branding.h"
 #include "remoting/base/cloud_session_authz_service_client_factory.h"
 #include "remoting/base/corp_session_authz_service_client_factory.h"
 #include "remoting/base/cpu_utils.h"
@@ -69,12 +70,11 @@
 #include "remoting/base/rsa_key_pair.h"
 #include "remoting/base/service_urls.h"
 #include "remoting/base/session_policies.h"
+#include "remoting/base/username.h"
 #include "remoting/host/base/desktop_environment_options.h"
 #include "remoting/host/base/host_exit_codes.h"
 #include "remoting/host/base/switches.h"
-#include "remoting/host/base/username.h"
 #include "remoting/host/basic_desktop_environment.h"
-#include "remoting/host/branding.h"
 #include "remoting/host/chromoting_host.h"
 #include "remoting/host/chromoting_host_context.h"
 #include "remoting/host/cloud_heartbeat_service_client.h"
@@ -118,13 +118,13 @@
 #include "remoting/protocol/jingle_session_manager.h"
 #include "remoting/protocol/me2me_host_authenticator_factory.h"
 #include "remoting/protocol/pairing_registry.h"
-#include "remoting/protocol/session_config.h"
 #include "remoting/protocol/transport.h"
 #include "remoting/protocol/transport_context.h"
 #include "remoting/signaling/corp_messaging_constants.h"
 #include "remoting/signaling/corp_signal_strategy.h"
 #include "remoting/signaling/ftl_host_device_id_provider.h"
 #include "remoting/signaling/ftl_signal_strategy.h"
+#include "remoting/signaling/session_config.h"
 #include "remoting/signaling/signal_strategy.h"
 #include "remoting/signaling/signaling_id_util.h"
 #include "third_party/webrtc/modules/desktop_capture/desktop_capture_types.h"
@@ -394,7 +394,7 @@ class HostProcess : public ConfigWatcher::Delegate,
   bool OnAllowPinAuthenticationUpdate(const base::DictValue& policies);
 
   std::optional<ErrorCode> OnSessionPoliciesReceived(
-      const SessionPolicies& session_policies) const;
+      const SessionPolicies& session_policies);
 
   void InitializeSignaling();
 
@@ -441,6 +441,11 @@ class HostProcess : public ConfigWatcher::Delegate,
   void OnAgentProcessBrokerDisconnected();
 #endif
 
+  // Sets the required username on the daemon process based on
+  // `require_host_username_match_` and `current_host_owner_email_`. Must be
+  // called when `multi_process_` is true.
+  void SetRequiredUsernameOnDaemonProcess();
+
   std::unique_ptr<ChromotingHostContext> context_;
 
 #if BUILDFLAG(IS_MAC)
@@ -470,6 +475,7 @@ class HostProcess : public ConfigWatcher::Delegate,
   std::string service_account_email_;
   base::DictValue config_;
   std::set<std::string> host_owner_emails_;
+  std::string current_host_owner_email_;
 
   std::unique_ptr<PolicyWatcher> policy_watcher_;
   PolicyState policy_state_ = POLICY_INITIALIZING;
@@ -482,6 +488,7 @@ class HostProcess : public ConfigWatcher::Delegate,
   bool is_cloud_host_ = false;
   bool is_corp_host_ = false;
   bool require_session_authorization_ = false;
+  bool require_host_username_match_ = false;
   LocalSessionPoliciesProvider local_session_policies_provider_;
 
   DesktopEnvironmentOptions desktop_environment_options_;
@@ -971,8 +978,12 @@ void HostProcess::CreateAuthenticatorFactory() {
           std::move(auth_config));
 
 #if BUILDFLAG(IS_POSIX)
-  // On Linux and Mac, perform a PAM authorization step after authentication.
-  factory = std::make_unique<PamAuthorizationFactory>(std::move(factory));
+  // For Linux and Mac single-process hosts, perform a PAM authorization step
+  // after authentication. For multi-process hosts, the check will be done by
+  // the daemon process.
+  if (!multi_process_) {
+    factory = std::make_unique<PamAuthorizationFactory>(std::move(factory));
+  }
 #endif  // BUILDFLAG(IS_POSIX)
   host_->SetAuthenticatorFactory(std::move(factory));
 }
@@ -1186,13 +1197,17 @@ void HostProcess::OnUpdateHostOwner(const std::string& owner_email) {
   DCHECK(!owner_email.empty());
 
   // Use a canonical email form here for matching against FTL signaling IDs.
-  auto new_owner_email = GetCanonicalEmail(owner_email);
-  if (host_owner_emails_.contains(new_owner_email)) {
+  current_host_owner_email_ = GetCanonicalEmail(owner_email);
+  if (multi_process_) {
+    SetRequiredUsernameOnDaemonProcess();
+  }
+  if (host_owner_emails_.contains(current_host_owner_email_)) {
     return;
   }
 
-  LOG(INFO) << "Adding '" << new_owner_email << "' to host owner emails.";
-  host_owner_emails_.emplace(std::move(new_owner_email));
+  LOG(INFO) << "Adding '" << current_host_owner_email_
+            << "' to host owner emails.";
+  host_owner_emails_.emplace(current_host_owner_email_);
 
   ApplyHostDomainListPolicy();
 }
@@ -1341,6 +1356,26 @@ void HostProcess::OnAgentProcessBrokerDisconnected() {
 }
 
 #endif  // BUILDFLAG(IS_MAC)
+
+void HostProcess::SetRequiredUsernameOnDaemonProcess() {
+  DCHECK(multi_process_);
+
+  if (current_host_owner_email_.empty()) {
+    // SetRequiredUsernameOnDaemonProcess() will be called again once
+    // `current_host_owner_email_` is set.
+    return;
+  }
+  if (!require_host_username_match_) {
+    desktop_session_connector_->SetRequiredUsername({});
+    return;
+  }
+  auto email_parts = base::SplitStringOnce(current_host_owner_email_, '@');
+  if (!email_parts.has_value()) {
+    LOG(ERROR) << current_host_owner_email_ << " is not a valid email address";
+    return;
+  }
+  desktop_session_connector_->SetRequiredUsername(email_parts->first);
+}
 
 // Applies the host config, returning true if successful.
 bool HostProcess::ApplyConfig(const base::DictValue& config) {
@@ -1710,20 +1745,27 @@ bool HostProcess::OnAllowRemoteAccessConnections(
 }
 
 std::optional<ErrorCode> HostProcess::OnSessionPoliciesReceived(
-    const SessionPolicies& session_policies) const {
+    const SessionPolicies& session_policies) {
   DCHECK(context_->network_task_runner()->BelongsToCurrentThread());
 
   // We currently only validate the host_username_match_required policy here.
   // Other policies are validated by ClientSession.
 
-  if (!session_policies.host_username_match_required.value_or(false)) {
+  require_host_username_match_ =
+      session_policies.host_username_match_required.value_or(false);
+  if (multi_process_) {
+    // For multi-process hosts, the host username match policy will be enforced
+    // by the daemon process.
+    SetRequiredUsernameOnDaemonProcess();
+    return std::nullopt;
+  }
+  if (!require_host_username_match_) {
     return std::nullopt;
   }
 
 #if BUILDFLAG(IS_WIN)
-  VLOG(1) << "Policy host_username_match_required ignored since it is not "
-          << "supported on Windows.";
-  return std::nullopt;
+  // The Windows host is always multi-process.
+  NOTREACHED();
 #else  // BUILDFLAG(IS_WIN) #else
 
 #if BUILDFLAG(IS_APPLE)
@@ -1935,8 +1977,7 @@ void HostProcess::StartHost() {
         corp_signal_strategy_.get());
   }
 
-  std::unique_ptr<protocol::CandidateSessionConfig> protocol_config =
-      protocol::CandidateSessionConfig::CreateDefault();
+  auto protocol_config = CandidateSessionConfig::CreateDefault();
   if (!desktop_environment_factory_->SupportsAudioCapture()) {
     protocol_config->DisableAudioChannel();
   }
@@ -2024,9 +2065,12 @@ void HostProcess::StartHost() {
   host_->Start(*host_owner_emails_.begin());
 
 #if BUILDFLAG(IS_LINUX)
-  // For Windows and Mac, ChromotingHostServices connections are handled by
-  // another process, then the message pipe is forwarded to the network process.
-  host_->StartChromotingHostServices();
+  // For Multi-process hosts and Mac, ChromotingHostServices connections are
+  // handled by another process, then the message pipe is forwarded to the
+  // network process.
+  if (!multi_process_) {
+    host_->StartChromotingHostServices();
+  }
 #endif
 
   CreateAuthenticatorFactory();
@@ -2173,24 +2217,28 @@ int HostProcessMain(bool multi_process) {
   const base::CommandLine* cmd_line = base::CommandLine::ForCurrentProcess();
 
 #if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
+  // For the multi-process host, screen capturing and UI rendering should be
+  // done by the desktop process.
+  if (!multi_process) {
 #if defined(REMOTING_USE_X11)
-  // Initialize Xlib for multi-threaded use, allowing non-Chromium code to
-  // use X11 safely (such as the WebRTC capturer, GTK ...)
-  x11::InitXlib();
+    // Initialize Xlib for multi-threaded use, allowing non-Chromium code to
+    // use X11 safely (such as the WebRTC capturer, GTK ...)
+    x11::InitXlib();
 #endif  // defined(REMOTING_USE_X11)
 
 #if defined(REMOTING_USE_X11)
-  if (!cmd_line->HasSwitch(kReportOfflineReasonSwitchName)) {
-    // Required for any calls into GTK functions, such as the Disconnect and
-    // Continue windows, though these should not be used for the Me2Me case
-    // (crbug.com/104377).
+    if (!cmd_line->HasSwitch(kReportOfflineReasonSwitchName)) {
+      // Required for any calls into GTK functions, such as the Disconnect and
+      // Continue windows, though these should not be used for the Me2Me case
+      // (crbug.com/104377).
 #if GTK_CHECK_VERSION(3, 90, 0)
-    gtk_init();
+      gtk_init();
 #else
-    gtk_init(nullptr, nullptr);
+      gtk_init(nullptr, nullptr);
 #endif
-  }
+    }
 #endif  // defined(REMOTING_USE_X11)
+  }  // !multi_process
 
   // Need to prime the host OS version value for linux to prevent IO on the
   // network thread. base::GetLinuxDistro() caches the result.

@@ -39,7 +39,7 @@ import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.logo.LogoBridge.Logo;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationConfigManager;
-import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundImageType;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
 import org.chromium.chrome.browser.ntp_customization.policy.NtpCustomizationPolicyManager;
 import org.chromium.chrome.browser.ntp_customization.theme.chrome_colors.NtpThemeColorFromHexInfo;
 import org.chromium.chrome.browser.ntp_customization.theme.upload_image.BackgroundImageInfo;
@@ -75,20 +75,14 @@ public class LogoCoordinatorUnitTest {
     }
 
     @Test
-    @DisableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @DisableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testMaybeInitHomepageStateListener_featuresDisabled() {
         createLogoCoordinator();
         verify(mNtpCustomizationConfigManager, never()).addListener(any(), any(), anyBoolean());
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testMaybeInitHomepageStateListener_disabledByPolicy() {
         NtpCustomizationPolicyManager policyManager = mock(NtpCustomizationPolicyManager.class);
         NtpCustomizationPolicyManager.setInstanceForTesting(policyManager);
@@ -99,10 +93,7 @@ public class LogoCoordinatorUnitTest {
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testMaybeInitHomepageStateListener_featuresEnabled() {
         createLogoCoordinator();
         verify(mNtpCustomizationConfigManager)
@@ -110,10 +101,7 @@ public class LogoCoordinatorUnitTest {
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testHomepageStateListener_logoNotShown() {
         Bitmap bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888);
         BackgroundImageInfo backgroundImageInfo = mock(BackgroundImageInfo.class);
@@ -129,17 +117,14 @@ public class LogoCoordinatorUnitTest {
                         bitmap,
                         backgroundImageInfo,
                         false,
-                        NtpBackgroundImageType.DEFAULT,
-                        NtpBackgroundImageType.IMAGE_FROM_DISK);
+                        NtpBackgroundType.DEFAULT,
+                        NtpBackgroundType.IMAGE_FROM_DISK);
 
         verify(mLogoMediator, never()).updateDefaultGoogleLogo(any());
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testHomepageStateListener_onBackgroundImageChanged() {
         Bitmap bitmap = Bitmap.createBitmap(100, 100, Bitmap.Config.ARGB_8888);
         BackgroundImageInfo backgroundImageInfo = mock(BackgroundImageInfo.class);
@@ -155,17 +140,14 @@ public class LogoCoordinatorUnitTest {
                         bitmap,
                         backgroundImageInfo,
                         false,
-                        NtpBackgroundImageType.DEFAULT,
-                        NtpBackgroundImageType.IMAGE_FROM_DISK);
+                        NtpBackgroundType.DEFAULT,
+                        NtpBackgroundType.IMAGE_FROM_DISK);
 
         verify(mLogoMediator).updateDefaultGoogleLogo(any(Drawable.class));
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testHomepageStateListener_onBackgroundColorChanged() {
         @ColorInt int backgroundColor = Color.RED;
         @ColorInt int primaryColor = Color.BLUE;
@@ -183,17 +165,14 @@ public class LogoCoordinatorUnitTest {
                         colorFromHexInfo,
                         backgroundColor,
                         false,
-                        NtpBackgroundImageType.DEFAULT,
-                        NtpBackgroundImageType.COLOR_FROM_HEX);
+                        NtpBackgroundType.DEFAULT,
+                        NtpBackgroundType.COLOR_FROM_HEX);
 
         verify(mLogoMediator).updateDefaultGoogleLogo(any(Drawable.class));
     }
 
     @Test
-    @EnableFeatures({
-        ChromeFeatureList.ANDROID_LOGO_VIEW_REFACTOR,
-        ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2
-    })
+    @EnableFeatures({ChromeFeatureList.NEW_TAB_PAGE_CUSTOMIZATION_V2})
     public void testDestroyRemovesListener() {
         mLogoCoordinator = createLogoCoordinator();
         verify(mNtpCustomizationConfigManager)

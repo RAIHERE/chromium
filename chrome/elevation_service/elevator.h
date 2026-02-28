@@ -36,6 +36,8 @@ inline constexpr char kElevatorClsIdForTestingSwitch[] =
     "elevator-clsid-for-testing";
 inline constexpr char kFakeReencryptForTestingSwitch[] =
     "elevator-fake-reencrypt-for-testing";
+inline constexpr char kAllowUntrustedPathForTesting[] =
+    "elevator-allow-untrusted-path-for-testing";
 }  // namespace switches
 
 namespace internal {
@@ -121,6 +123,30 @@ class Elevator
       MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00A);
   static constexpr HRESULT kErrorInvalidValidationData =
       MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00B);
+  static constexpr HRESULT kErrorCouldNotObtainThreadToken =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00C);
+  static constexpr HRESULT kErrorCouldNotCreatePrimaryToken =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00D);
+  static constexpr HRESULT kErrorCouldNotObtainSidString =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00E);
+  static constexpr HRESULT kErrorCouldCreateSecurityDescriptor =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA00F);
+  static constexpr HRESULT kErrorCouldAssignDefaultDacl =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA010);
+  static constexpr HRESULT kErrorCouldNotLaunchBrowser =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA011);
+  static constexpr HRESULT kErrorCouldNotDuplicateHandle =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA012);
+  static constexpr HRESULT kErrorChromePathNotFound =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA013);
+  static constexpr HRESULT kErrorCouldNotObtainUserEnvironment =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA014);
+  static constexpr HRESULT kErrorCouldMutatePrimaryToken =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA015);
+  static constexpr HRESULT kErrorCouldQueryPrimaryToken =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA016);
+  static constexpr HRESULT kErrorCouldCreateAccessControlList =
+      MAKE_HRESULT(SEVERITY_ERROR, FACILITY_ITF, 0xA017);
 
   // Success codes.
   static constexpr HRESULT kSuccessShouldReencrypt =
@@ -150,7 +176,7 @@ class Elevator
 
   IFACEMETHODIMP RunIsolatedChrome(DWORD flags,
                                    const WCHAR* command_line,
-                                   BSTR* log,
+                                   [[maybe_unused]] BSTR* log,
                                    ULONG_PTR* proc_handle,
                                    DWORD* last_error) override;
 

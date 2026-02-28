@@ -66,7 +66,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.DeveloperResourceLoaded"
-    enum="DevToolsDeveloperResourceLoaded" expires_after="M150">
+    enum="DevToolsDeveloperResourceLoaded" expires_after="2026-08-09">
   <owner>bmeurer@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <summary>
@@ -101,7 +101,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.DeveloperResourceScheme"
-    enum="DevToolsDeveloperResourceScheme" expires_after="M150">
+    enum="DevToolsDeveloperResourceScheme" expires_after="2026-08-09">
   <owner>bmeurer@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <summary>
@@ -118,19 +118,8 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="DevTools.DevToolsDebuggingUserDataDirStatus"
-    enum="DevToolsDebuggingUserDataDirStatus" expires_after="2026-03-08">
-  <owner>wfh@chromium.org</owner>
-  <owner>src/chrome/browser/devtools/OWNERS</owner>
-  <summary>
-    Records the status of remote debugging (either via port or pipe) and whether
-    or not a default user data dir is in use if debugging has been requested.
-    This is recorded once during browser startup for non-Android devices.
-  </summary>
-</histogram>
-
 <histogram name="DevTools.ExperimentDisabled" enum="DevtoolsExperiments"
-    expires_after="2026-07-26">
+    expires_after="2027-03-01">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -139,7 +128,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.ExperimentDisabledAtLaunch"
-    enum="DevtoolsExperiments" expires_after="2026-03-01">
+    enum="DevtoolsExperiments" expires_after="2027-03-01">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -148,7 +137,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.ExperimentEnabled" enum="DevtoolsExperiments"
-    expires_after="2026-07-26">
+    expires_after="2027-03-01">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -157,7 +146,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.ExperimentEnabledAtLaunch" enum="DevtoolsExperiments"
-    expires_after="2026-07-26">
+    expires_after="2027-03-01">
   <owner>yangguo@google.com</owner>
   <owner>changhaohan@google.com</owner>
   <summary>
@@ -228,13 +217,33 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="DevTools.Insights.TeaserChunkToEndMedium" units="ms"
+    expires_after="2027-01-26">
+  <owner>wolfi@google.com</owner>
+  <owner>alexrudenko@google.com</owner>
+  <summary>
+    Measures the time from first character generated to full response for
+    console insights teasers (maximum 3 minutes).
+  </summary>
+</histogram>
+
 <histogram name="DevTools.Insights.TeaserFirstChunkGenerationTime" units="ms"
     expires_after="2026-11-10">
   <owner>wolfi@google.com</owner>
   <owner>alexrudenko@google.com</owner>
   <summary>
     Measures the time it takes to generate the first chunk of a console insight
-    teaser.
+    teaser (maximum 10 seconds).
+  </summary>
+</histogram>
+
+<histogram name="DevTools.Insights.TeaserFirstChunkGenerationTimeMedium"
+    units="ms" expires_after="2027-01-26">
+  <owner>wolfi@google.com</owner>
+  <owner>alexrudenko@google.com</owner>
+  <summary>
+    Measures the time it takes to generate the first chunk of a console insight
+    teaser (maximum 3 minutes).
   </summary>
 </histogram>
 
@@ -243,11 +252,22 @@ chromium-metrics-reviews@google.com.
   <owner>wolfi@google.com</owner>
   <owner>alexrudenko@google.com</owner>
   <summary>
-    Measures the time it takes to generate a console insight teaser.
+    Measures the time it takes to generate a console insight teaser (maximum 10
+    seconds).
   </summary>
 </histogram>
 
-<histogram name="DevTools.InspectElement" units="ms" expires_after="2026-06-21">
+<histogram name="DevTools.Insights.TeaserGenerationTimeMedium" units="ms"
+    expires_after="2027-01-26">
+  <owner>wolfi@google.com</owner>
+  <owner>alexrudenko@google.com</owner>
+  <summary>
+    Measures the time it takes to generate a console insight teaser (maximum 3
+    minutes).
+  </summary>
+</histogram>
+
+<histogram name="DevTools.InspectElement" units="ms" expires_after="2026-08-23">
   <owner>yangguo@google.com</owner>
   <owner>bmeurer@google.com</owner>
   <summary>
@@ -279,7 +299,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.IssueCreated" enum="DevToolsIssueCreated"
-    expires_after="M150">
+    expires_after="2026-08-23">
   <owner>yangguo@google.com</owner>
   <owner>danilsomsikov@google.com</owner>
   <component>1519296</component>
@@ -378,7 +398,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="DevTools.NetworkPanelResponsePreviewOpened"
-    enum="DevToolsMediaType" expires_after="M150">
+    enum="DevToolsMediaType" expires_after="2026-08-16">
   <owner>bmeurer@google.com</owner>
   <owner>szuend@google.com</owner>
   <summary>

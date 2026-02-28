@@ -1,6 +1,7 @@
 <?xml version="1.0" ?>
 <!DOCTYPE translationbundle>
 <translationbundle lang="az">
+<translation id="1035560095760914532">İstənilən vaxt daxil olmaq üçün Chrome-u aşağı hissəyə yerləşdirin</translation>
 <translation id="1076643793026027628">Chrome YouTube Anonim keçidlərini avtomatik olaraq Anonim rejimdə açır.</translation>
 <translation id="1081114897601629648">Aşağıdakı parollar tələblərə uyğun olmadığı üçün Google Parol Menecerinə import edilmədi.</translation>
 <translation id="1086486568852410168">Google Linza ilə axtarın</translation>
@@ -89,6 +90,7 @@ Nəzərə alın ki:
 <translation id="288992067439702510">Google Chrome-un əlfəcin limitinə (<ph name="LIMIT" />) çatdınız, ona görə də əlfəcinlərinizin bir hissəsi hələ Google Hesabınızda yadda saxlanılmayıb.
 
 Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq olmur. İndi çıxsanız, yadda saxlanılmamış əlfəcinlər silinəcək.</translation>
+<translation id="2901621928549457170">iPad-də olduğunuz zaman Chrome-u dərhal açın</translation>
 <translation id="2922914028977213693">iPad-də Chrome-dan maksimum yararlanmaq üçün buraya toxunun.</translation>
 <translation id="292371311537977079">Chrome ayarları</translation>
 <translation id="2923827943290349720">Chrome bağlandıqda Anonim tablar kilidlənsin</translation>
@@ -173,6 +175,8 @@ Bəzilərini silənə qədər yeni əlfəcinləri hesabınızda yadda saxlamaq o
 <translation id="5119391094379141756">Chrome seçin</translation>
 <translation id="5123188916260706415">Chrome-da səs ilə axtarın</translation>
 <translation id="5162467219239570114">Chrome köhnəlib. <ph name="BEGIN_LINK" />App Store'da<ph name="END_LINK" /> əlçatan güncəlləmə yoxdursa, ola bilər ki, cihazınız artıq Chrome'un yeni versiyalarını dəstəkləmir.</translation>
+<translation id="5172049865623113551">iPhone-da olduğunuz zaman Chrome-u dərhal açın</translation>
+<translation id="5179095426828744632">Dokdan Chrome-a daha tez daxil olun</translation>
 <translation id="5184329579814168207">Chrome'da açın</translation>
 <translation id="5190139289262548459">Təşkilat (<ph name="DOMAIN" />) daxil olduğunuz hesabı və Chrome-un istifadə qaydasını idarə edir.</translation>
 <translation id="5209238444239954363">Chrome güncəlləmələri yoxlaya bilmədi. Sonra cəhd edin.</translation>
@@ -307,7 +311,6 @@ Chrome təcrübənizi təkmilləşdirmək məqsədilə data istifadə edən dig�
 <translation id="7787205077729386167">iOS-da Chrome ayarlarını açın, "Defolt brauzer tətbiqi" üzərinə toxunun və Chrome seçin.</translation>
 <translation id="778855399387580014">Yeni Chrome tabında axtarışa başlayın.</translation>
 <translation id="7792140019572081272">Chrome Üz ID-si ilə həssas datanı güvənli saxlayır.</translation>
-<translation id="7825648984449922731">Chrome-da Gemini ilə şəkli redaktə edin</translation>
 <translation id="7855730255114109580">Google Chrome güncəldir</translation>
 <translation id="787226752901403048">Tab qruplarını paylaşmaq və onlara qoşulmaq, ideyalarla bağlı birlikdə işləmək üçün Chrome-a daxil olun</translation>
 <translation id="7897703007638178753">Son Chrome tablarına baxın</translation>
@@ -323,6 +326,7 @@ Chrome təcrübənizi təkmilləşdirmək məqsədilə data istifadə edən dig�
 <translation id="8136856065410661948">Bu, Chrome və Google Linzadan Apple Təqvimdə tədbirlər yaratmaq üçün istifadə olunacaq.</translation>
 <translation id="8154120522323162874">Brauzeri ayarlayaraq Chrome-dan maksimum yararlanın.</translation>
 <translation id="8160472928944011082">Chrome güncəllənə bilmir</translation>
+<translation id="8213550501565480896">Chrome-u defolt olaraq ayarlayın</translation>
 <translation id="8245080522851805544">Chrome-u bağladıqda cihaz identifikasiyası ilə axtarışı məxfi saxlayın</translation>
 <translation id="8248887045858762645">Chrome ipucu</translation>
 <translation id="8265730590513812063">Chrome menyusunu açın</translation>
@@ -354,6 +358,7 @@ Data <ph name="TIME" /> tarixində parol ifadəsi ilə şifrələnib. Google Hes
 <translation id="8788269841521769222">Bu parolu yadda saxlamağa ehtiyac yoxdur. O, <ph name="EMAIL" /> üçün Google Parol Menecerində saxlanacaq</translation>
 <translation id="8796490717897731471"><ph name="EMAIL" />. Chrome idarə edilir.</translation>
 <translation id="880967149107462122">Chrome ayarlarına keçin</translation>
+<translation id="8840947648682778034">iPhone və iPad üçün Chrome teması</translation>
 <translation id="8842132678697187091">Google Linzanı burada aça bilərsiniz.</translation>
 <translation id="8850736900032787670">Maraqlarınıza əsasən fərdiləşdirilmiş kontent qəbul etmək üçün Chrome-a daxil olun.</translation>
 <translation id="8855781063981781621">Chrome-da Kilidləmə rejimini deaktiv etmək üçün onu iPad-də söndürün.</translation>

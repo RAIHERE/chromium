@@ -20,7 +20,6 @@
 
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "chrome/browser/autofill/android/jni_headers/AutofillAiSaveUpdateEntityPrompt_jni.h"
-#include "chrome/browser/autofill/android/jni_headers/EntityDataManager_jni.h"
 
 using base::android::JavaRef;
 using base::android::ScopedJavaLocalRef;
@@ -76,10 +75,12 @@ void AutofillAiSaveUpdateEntityPromptViewAndroid::SetContent(
 
   Java_AutofillAiSaveUpdateEntityPrompt_setDialogDetails(
       env, java_object_, controller->GetTitle(),
-      controller->GetPositiveButtonText(), controller->GetNegativeButtonText());
+      controller->GetPositiveButtonText(), controller->GetNegativeButtonText(),
+      controller->IsWalletableEntity());
 
   Java_AutofillAiSaveUpdateEntityPrompt_setEntityUpdateDetails(
-      env, java_object_, controller->GetEntityUpdateDetails());
+      env, java_object_, controller->GetEntityUpdateDetails(),
+      controller->IsUpdatePrompt());
 
   Java_AutofillAiSaveUpdateEntityPrompt_setSourceNotice(
       env, java_object_, controller->GetSourceNotice(),

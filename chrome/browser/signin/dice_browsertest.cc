@@ -64,7 +64,6 @@
 #include "chrome/browser/ui/webui/signin/login_ui_service.h"
 #include "chrome/browser/ui/webui/signin/login_ui_service_factory.h"
 #include "chrome/browser/ui/webui/signin/login_ui_test_utils.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
@@ -158,6 +157,7 @@ const char kOAuth2TokenRevokeURL[] = "/o/oauth2/revoke";
 const char kSecondaryEmail[] = "secondary_email@example.com";
 const char kSigninURL[] = "/signin";
 const char kSigninWithOutageInDiceURL[] = "/signin/outage";
+const char kSyncDuringOAuthOutageURL[] = "/sync/outage";
 const char kSignoutURL[] = "/signout";
 const char kAddAccountURL[] = "/AddSession";
 
@@ -298,6 +298,24 @@ std::unique_ptr<HttpResponse> HandleEnableSyncURL(
   return std::move(http_response);
 }
 
+std::unique_ptr<HttpResponse> HandleEnableSyncDuringOAuthOutage(
+    const std::string& main_email,
+    const HttpRequest& request) {
+  if (!net::test_server::ShouldHandle(request, kSyncDuringOAuthOutageURL)) {
+    return nullptr;
+  }
+
+  auto http_response = std::make_unique<BasicHttpResponse>();
+  http_response->AddCustomHeader(
+      kDiceResponseHeader,
+      base::StringPrintf(
+          "action=ENABLE_SYNC,authuser=1,id=%s,email=%s",
+          signin::GetTestGaiaIdForEmail(main_email).ToString().c_str(),
+          main_email.c_str()));
+  http_response->AddCustomHeader("Cache-Control", "no-store");
+  return std::move(http_response);
+}
+
 // Handler for the signout page on the embedded test server.
 // Responds with a Google-Accounts-SignOut header for the main account, the
 // secondary account, or both (depending on the SignoutType, which is encoded in
@@ -370,12 +388,19 @@ std::unique_ptr<HttpResponse> HandleOAuth2TokenExchangeURL(
   if (request.content.find(kBoundTokenRegistrationJwt) != std::string::npos) {
     response.Set("refresh_token_type", "bound_to_key");
     std::optional<std::string> version_header_value;
+    std::optional<std::string> platform_header_value;
     if (auto it = request.headers.find("Sec-CH-UA-Full-Version-List");
         it != request.headers.end()) {
       version_header_value = it->second;
     }
-    EXPECT_EQ(version_header_value, embedder_support::GetUserAgentMetadata()
-                                        .SerializeBrandFullVersionList());
+    if (auto it = request.headers.find("Sec-CH-UA-Platform");
+        it != request.headers.end()) {
+      platform_header_value = it->second;
+    }
+    auto ua_metadata = embedder_support::GetUserAgentMetadata();
+    EXPECT_EQ(version_header_value,
+              ua_metadata.SerializeBrandFullVersionList());
+    EXPECT_EQ(platform_header_value, "\"" + ua_metadata.platform + "\"");
   }
 
   http_response->set_content(*base::WriteJson(response));
@@ -453,6 +478,8 @@ class DiceBrowserTest : public InProcessBrowserTest,
         &FakeGaia::HandleEnableSyncURL, main_email_,
         base::BindRepeating(&DiceBrowserTest::OnEnableSyncRequest,
                             base::Unretained(this))));
+    https_server_.RegisterDefaultHandler(base::BindRepeating(
+        &FakeGaia::HandleEnableSyncDuringOAuthOutage, main_email_));
     https_server_.RegisterDefaultHandler(
         base::BindRepeating(&FakeGaia::HandleSignoutURL, main_email_));
     https_server_.RegisterDefaultHandler(base::BindRepeating(
@@ -871,6 +898,37 @@ IN_PROC_BROWSER_TEST_F(DiceBrowserTest, SupportOAuthOutageInDice) {
   WaitForReconcilorUnblockedCount(1);
 }
 
+// Checks that the ENABLE_SYNC header is gracefully handled by Chrome during an
+// OAuth outage.
+// This is a regression test for https://crbug.com/483610401.
+IN_PROC_BROWSER_TEST_F(DiceBrowserTest,
+                       EnableSyncHeadersGracefullyHandledDuringOAuthOutage) {
+  base::HistogramTester histogram_tester;
+  DiceResponseHandler* dice_response_handler =
+      DiceResponseHandlerFactory::GetForProfile(browser()->profile());
+  scoped_refptr<base::TestMockTimeTaskRunner> task_runner =
+      new base::TestMockTimeTaskRunner();
+  dice_response_handler->SetTaskRunner(task_runner);
+  NavigateToURL(kSigninWithOutageInDiceURL);
+  // Check that the Dice request header was sent.
+  std::string client_id = GaiaUrls::GetInstance()->oauth2_chrome_client_id();
+  EXPECT_EQ(base::StringPrintf("version=%s,client_id=%s,device_id=%s,"
+                               "signin_mode=all_accounts,"
+                               "signout_mode=show_confirmation",
+                               signin::kDiceProtocolVersion, client_id.c_str(),
+                               GetDeviceId().c_str()),
+            dice_request_header_);
+  // Check that the reconcilor was blocked.
+  EXPECT_EQ(1, reconcilor_blocked_count_);
+  EXPECT_EQ(0, reconcilor_unblocked_count_);
+
+  NavigateToURL(kSyncDuringOAuthOutageURL);
+
+  histogram_tester.ExpectUniqueSample(
+      "Signin.DiceEnableSyncHeaderAccountInfoIsPresent", /*sample=*/0,
+      /*expected_bucket_count=*/1);
+}
+
 // Checks that re-auth on Gaia triggers the fetch for a refresh token.
 IN_PROC_BROWSER_TEST_F(DiceBrowserTest, Reauth) {
   EXPECT_EQ(0, reconcilor_started_count_);
@@ -896,7 +954,7 @@ IN_PROC_BROWSER_TEST_F(DiceBrowserTest, Reauth) {
   EXPECT_EQ(GetMainAccountID(), GetIdentityManager()->GetPrimaryAccountId(
                                     signin::ConsentLevel::kSignin));
 
-  // Old token must not be revoked (see http://crbug.com/865189).
+  // Old token must not be revoked (see http://crbug.com/40585591).
   EXPECT_EQ(0, token_revoked_notification_count_);
 
   EXPECT_EQ(1, reconcilor_blocked_count_);
@@ -1000,7 +1058,7 @@ IN_PROC_BROWSER_TEST_F(DiceBrowserTest, RevokePrimaryAccountInAuthErrorState) {
 }
 
 // Checks that Dice request header is not set from request from WebUI.
-// See https://crbug.com/428396
+// See https://crbug.com/40391545
 #if BUILDFLAG(IS_WIN)
 IN_PROC_BROWSER_TEST_F(DiceBrowserTest, NoDiceFromWebUI) {
   // Navigate to Gaia and from the native tab, which uses an extension.
@@ -1559,103 +1617,6 @@ IN_PROC_BROWSER_TEST_F(DiceBrowserTestWithSyncOptinScreen,
       syncer::UserSelectableType::kSavedTabGroups));
 }
 
-class DiceExplicitSigninBrowserTest : public InProcessBrowserTest {
- public:
-  struct AccountStorageStatus {
-    bool autofill_sync_toggle_available = false;
-    syncer::UserSelectableTypeSet user_selectable_type_set;
-  };
-
-  signin::IdentityManager* GetIdentityManager() {
-    return IdentityManagerFactory::GetForProfile(browser()->profile());
-  }
-
-  AccountStorageStatus GetAccountStorageStatus() {
-    syncer::SyncUserSettings* settings =
-        SyncServiceFactory::GetForProfile(browser()->profile())
-            ->GetUserSettings();
-    return {.autofill_sync_toggle_available =
-                autofill::PersonalDataManagerFactory::GetForBrowserContext(
-                    browser()->profile())
-                    ->address_data_manager()
-                    .IsAutofillSyncToggleAvailable(),
-            .user_selectable_type_set = settings->GetSelectedTypes()};
-  }
-
- private:
-  base::test::ScopedFeatureList feature_list_;
-};
-
-class DiceExplicitSigninBrowserTestWithForcedDiceMigrationDisabled
-    : public DiceExplicitSigninBrowserTest {
- public:
-  DiceExplicitSigninBrowserTestWithForcedDiceMigrationDisabled() {
-    scoped_feature_list_.InitAndDisableFeature(switches::kForcedDiceMigration);
-  }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
-};
-
-IN_PROC_BROWSER_TEST_F(
-    DiceExplicitSigninBrowserTestWithForcedDiceMigrationDisabled,
-    PRE_Migration) {
-  signin::AccountAvailabilityOptionsBuilder builder;
-  signin::MakeAccountAvailable(
-      GetIdentityManager(),
-      builder
-          .AsPrimary(signin::ConsentLevel::kSignin)
-          // `kWebSignin` is not explicit before the migration.
-          .WithAccessPoint(signin_metrics::AccessPoint::kWebSignin)
-          .Build(kMainGmailEmail));
-  ASSERT_EQ(signin::GetPrimaryAccountConsentLevel(GetIdentityManager()),
-            signin::ConsentLevel::kSignin);
-
-  ASSERT_FALSE(browser()->profile()->GetPrefs()->GetBoolean(
-      prefs::kExplicitBrowserSignin));
-
-  AccountStorageStatus account_storage_status = GetAccountStorageStatus();
-  EXPECT_FALSE(account_storage_status.autofill_sync_toggle_available);
-  EXPECT_FALSE(account_storage_status.user_selectable_type_set.HasAny(
-      {syncer::UserSelectableType::kAutofill,
-       syncer::UserSelectableType::kPasswords}));
-}
-
-// Checks that a user who signed in with Dice before UNO was enabled does not
-// get the account storage enabled silently. Account storage is enabled after
-// the user signs out and signs in again through an explicit flow.
-IN_PROC_BROWSER_TEST_F(
-    DiceExplicitSigninBrowserTestWithForcedDiceMigrationDisabled,
-    Migration) {
-  Profile* profile = browser()->profile();
-  // The user is still signed in implicitly.
-  ASSERT_EQ(signin::GetPrimaryAccountConsentLevel(GetIdentityManager()),
-            signin::ConsentLevel::kSignin);
-  ASSERT_TRUE(gaia::AreEmailsSame(
-      GetIdentityManager()
-          ->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
-          .email,
-      kMainGmailEmail));
-  ASSERT_FALSE(profile->GetPrefs()->GetBoolean(prefs::kExplicitBrowserSignin));
-  // Account storage was not enabled yet.
-  AccountStorageStatus account_storage_status = GetAccountStorageStatus();
-  EXPECT_FALSE(account_storage_status.user_selectable_type_set.HasAny(
-      {syncer::UserSelectableType::kAutofill,
-       syncer::UserSelectableType::kPasswords}));
-
-  // Signout, and then signin again explicitly.
-  signin::ClearPrimaryAccount(GetIdentityManager());
-  AccountInfo primary_account_info = signin::MakePrimaryAccountAvailable(
-      GetIdentityManager(), kMainGmailEmail, signin::ConsentLevel::kSignin);
-  EXPECT_TRUE(profile->GetPrefs()->GetBoolean(prefs::kExplicitBrowserSignin));
-
-  // Account storage is now enabled.
-  account_storage_status = GetAccountStorageStatus();
-  EXPECT_TRUE(account_storage_status.user_selectable_type_set.HasAll(
-      {syncer::UserSelectableType::kAutofill,
-       syncer::UserSelectableType::kPasswords}));
-}
-
 class DiceBrowserTestWithExplicitSignin : public DiceBrowserTest {
  public:
   // Sets the user choice for Chrome Signin on `main_email_`.
@@ -1960,7 +1921,7 @@ IN_PROC_BROWSER_TEST_F(DiceBrowserTestWithChromeSigninIPH,
       GetIdentityManager()->FindExtendedAccountInfo(core_account_info);
 
   // IPH not showing yet, waiting for the name.
-  ASSERT_TRUE(account_info.given_name.empty());
+  ASSERT_FALSE(account_info.GetGivenName().has_value());
   EXPECT_FALSE(
       BrowserUserEducationInterface::From(browser())->IsFeaturePromoActive(
           feature_engagement::

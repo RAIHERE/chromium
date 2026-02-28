@@ -116,11 +116,9 @@ void LayoutInline::WillBeDestroyed() {
   if (TextAutosizer* text_autosizer = GetDocument().GetTextAutosizer())
     text_autosizer->Destroy(this);
 
-  if (!DocumentBeingDestroyed()) {
-    if (FirstInlineFragmentItemIndex()) {
-      FragmentItems::LayoutObjectWillBeDestroyed(*this);
-      ClearFirstInlineFragmentItemIndex();
-    }
+  if (FirstInlineFragmentItemIndex()) {
+    FragmentItems::LayoutObjectWillBeDestroyed(*this);
+    ClearFirstInlineFragmentItemIndex();
   }
 
   LayoutBoxModelObject::WillBeDestroyed();
@@ -183,7 +181,7 @@ void LayoutInline::StyleDidChange(
     if (!ShouldCreateBoxFragment()) {
       UpdateShouldCreateBoxFragment();
     }
-    if (diff.NeedsReshape()) {
+    if (diff.needs_reshape) {
       SetNeedsCollectInlines();
     }
   }

@@ -608,6 +608,10 @@ static Length ConvertBorderImageSliceSide(
     const CSSLengthResolver& length_resolver,
     const CSSPrimitiveValue& value) {
   if (value.IsPercentage()) {
+    if (value.HasUnresolvablePercentages()) {
+      return DynamicTo<CSSMathFunctionValue>(value)->ConvertToLength(
+          length_resolver);
+    }
     return Length::Percent(value.ComputePercentage(length_resolver));
   }
   return Length::Fixed(round(value.ComputeNumber(length_resolver)));
@@ -747,14 +751,14 @@ EAnimationTriggerBehavior CSSToStyleMap::MapAnimationTimelineTriggerBehavior(
 }
 
 std::optional<TimelineOffset>
-CSSToStyleMap::MapAnimationTimelineTriggerEntryRangeStart(
+CSSToStyleMap::MapAnimationTimelineTriggerActivationRangeStart(
     StyleResolverState& state,
     const CSSValue& value) {
   return MapAnimationRange(state, value, 0);
 }
 
 std::optional<TimelineOffset>
-CSSToStyleMap::MapAnimationTimelineTriggerEntryRangeEnd(
+CSSToStyleMap::MapAnimationTimelineTriggerActivationRangeEnd(
     StyleResolverState& state,
     const CSSValue& value) {
   return MapAnimationRange(state, value, 100);

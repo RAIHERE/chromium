@@ -81,7 +81,10 @@ class GdmRemoteDisplayManager {
   // initialization has succeeded or failed. All methods below this method must
   // be called after `callback` is called without an error.
   // `observer` must outlive `this`.
-  void Init(Observer* observer, Callback callback);
+  // `connection` must be an initialized system bus connection.
+  void Init(GDBusConnectionRef connection,
+            Observer* observer,
+            Callback callback);
 
   // Creates a new GDM remote display with the given `remote_id`. Note that
   // while `remote_id` is an object path, it is only used as a unique
@@ -111,9 +114,6 @@ class GdmRemoteDisplayManager {
       const gvariant::ObjectPath& display_path,
       gvariant::GVariantRef<"a{sa{sv}}"> interfaces_and_properties);
 
-  void OnCreateDbusConnectionResult(
-      Callback init_callback,
-      base::expected<GDBusConnectionRef, Loggable> result);
   void OnGetAllRemoteDisplaysResult(
       Callback init_callback,
       base::expected<std::tuple<gvariant::GVariantRef<"a{oa{sa{sv}}}">>,
@@ -123,7 +123,8 @@ class GdmRemoteDisplayManager {
       base::expected<std::tuple<>, Loggable> result);
   void OnInterfacesAddedInternal(
       const gvariant::ObjectPath& display_path,
-      gvariant::GVariantRef<"a{sa{sv}}"> interfaces_and_properties);
+      gvariant::GVariantRef<"a{sa{sv}}"> interfaces_and_properties,
+      bool notify_observer);
   void OnInterfacesAdded(std::tuple<gvariant::ObjectPath,
                                     gvariant::GVariantRef<"a{sa{sv}}">> args);
   void OnInterfacesRemoved(

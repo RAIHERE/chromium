@@ -8,6 +8,7 @@
 #include "chrome/browser/dom_distiller/tab_utils.h"
 #include "chrome/browser/ui/actions/chrome_action_id.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
+#include "chrome/browser/ui/read_anything/read_anything_enums.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_controller_utils.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/ui_features.h"
@@ -58,14 +59,11 @@ void ReadAnythingOmniboxController::TabWillDetach(
 }
 
 void ReadAnythingOmniboxController::OnTabForegrounded(tabs::TabInterface* tab) {
-  CheckIfShouldSuggestReadingMode();
+  DebounceCheckSuggestion();
 }
 
 void ReadAnythingOmniboxController::OnTabBackgrounded(tabs::TabInterface* tab) {
-  if (iph_response_timer_ && iph_response_timer_->IsRunning()) {
-    iph_response_timer_->Stop();
-    RecordOpenedAfterPromo();
-  }
+  StopTimers();
 }
 
 void ReadAnythingOmniboxController::Activate(
@@ -79,7 +77,12 @@ void ReadAnythingOmniboxController::Activate(
 
     if (features::IsReadAnythingOmniboxChipEnabled() &&
         base::FeatureList::IsEnabled(features::kPageActionsMigration) &&
-        open_trigger.has_value() && GetCurrentPageActionState().showing) {
+        open_trigger.has_value() &&
+        open_trigger.value() !=
+            ReadAnythingOpenTrigger::kReadAnythingTogglePresentationButton &&
+        GetCurrentPageActionState().showing) {
+      // Ignore the toggle presentation button for this metric, since that can
+      // only be used after RM is already open.
       base::UmaHistogramEnumeration(
           "Accessibility.ReadAnything.EntryPointAfterOmnibox",
           open_trigger.value());
@@ -87,15 +90,32 @@ void ReadAnythingOmniboxController::Activate(
     // Hide the omnibox entrypoint now that RM is already showing.
     read_anything::ReadAnythingEntryPointController::UpdatePageActionVisibility(
         /*should_show_page_action=*/false, tab_->GetBrowserWindowInterface());
+  } else if (!features::IsImmersiveReadAnythingEnabled()) {
+    // Show the entrypoint again once RM is closed. In immersive mode, do this
+    // in OnReadingModePresenterChanged instead since the presentation state
+    // does not change right away.
+    read_anything::ReadAnythingEntryPointController::UpdatePageActionVisibility(
+        /*should_show_page_action=*/true, tab_->GetBrowserWindowInterface());
+  }
+}
+
+void ReadAnythingOmniboxController::OnReadingModePresenterChanged() {
+  if (!features::IsImmersiveReadAnythingEnabled()) {
+    return;
+  }
+
+  auto* read_anything_controller = ReadAnythingController::From(tab_);
+  CHECK(read_anything_controller);
+  // If Reading mode was just closed, show the omnibox entrypoint.
+  if (read_anything_controller->GetPresentationState() ==
+      ReadAnythingController::PresentationState::kInactive) {
+    read_anything::ReadAnythingEntryPointController::UpdatePageActionVisibility(
+        /*should_show_page_action=*/true, tab_->GetBrowserWindowInterface());
   }
 }
 
 void ReadAnythingOmniboxController::OnDestroyed() {
-  if (iph_response_timer_ && iph_response_timer_->IsRunning()) {
-    iph_response_timer_->Stop();
-    RecordOpenedAfterPromo();
-  }
-
+  StopTimers();
   if (features::IsImmersiveReadAnythingEnabled()) {
     auto* read_anything_controller = ReadAnythingController::From(tab_);
     CHECK(read_anything_controller);
@@ -105,17 +125,28 @@ void ReadAnythingOmniboxController::OnDestroyed() {
 
 void ReadAnythingOmniboxController::PrimaryPageChanged(content::Page& page) {
   UpdateIgnored(GetCurrentPageActionState().showing);
-
-  // If the user navigated to a new page, stop any pending IPH response timer,
-  // since they are likely not interested in opening RM after seeing the IPH.
-  if (iph_response_timer_ && iph_response_timer_->IsRunning()) {
-    iph_response_timer_->Stop();
-    RecordOpenedAfterPromo();
+  if (!read_anything::ReadAnythingEntryPointController::
+          CheckIfShouldSuggestReadingModeNaive(
+              tab_->GetBrowserWindowInterface())) {
+    UpdateVisibility(false);
   }
+
+  StopTimers();
 }
 
 void ReadAnythingOmniboxController::DidStopLoading() {
-  CheckIfShouldSuggestReadingMode();
+  DebounceCheckSuggestion();
+}
+
+void ReadAnythingOmniboxController::DebounceCheckSuggestion() {
+  if (!check_suggestion_debouncer_) {
+    check_suggestion_debouncer_ = std::make_unique<base::OneShotTimer>();
+  }
+  check_suggestion_debouncer_->Start(
+      FROM_HERE, base::Seconds(kDebounceDelaySecs),
+      base::BindOnce(
+          &ReadAnythingOmniboxController::CheckIfShouldSuggestReadingMode,
+          weak_factory_.GetWeakPtr()));
 }
 
 void ReadAnythingOmniboxController::CheckIfShouldSuggestReadingMode() {
@@ -192,4 +223,16 @@ void ReadAnythingOmniboxController::RecordOpenedAfterPromo() {
       "Accessibility.ReadAnything.OpenedAfterOmniboxIPH",
       read_anything::ReadAnythingEntryPointController::IsUIShowing(
           tab_->GetBrowserWindowInterface()));
+}
+
+void ReadAnythingOmniboxController::StopTimers() {
+  if (iph_response_timer_ && iph_response_timer_->IsRunning()) {
+    iph_response_timer_->Stop();
+    // If the IPH response timer is running and is stopped early, record whether
+    // the user opened RM after seeing the IPH.
+    RecordOpenedAfterPromo();
+  }
+  if (check_suggestion_debouncer_ && check_suggestion_debouncer_->IsRunning()) {
+    check_suggestion_debouncer_->Stop();
+  }
 }

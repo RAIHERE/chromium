@@ -108,6 +108,11 @@ class ClientSideDetectionHost
     // then used to provide the intelligent scan delegate the information about
     // the page.
     virtual void GetInnerText(HostInnerTextCallback callback) = 0;
+    // Triggers Gemini Antiscam Protection if conditions are met.
+    virtual void MaybeStartGeminiAntiscamProtection(
+        GURL url,
+        ClientSideDetectionType request_type,
+        std::optional<bool> did_match_high_confidence_allowlist) = 0;
 
 #if BUILDFLAG(IS_ANDROID)
     virtual internal::ReferringAppInfo GetReferringAppInfo(
@@ -172,6 +177,12 @@ class ClientSideDetectionHost
 
   void RegisterAutofillManager();
 
+  // User requests to report a site as unsafe. The screenshot values come from
+  // the report dialog view.
+  void ReportUnsafeSite(std::optional<int> screenshot_width,
+                        std::optional<int> screenshot_height,
+                        const std::optional<std::string>& screenshot_data);
+
  protected:
   explicit ClientSideDetectionHost(
       content::WebContents* tab,
@@ -193,6 +204,7 @@ class ClientSideDetectionHost
   friend class ClientSideDetectionHostScamDetectionTest;
   friend class ClientSideDetectionHostCreditCardFormTest;
   friend class ClientSideDetectionHostClipboardDataTest;
+  friend class ClientSideDetectionHostGeminiAntiscamProtectionTest;
   class ShouldClassifyUrlRequest;
   friend class ShouldClassifyUrlRequest;
   FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostPrerenderBrowserTest,
@@ -208,6 +220,10 @@ class ClientSideDetectionHost
   FRIEND_TEST_ALL_PREFIXES(
       ClientSideDetectionHostPrerenderBrowserTest,
       CheckDebuggingMetadataCacheAfterClearingCacheAfterNavigation);
+  FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostPrerenderBrowserTest,
+                           ReportUnsafeSiteWithScreenshot);
+  FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostPrerenderBrowserTest,
+                           ReportUnsafeSiteNoScreenshot);
   FRIEND_TEST_ALL_PREFIXES(
       ClientSideDetectionHostPrerenderExclusiveAccessBrowserTest,
       KeyboardLockTriggersPreclassificationCheck);
@@ -269,12 +285,10 @@ class ClientSideDetectionHost
   FRIEND_TEST_ALL_PREFIXES(
       ClientSideDetectionHostCreditCardFormTest,
       EventDoesNotTriggerPreclassificationChecksWhenESBDisabled);
-  FRIEND_TEST_ALL_PREFIXES(
-      ClientSideDetectionHostCreditCardFormTest,
-      DoesNotStartPreclassificationOnRepeatSiteVisit);
-  FRIEND_TEST_ALL_PREFIXES(
-      ClientSideDetectionHostCreditCardFormTest,
-      DoesNotStartPreclassificationOnServerHeuristic);
+  FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostCreditCardFormTest,
+                           DoesNotStartPreclassificationOnRepeatSiteVisit);
+  FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostCreditCardFormTest,
+                           DoesNotStartPreclassificationOnServerHeuristic);
   FRIEND_TEST_ALL_PREFIXES(
       ClientSideDetectionHostCreditCardFormReferringAppTest,
       DoesNotStartPreclassificationBecauseOfReferringAppFilter);
@@ -286,6 +300,8 @@ class ClientSideDetectionHost
                            CreditCardFormClassificationTriggersCSDPing);
   FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostBrowserTest,
                            NavigateTo404PageLogsErrorDocument);
+  FRIEND_TEST_ALL_PREFIXES(ClientSideDetectionHostGeminiAntiscamProtectionTest,
+                           GeminiAntiscamProtectionServiceCalledWithInnerText);
 
   // Extracts suspicious tokens from a copied clipboard payload into a
   // structured object.
@@ -294,8 +310,6 @@ class ClientSideDetectionHost
   // data extraction. UTF16 to UTF8 conversion is already done in the renderer,
   // and the payload parsing does not involve complex grammar.
   ClipboardExtractedData ExtractClipboardData(const std::u16string& payload);
-
-  std::vector<std::string_view> GetSuspiciousTokensListForTesting();
 
   // Helper function to create preclassification check once requirements are
   // met.
@@ -506,6 +520,10 @@ class ClientSideDetectionHost
       credit_card_form::FieldDetectionHeuristic field_heuristic,
       history::VisibleVisitCountToHostResult history_result);
 
+  // Fills in the screenshot data for the given `request`. Only fill if the
+  // report type is USER_REPORT.
+  void MaybeFillScreenshotData(ClientPhishingRequest* request);
+
   // This pointer may be nullptr if client-side phishing detection is
   // disabled.
   base::WeakPtr<ClientSideDetectionService> csd_service_;
@@ -609,6 +627,12 @@ class ClientSideDetectionHost
 
   // The last text that was copied to the clipboard.
   std::u16string last_copied_text_;
+
+  // The high resolution screenshot of the current tab. These fields should only
+  // be populated when a user reports a site as unsafe.
+  std::optional<int> screenshot_width_;
+  std::optional<int> screenshot_height_;
+  std::optional<std::string> screenshot_data_;
 
   base::CancelableTaskTracker task_tracker_;
 

@@ -277,13 +277,15 @@ class TestLocationBar : public LocationBar {
   void set_omnibox_view(OmniboxViewViews* view) { omnibox_view_ = view; }
 
   // LocationBar:
-  void FocusLocation(bool select_all) override {}
+  void FocusLocation(bool select_all, bool clear_focus_if_failed) override {}
   void FocusSearch() override {}
+  void UpdateFocusBehavior(bool toolbar_visible) override {}
   void UpdateContentSettingsIcons() override {}
   void SaveStateToContents(content::WebContents* contents) override {}
   void Revert() override {}
   OmniboxView* GetOmniboxView() override { return nullptr; }
   OmniboxController* GetOmniboxController() override { return nullptr; }
+  bool ShouldCloseOmniboxPopup(ui::MouseEvent* event) override { return false; }
   ChipController* GetChipController() override { return nullptr; }
   LocationBarTesting* GetLocationBarForTesting() override { return nullptr; }
   LocationBarModel* GetLocationBarModel() override {
@@ -303,7 +305,14 @@ class TestLocationBar : public LocationBar {
     }
   }
 
+  ui::TrackedElement* GetAnchorOrNull() override { return nullptr; }
+  Browser* GetBrowser() override { return nullptr; }
+  bool IsInitialized() const override { return true; }
   bool IsVisible() const override { return true; }
+  bool IsDrawn() const override { return true; }
+  bool IsFullscreen() const override { return false; }
+  bool IsEditingOrEmpty() const override { return false; }
+  void InvalidateLayout() override {}
   gfx::Rect Bounds() const override { return gfx::Rect(); }
   gfx::Size MinimumSize() const override { return gfx::Size(); }
   gfx::Size PreferredSize() const override { return gfx::Size(); }
@@ -955,13 +964,15 @@ TEST_F(OmniboxViewViewsTest, PasteAndGoToUrlOrSearchCommand) {
 
 TEST_F(OmniboxViewViewsTest, SelectAllCommand) {
   omnibox_view()->SetUserText(u"user text");
-  EXPECT_TRUE(omnibox_view()->IsCommandIdEnabled(views::Textfield::kSelectAll));
+  EXPECT_TRUE(omnibox_view()->IsCommandIdEnabled(
+      std::to_underlying(ui::TouchEditable::MenuCommands::kSelectAll)));
 
-  omnibox_view()->ExecuteCommand(views::Textfield::kSelectAll, 0);
+  omnibox_view()->ExecuteCommand(
+      std::to_underlying(ui::TouchEditable::MenuCommands::kSelectAll), 0);
   EXPECT_TRUE(omnibox_view()->IsSelectAll());
   // Test command is disabled if text is already all selected.
-  EXPECT_FALSE(
-      omnibox_view()->IsCommandIdEnabled(views::Textfield::kSelectAll));
+  EXPECT_FALSE(omnibox_view()->IsCommandIdEnabled(
+      std::to_underlying(ui::TouchEditable::MenuCommands::kSelectAll)));
 }
 
 // Verifies |OmniboxEditModel::State::needs_revert_and_select_all|, and verifies

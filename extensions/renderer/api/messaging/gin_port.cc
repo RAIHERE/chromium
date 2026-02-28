@@ -20,6 +20,7 @@
 #include "gin/arguments.h"
 #include "gin/converter.h"
 #include "gin/object_template_builder.h"
+#include "v8/include/cppgc/persistent.h"
 #include "v8/include/v8-context.h"
 #include "v8/include/v8-cppgc.h"
 #include "v8/include/v8-object.h"
@@ -47,11 +48,11 @@ GinPort::GinPort(v8::Local<v8::Context> context,
       channel_type_(channel_type),
       event_handler_(event_handler),
       delegate_(delegate),
-      accessed_sender_(false) {
-  context_invalidation_listener_.emplace(
-      context, base::BindOnce(&GinPort::OnContextInvalidated,
-                              weak_factory_.GetWeakPtr()));
-}
+      accessed_sender_(false),
+      context_invalidation_listener_(
+          context,
+          base::BindOnce(&GinPort::OnContextInvalidated,
+                         cppgc::WeakPersistent(this))) {}
 
 GinPort::~GinPort() = default;
 
@@ -75,7 +76,7 @@ const char* GinPort::GetHumanReadableName() const {
 }
 
 void GinPort::DispatchOnMessage(v8::Local<v8::Context> context,
-                                const Message& message) {
+                                Message message) {
   DCHECK_EQ(State::kActive, state_);
 
   v8::Isolate* isolate = v8::Isolate::GetCurrent();
@@ -86,7 +87,8 @@ void GinPort::DispatchOnMessage(v8::Local<v8::Context> context,
   // hosts can send malformed messages.
   std::string error;
   v8::Local<v8::Value> parsed_message = messaging_util::MessageToV8(
-      context, message, channel_type_ == mojom::ChannelType::kNative, &error);
+      context, std::move(message), channel_type_ == mojom::ChannelType::kNative,
+      &error);
 
   v8::Local<v8::Object> self = GetWrapper(isolate).ToLocalChecked();
   v8::LocalVector<v8::Value> args(isolate, {parsed_message, self});
@@ -175,7 +177,7 @@ void GinPort::PostMessageHandler(gin::Arguments* arguments,
   }
 
   std::string error;
-  std::unique_ptr<Message> message = messaging_util::MessageFromV8(
+  std::optional<Message> message = messaging_util::MessageFromV8(
       context, v8_message, port_id_.serialization_format, &error);
   // NOTE(devlin): JS-based bindings just log to the console here and return,
   // rather than throwing an error. But it really seems like it should be an
@@ -186,7 +188,7 @@ void GinPort::PostMessageHandler(gin::Arguments* arguments,
   }
 
   if (delegate_) {
-    delegate_->PostMessageToPort(context, port_id_, std::move(message));
+    delegate_->PostMessageToPort(context, port_id_, std::move(*message));
   }
 }
 

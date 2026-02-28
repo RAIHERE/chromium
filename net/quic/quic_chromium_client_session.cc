@@ -398,7 +398,9 @@ base::DictValue NetLogQuicClientSessionParams(
     const quic::ParsedQuicVersionVector& supported_versions,
     int cert_verify_flags,
     bool require_confirmation,
-    base::span<const uint8_t> ech_config_list) {
+    base::span<const uint8_t> ech_config_list,
+    const std::vector<std::vector<uint8_t>>& server_trust_anchor_ids,
+    const quic::QuicSSLConfig& ssl_config) {
   auto dict =
       base::DictValue()
           .Set("host", session_key->server_id().host())
@@ -424,6 +426,16 @@ base::DictValue NetLogQuicClientSessionParams(
   }
   if (!ech_config_list.empty()) {
     dict.Set("ech_config_list", NetLogBinaryValue(ech_config_list));
+  }
+  if (!server_trust_anchor_ids.empty()) {
+    dict.Set("trust_anchor_ids_from_dns",
+             x509_util::TrustAnchorIDsToString(server_trust_anchor_ids));
+  }
+  if (ssl_config.trust_anchor_ids.has_value()) {
+    dict.Set(
+        "selected_trust_anchor_ids",
+        x509_util::TrustAnchorIDsToString(x509_util::ParseTlsTrustAnchorIDs(
+            base::as_byte_span(*ssl_config.trust_anchor_ids))));
   }
   net_log.source().AddToEventParameters(dict);
   return dict;
@@ -633,12 +645,6 @@ int QuicChromiumClientSession::Handle::GetSelfAddress(
 
   *address = ToIPEndPoint(session_->self_address());
   return OK;
-}
-
-void QuicChromiumClientSession::Handle::AssertIsValidFor(
-    const GURL& url) const {
-  CHECK(session_);
-  session_->AssertIsValidFor(url);
 }
 
 bool QuicChromiumClientSession::Handle::WasEverUsed() const {
@@ -1086,7 +1092,8 @@ QuicChromiumClientSession::QuicChromiumClientSession(
     return NetLogQuicClientSessionParams(
         net_log, &session_key_, connection_id(),
         connection->client_connection_id(), supported_versions(),
-        cert_verify_flags, require_confirmation_, ech_config_list_);
+        cert_verify_flags, require_confirmation_, ech_config_list_,
+        trust_anchor_ids_, GetSSLConfig());
   });
   // Associate the owned NetLog with the parent NetLog.
   net_log.AddEventReferencingSource(NetLogEventType::QUIC_SESSION_CREATED,
@@ -1863,20 +1870,6 @@ void QuicChromiumClientSession::LogZeroRttStats() {
   net_log_.AddEvent(NetLogEventType::QUIC_SESSION_ZERO_RTT_STATE, [&] {
     return base::DictValue().Set("state", ZeroRttStateToString(state));
   });
-}
-
-void QuicChromiumClientSession::AssertIsValidFor(const GURL& url) const {
-  if (allow_any_url_for_testing_) {
-    return;
-  }
-  CHECK(cert_verify_result_);
-
-  // Don't check host for HTTP schemes. Non-tunnelled HTTP requests may be sent
-  // directly to a QUIC proxy - while we currently use tunnels for that case,
-  // best not to prohibit doing so at this layer.
-  if (!url.SchemeIs(url::kHttpsScheme)) {
-    CHECK(cert_verify_result_->verified_cert->VerifyNameMatch(url.host()));
-  }
 }
 
 void QuicChromiumClientSession::OnCryptoHandshakeMessageSent(
@@ -3047,22 +3040,15 @@ static std::vector<std::vector<uint8_t>> ServerTrustAnchorIDs(SSL* ssl) {
       UNSAFE_BUFFERS(base::span(peer_trust_anchors, peer_trust_anchors_len)));
 }
 
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-//
-// LINT.IfChange(MTCResult)
-enum class MTCResult {
-  kValidMTC = 0,
-  kInvalidMTC = 1,
-  kClassicalCertExpectedMTC = 2,
-  kClassicalCertOldClient = 3,
-  kClassicalCertUnknownLandmarkDelta = 4,
-  kResumption = 5,
-  kMaxValue = kResumption,
-};
-// LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:MTCResult)
-
 constexpr uint8_t kMtcExperimentBaseId[] = {0x82, 0xda, 0x4b, 0x30, 0x07};
+
+// Generates histogram names for histograms that have variants split by
+// session resumption.
+static std::string HistogramNameForResumptionVariant(std::string_view prefix,
+                                                     bool is_resumption) {
+  return base::StrCat(
+      {prefix, is_resumption ? ".Resumption" : ".NewConnection"});
+}
 
 // Logs the Net.QuicSession.MTCResult and Net.QuicSession.MTCLandmarkDelta
 // histograms.
@@ -3126,8 +3112,7 @@ static void LogMTCCertVerifyMetrics(
   if (is_resumption) {
     result = MTCResult::kResumption;
   } else if (cert_is_mtc) {
-    if (MapCertStatusToNetError(
-            verify_details->cert_verify_result.cert_status) == OK) {
+    if (!IsCertStatusError(verify_details->cert_verify_result.cert_status)) {
       result = MTCResult::kValidMTC;
     } else {
       result = MTCResult::kInvalidMTC;
@@ -3147,9 +3132,19 @@ static void LogMTCCertVerifyMetrics(
   base::UmaHistogramSparse(
       "Net.QuicSession.CertVerificationResult.MTCAdvertised",
       -verify_details->cert_verify_net_error_for_metrics_only);
+  base::UmaHistogramSparse(
+      HistogramNameForResumptionVariant(
+          "Net.QuicSession.CertVerificationResult.MTCAdvertised",
+          is_resumption),
+      -verify_details->cert_verify_net_error_for_metrics_only);
   if (cert_is_mtc) {
     base::UmaHistogramSparse(
         "Net.QuicSession.CertVerificationResult.MTCReceived",
+        -verify_details->cert_verify_net_error_for_metrics_only);
+    base::UmaHistogramSparse(
+        HistogramNameForResumptionVariant(
+            "Net.QuicSession.CertVerificationResult.MTCReceived",
+            is_resumption),
         -verify_details->cert_verify_net_error_for_metrics_only);
   }
 }
@@ -3160,18 +3155,23 @@ void QuicChromiumClientSession::OnProofVerifyDetailsAvailable(
       reinterpret_cast<const ProofVerifyDetailsChromium*>(&verify_details);
   cert_verify_result_ = std::make_unique<CertVerifyResult>(
       verify_details_chromium->cert_verify_result);
-  logger_->OnCertificateVerified(*cert_verify_result_);
+  std::vector<std::vector<uint8_t>> server_tais =
+      ServerTrustAnchorIDs(crypto_stream_->GetSsl());
+  logger_->OnCertificateVerified(*cert_verify_result_, server_tais);
   pkp_bypassed_ = verify_details_chromium->pkp_bypassed;
   is_fatal_cert_error_ = verify_details_chromium->is_fatal_cert_error;
 
-  std::vector<std::vector<uint8_t>> server_tais =
-      ServerTrustAnchorIDs(crypto_stream_->GetSsl());
   for (const auto& id : server_tais) {
     // 44363.48.7 encoded as a relative OID
     if (x509_util::LastOidComponentFromBase(id, kMtcExperimentBaseId) !=
         std::nullopt) {
-      server_advertised_mtc_tai_ = true;
+      server_supports_mtc_tai_ = true;
     }
+  }
+  if (verify_details_chromium->cert_verify_result.verified_cert
+          ->signature_algorithm() ==
+      bssl::SignatureAlgorithm::kMtcProofDraftDavidben08) {
+    server_supports_mtc_tai_ = true;
   }
 
   bool verify_mtcs_enabled = false;
@@ -3179,14 +3179,15 @@ void QuicChromiumClientSession::OnProofVerifyDetailsAvailable(
   verify_mtcs_enabled =
       base::FeatureList::IsEnabled(net::features::kVerifyMTCs);
 #endif
-  if (server_advertised_mtc_tai_ && verify_mtcs_enabled) {
+  if (server_supports_mtc_tai_ && verify_mtcs_enabled) {
     auto client_mtc_tais =
         ssl_config_service_->GetSSLContextConfig().mtc_trust_anchor_ids;
     int64_t mtc_update_time_seconds =
         ssl_config_service_->GetSSLContextConfig().mtc_update_time_seconds;
-    LogMTCCertVerifyMetrics(
-        client_mtc_tais, server_tais, verify_details_chromium,
-        crypto_stream_->IsResumption(), mtc_update_time_seconds);
+    bool is_resumption = SSL_session_reused(crypto_stream_->GetSsl());
+    LogMTCCertVerifyMetrics(client_mtc_tais, server_tais,
+                            verify_details_chromium, is_resumption,
+                            mtc_update_time_seconds);
   }
 }
 
@@ -4000,13 +4001,23 @@ void QuicChromiumClientSession::OnCryptoHandshakeComplete() {
       connect_timing_.connect_end - connect_timing_.connect_start;
   UMA_HISTOGRAM_TIMES("Net.QuicSession.HandshakeConfirmedTime",
                       handshake_confirmed_time);
-  if (server_advertised_mtc_tai_) {
+  const bool is_resumption = SSL_session_reused(crypto_stream_->GetSsl());
+  if (server_supports_mtc_tai_) {
     UMA_HISTOGRAM_TIMES("Net.QuicSession.HandshakeConfirmedTime.MTC",
                         handshake_confirmed_time);
+    base::UmaHistogramTimes(
+        HistogramNameForResumptionVariant(
+            "Net.QuicSession.HandshakeConfirmedTime.MTC", is_resumption),
+        handshake_confirmed_time);
+
     size_t handshake_bytes = crypto_stream_->crypto_bytes_read() +
                              crypto_stream_->crypto_bytes_written();
     UMA_HISTOGRAM_COUNTS_100000("Net.QuicSession.TLSHandshakeBytes.MTC",
                                 handshake_bytes);
+    base::UmaHistogramCounts10000(
+        HistogramNameForResumptionVariant(
+            "Net.QuicSession.TLSHandshakeBytes.MTC", is_resumption),
+        handshake_bytes);
   }
 
   // Indicate that the handshake is complete so that we can safely send pings
@@ -4032,6 +4043,11 @@ void QuicChromiumClientSession::OnCryptoHandshakeComplete() {
   if (!trust_anchor_ids_.empty()) {
     base::UmaHistogramTimes(
         "Net.QuicSession.HandshakeConfirmedTime.TrustAnchorIDs",
+        handshake_confirmed_time);
+    base::UmaHistogramTimes(
+        HistogramNameForResumptionVariant(
+            "Net.QuicSession.HandshakeConfirmedTime.TrustAnchorIDs",
+            is_resumption),
         handshake_confirmed_time);
   }
 
@@ -4345,6 +4361,7 @@ QuicChromiumClientSession::CreateWebSocketQuicStreamAdapterImpl(
     WebSocketQuicStreamAdapter::Delegate* delegate) {
   DCHECK(connection()->connected());
   DCHECK(CanOpenNextOutgoingBidirectionalStream());
+  DCHECK(allow_extended_connect());
   auto websocket_quic_spdy_stream = std::make_unique<WebSocketQuicSpdyStream>(
       GetNextOutgoingBidirectionalStreamId(), this, quic::BIDIRECTIONAL);
 

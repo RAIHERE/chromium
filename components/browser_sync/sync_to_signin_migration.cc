@@ -559,6 +559,11 @@ void MaybeMigrateSyncingUserToSignedInInternal(
     blocking_operations.push_back(
         base::BindOnce(&RenameFileAndReportSuccess, from_path, to_path,
                        "Sync.SyncToSigninMigrationOutcome.PasswordsFileMove"));
+    // Mark clearing of the stats table from the newly migrated password store.
+    pref_service->SetBoolean(
+        syncer::prefs::kCleanUpStatsTableFromAccountPasswordStore, true);
+    syncer::RecordSyncToSigninMigrationStatsTableCleanupStep(
+        syncer::SyncToSigninMigrationStatsTableCleanupStep::kCleanupRequested);
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -593,7 +598,8 @@ void MaybeMigrateSyncingUserToSignedInInternal(
   if (extensions_decision == SyncToSigninMigrationDataTypeDecision::kMigrate) {
     pref_service->SetBoolean(
         syncer::prefs::internal::kMigrateExtensionsFromLocalToAccount, true);
-    // TODO(crbug.com/328400930): Add metrics to track this migration.
+    syncer::RecordSyncToSigninMigrationExtensionsStep(
+        syncer::SyncToSigninMigrationExtensionsStep::kMigrationRequested);
   }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -601,6 +607,8 @@ void MaybeMigrateSyncingUserToSignedInInternal(
   if (themes_decision == SyncToSigninMigrationDataTypeDecision::kMigrate) {
     pref_service->SetBoolean(
         syncer::prefs::internal::kMigrateThemeFromLocalToAccount, true);
+    syncer::RecordSyncToSigninMigrationThemeStep(
+        syncer::SyncToSigninMigrationThemeStep::kMigrationRequested);
   }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 

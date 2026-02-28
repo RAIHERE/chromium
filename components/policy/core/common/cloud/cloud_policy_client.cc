@@ -159,6 +159,8 @@ em::DevicePolicyRequest::Reason TranslateFetchReason(PolicyFetchReason reason) {
       return Request::UNNECESSARY_DISCONNECT;
     case PolicyFetchReason::kExtensionInstall:
       return Request::EXTENSION_INSTALL;
+    case PolicyFetchReason::kExtensionInstallInitialization:
+      return Request::EXTENSION_INSTALL_INITIALIZATION;
   }
   NOTREACHED();
 }
@@ -1205,12 +1207,11 @@ void CloudPolicyClient::UploadSecurityEvent(
       include_device_info, std::move(callback));
 }
 
+// TODO(crbug.com/478929452): Delete this method after the proto-based reporting
+// launch.
 void CloudPolicyClient::UploadSecurityEventReport(bool include_device_info,
                                                   base::DictValue report,
                                                   ResultCallback callback) {
-  DCHECK(!base::FeatureList::IsEnabled(
-      policy::kUploadRealtimeReportingEventsUsingProto));
-
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   if (!is_registered()) {

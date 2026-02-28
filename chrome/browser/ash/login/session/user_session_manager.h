@@ -61,7 +61,6 @@ class AuthenticatorBuilder;
 class LegacyTokenHandleFetcher;
 class EolNotification;
 class InputEventsBlocker;
-class U2FNotification;
 class TokenHandleService;
 
 namespace test {
@@ -137,7 +136,7 @@ class UserSessionManager
     // TODO(pmarko): Split this into multiple categories, such as kPolicy,
     // kKioskControl. Consider also adding sentinels automatically and
     // pre-filling these switches from the command-line if the chrome has been
-    // started with the --login-user flag (https://crbug.com/832857).
+    // started with the --login-user flag (https://crbug.com/276837931).
     kPolicyAndKioskControl
   };
 
@@ -294,7 +293,7 @@ class UserSessionManager
   // passed account id. For each type, only the last-set switches will be
   // honored.
   // TODO(pmarko): Introduce a CHECK making sure that `account_id` is the
-  // primary user (https://crbug.com/832857).
+  // primary user (https://crbug.com/276837931).
   void SetSwitchesForUser(const AccountId& account_id,
                           CommandLineSwitchesType switches_type,
                           const std::vector<std::string>& switches);
@@ -323,9 +322,6 @@ class UserSessionManager
   bool token_handle_backfill_tried_for_testing() {
     return token_handle_backfill_tried_for_testing_;
   }
-
-  // Shows U2F notification if necessary.
-  void MaybeShowU2FNotification();
 
   // Shows Help App release notes notification, if a notification for the help
   // app has not yet been shown in the current milestone.
@@ -361,7 +357,8 @@ class UserSessionManager
       OAuth2LoginManager::SessionRestoreState state) override;
 
   // network::NetworkConnectionTracker::NetworkConnectionObserver overrides:
-  void OnConnectionChanged(network::mojom::ConnectionType type) override;
+  void OnConnectionChanged(
+      net::NetworkChangeNotifier::ConnectionType type) override;
 
   // UserSessionManagerDelegate overrides:
   // Used when restoring user sessions after crash.
@@ -611,7 +608,10 @@ class UserSessionManager
 
   scoped_refptr<HatsNotificationController> hats_notification_controller_;
 
-  // Mapped to `chrome::AttemptRestart`, except in tests.
+  // Mapped to `session_manager::SessionManager::Get()->RequestRestart()`,
+  // except in tests.
+  // TODO(crbug.com/479113713): Now we should be able to inject the behavior
+  // at SessionManager.
   base::RepeatingClosure attempt_restart_closure_;
 
   base::flat_set<raw_ptr<Profile, CtnExperimental>>
@@ -622,8 +622,6 @@ class UserSessionManager
   std::unique_ptr<XdrManager> xdr_manager_;
 
   std::unique_ptr<ChildPolicyObserver> child_policy_observer_;
-
-  std::unique_ptr<U2FNotification> u2f_notification_;
 
   std::unique_ptr<HelpAppNotificationController>
       help_app_notification_controller_;

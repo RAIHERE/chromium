@@ -33,6 +33,7 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/sequence_checker.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
@@ -125,6 +126,7 @@
 #include "services/network/network_service_network_delegate.h"
 #include "services/network/network_service_proxy_delegate.h"
 #include "services/network/oblivious_http_request_handler.h"
+#include "services/network/pervasive_resources/shared_resource_checker.h"
 #include "services/network/prefetch_cache.h"
 #include "services/network/prefetch_matching_url_loader_factory.h"
 #include "services/network/prefetch_url_loader_client.h"
@@ -152,7 +154,6 @@
 #include "services/network/shared_dictionary/shared_dictionary_constants.h"
 #include "services/network/shared_dictionary/shared_dictionary_manager.h"
 #include "services/network/shared_dictionary/shared_dictionary_storage.h"
-#include "services/network/shared_resource_checker.h"
 #include "services/network/ssl_config_service_mojo.h"
 #include "services/network/throttling/network_conditions.h"
 #include "services/network/throttling/throttling_controller.h"
@@ -565,7 +566,7 @@ bool GetFullDataFilePath(
 // processes.
 mojom::URLLoaderFactoryParamsPtr CreateURLLoaderFactoryParamsForPrefetch() {
   auto params = mojom::URLLoaderFactoryParams::New();
-  params->process_id = OriginatingProcess::browser();
+  params->process_id = OriginatingProcessId::browser();
   // We want to be able to use TrustedParams to set the IsolationInfo for each
   // prefetch separately, so make it trusted.
   // TODO(crbug.com/342445996): Maybe stop using TrustedParams and lock this
@@ -999,7 +1000,7 @@ void NetworkContext::CreateURLLoaderFactoryForCertNetFetcher(
   // TODO(crbug.com/40695068): investigate changing these params.
   auto url_loader_factory_params = mojom::URLLoaderFactoryParams::New();
   url_loader_factory_params->is_trusted = true;
-  url_loader_factory_params->process_id = OriginatingProcess::browser();
+  url_loader_factory_params->process_id = OriginatingProcessId::browser();
   url_loader_factory_params->automatically_assign_isolation_info = true;
   url_loader_factory_params->is_orb_enabled = false;
   if (url_request_context()->bound_network() !=
@@ -1261,11 +1262,11 @@ void NetworkContext::Remove(WebTransport* transport) {
   }
 }
 
-void NetworkContext::LoaderCreated(const OriginatingProcess& process_id) {
+void NetworkContext::LoaderCreated(const OriginatingProcessId& process_id) {
   loader_count_per_process_[process_id] += 1;
 }
 
-void NetworkContext::LoaderDestroyed(const OriginatingProcess& process_id) {
+void NetworkContext::LoaderDestroyed(const OriginatingProcessId& process_id) {
   auto it = loader_count_per_process_.find(process_id);
   CHECK(it != loader_count_per_process_.end());
   it->second -= 1;
@@ -1274,7 +1275,7 @@ void NetworkContext::LoaderDestroyed(const OriginatingProcess& process_id) {
   }
 }
 
-bool NetworkContext::CanCreateLoader(const OriginatingProcess& process_id) {
+bool NetworkContext::CanCreateLoader(const OriginatingProcessId& process_id) {
   auto it = loader_count_per_process_.find(process_id);
   uint32_t count = (it == loader_count_per_process_.end() ? 0 : it->second);
   return count < max_loaders_per_process_;
@@ -1923,11 +1924,10 @@ void NetworkContext::ClearBadProxiesCache(
 void NetworkContext::CreateWebSocket(
     const GURL& url,
     const std::vector<std::string>& requested_protocols,
-    const net::SiteForCookies& site_for_cookies,
     net::StorageAccessApiStatus storage_access_api_status,
     const net::IsolationInfo& isolation_info,
     std::vector<mojom::HttpHeaderPtr> additional_headers,
-    int32_t process_id,
+    const network::OriginatingProcessId& process_id,
     const url::Origin& origin,
     network::mojom::ClientSecurityStatePtr client_security_state,
     uint32_t options,
@@ -1943,11 +1943,11 @@ void NetworkContext::CreateWebSocket(
     websocket_factory_ = std::make_unique<WebSocketFactory>(this);
   }
 
-  DCHECK_GE(process_id, 0);
+  DCHECK(process_id);
 
   websocket_factory_->CreateWebSocket(
-      url, requested_protocols, site_for_cookies, storage_access_api_status,
-      isolation_info, std::move(additional_headers), process_id, origin,
+      url, requested_protocols, storage_access_api_status, isolation_info,
+      std::move(additional_headers), process_id, origin,
       std::move(client_security_state), options,
       static_cast<net::NetworkTrafficAnnotationTag>(traffic_annotation),
       std::move(handshake_client), std::move(url_loader_network_observer),
@@ -2009,8 +2009,8 @@ void NetworkContext::ResolveHost(
   bool is_network_disallowed_for_restrictions_id =
       (optional_parameters &&
        optional_parameters->network_restrictions_id.has_value() &&
-       !IsNetworkForNonceAndUrlAllowed(
-           optional_parameters->network_restrictions_id.value(), url));
+       !IsHostResolutionForNonceAndHostAllowed(
+           optional_parameters->network_restrictions_id.value(), *host));
   if (is_network_disallowed_for_nonce ||
       is_network_disallowed_for_restrictions_id) {
     mojo::Remote<mojom::ResolveHostClient> remote_response_client(
@@ -2333,6 +2333,7 @@ void NetworkContext::PreconnectSockets(
     const GURL& original_url,
     mojom::CredentialsMode credentials_mode,
     const net::NetworkAnonymizationKey& network_anonymization_key,
+    const std::optional<base::UnguessableToken>& network_restrictions_id,
     const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
     const std::optional<net::ConnectionKeepAliveConfig>& keepalive_config,
     mojo::PendingRemote<mojom::ConnectionChangeObserverClient>
@@ -2352,6 +2353,10 @@ void NetworkContext::PreconnectSockets(
   if (network_anonymization_key.GetNonce().has_value() &&
       !IsNetworkForNonceAndUrlAllowed(
           network_anonymization_key.GetNonce().value(), url)) {
+    return;
+  }
+  if (network_restrictions_id.has_value() &&
+      !IsNetworkForNonceAndUrlAllowed(*network_restrictions_id, url)) {
     return;
   }
 
@@ -2803,17 +2808,25 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
         cache_params.type =
             net::URLRequestContextBuilder::HttpCacheParams::DISK_SIMPLE;
 
-        // We wrap `BackendFileOperations` to intercept file I/O with encryption
-        // ops.
-        if (!cache_params.file_operations_factory) {
-          // Since it's the fallback later anyways, explicitly created here to
-          // wrap.
-          cache_params.file_operations_factory =
-              base::MakeRefCounted<disk_cache::TrivialFileOperationsFactory>();
+        // For enterprise users, we wrap `BackendFileOperations` to intercept
+        // file I/O with encryption ops, and create and pass in a
+        // `CacheEncryptionDelegate` to encrypt/decrypt cache entries on disk.
+        if (params_->encryption_provider) {
+          std::unique_ptr<net::CacheEncryptionDelegate>
+              cache_encryption_delegate = std::make_unique<
+                  enterprise_encryption::OSCryptCacheEncryptionDelegate>(
+                  std::move(params_->encryption_provider));
+          if (!cache_params.file_operations_factory) {
+            // Since it's the fallback later anyways, explicitly created here to
+            // wrap. EncryptedBackendFileOperationsFactory will wrap this later
+            // when os_crypt_cache_encryption_delegate is created and
+            // initialized.
+            cache_params.file_operations_factory = base::MakeRefCounted<
+                disk_cache::TrivialFileOperationsFactory>();
+          }
+          builder.set_cache_encryption_delegate(
+              std::move(cache_encryption_delegate));
         }
-        cache_params.file_operations_factory = base::MakeRefCounted<
-            enterprise_encryption::EncryptedBackendFileOperationsFactory>(
-            std::move(cache_params.file_operations_factory));
 #else
         NOTREACHED();
 #endif  // BUILDFLAG(ENTERPRISE_CACHE_ENCRYPTION)
@@ -2827,15 +2840,6 @@ URLRequestContextOwner NetworkContext::MakeURLRequestContext(
             cache_params.app_status_listener_getter));
 #endif  // BUILDFLAG(IS_ANDROID)
     builder.EnableHttpCache(cache_params);
-
-    std::unique_ptr<net::CacheEncryptionDelegate> cache_encryption_delegate;
-    if (params_->encryption_provider) {
-      cache_encryption_delegate = std::make_unique<
-          enterprise_encryption::OSCryptCacheEncryptionDelegate>(
-          std::move(params_->encryption_provider));
-    }
-
-    builder.set_cache_encryption_delegate(std::move(cache_encryption_delegate));
   }
 
   std::unique_ptr<SSLConfigServiceMojo> ssl_config_service =
@@ -3356,7 +3360,7 @@ void NetworkContext::CreateTrustedUrlLoaderFactoryForNetworkService(
         url_loader_factory_pending_receiver) {
   auto url_loader_factory_params = mojom::URLLoaderFactoryParams::New();
   url_loader_factory_params->is_trusted = true;
-  url_loader_factory_params->process_id = OriginatingProcess::browser();
+  url_loader_factory_params->process_id = OriginatingProcessId::browser();
   CreateURLLoaderFactory(std::move(url_loader_factory_pending_receiver),
                          std::move(url_loader_factory_params));
 }
@@ -3486,15 +3490,14 @@ void NetworkContext::RevokeNetworkForNonces(
     // network revocation.
     auto& revocation_set = network_revocation_nonces_[nonce];
     for (const std::string& pattern : entry->allowlisted_patterns) {
+      // TODO(crbug.com/447954811): We can safely DCHECK here, as we've done
+      // pattern validation already while validating the header's syntax. That
+      // said, parsing the pattern twice has performance overhead, and it would
+      // be ideal to change our infrastructure to allow passing a
+      // SimpleUrlPatternMatcher directly rather than creating it anew here.
       auto matcher = url_pattern::SimpleUrlPatternMatcher::Create(
           pattern, /*base_url=*/nullptr);
-      if (!matcher.has_value()) {
-        // TODO(crbug.com/447954811): This case should result in an issue
-        // delivered to the devtools console (and ideally we'd avoid it
-        // entirely by parsing these strings as URL Patterns when initially
-        // parsing the header rather than here when enforcing it).
-        continue;
-      }
+      DCHECK(matcher.has_value());
       revocation_set.insert(std::move(matcher.value()));
     }
 
@@ -3631,12 +3634,49 @@ bool NetworkContext::IsNetworkForNonceAndUrlAllowed(
 
   // If network has been revoked for the nonce, but the url is exempted, it's
   // allowed.
-  if (network_revocation_exemptions_.contains(nonce) &&
-      network_revocation_exemptions_.find(nonce)->second.contains(
-          url.GetWithoutFilename())) {
+  if (auto it = network_revocation_exemptions_.find(nonce);
+      it != network_revocation_exemptions_.end() &&
+      it->second.contains(url.GetWithoutFilename())) {
     return true;
   }
   // The nonce was revoked and the url isn't exempted.
+  return false;
+}
+
+bool NetworkContext::IsHostResolutionForNonceAndHostAllowed(
+    const base::UnguessableToken& nonce,
+    const mojom::HostResolverHost& host) const {
+  if (!base::FeatureList::IsEnabled(network::features::kConnectionAllowlists)) {
+    return true;
+  }
+
+  auto it = network_revocation_nonces_.find(nonce);
+  if (it == network_revocation_nonces_.end()) {
+    return true;
+  }
+
+  std::string host_fragment = host.is_host_port_pair()
+                                  ? host.get_host_port_pair().host()
+                                  : host.get_scheme_host_port().host();
+  GURL synthetic_url = GURL(base::StrCat(
+      {url::kHttpsScheme, url::kStandardSchemeSeparator, host_fragment}));
+  if (!synthetic_url.is_valid()) {
+    return false;
+  }
+
+  // Per
+  // https://wicg.github.io/connection-allowlists/#abstract-opdef-match-a-host-to-a-connection-allowlist,
+  // we need to match `synthetic_url` against a host-only variant against each
+  // URLPattern corresponding to `nonce`.
+  const std::set<std::unique_ptr<url_pattern::SimpleUrlPatternMatcher>>&
+      allowlisted_patterns = it->second;
+  for (const std::unique_ptr<url_pattern::SimpleUrlPatternMatcher>& pattern :
+       allowlisted_patterns) {
+    if (pattern->HostOnlyMatch(synthetic_url)) {
+      return true;
+    }
+  }
+
   return false;
 }
 

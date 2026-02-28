@@ -197,6 +197,12 @@ def AddCommonOptions(parser):
       action='store_true',
       help='Whether to archive test output locally and generate '
            'a local results detail page.')
+  # This is being added here so that autotest.py can pass the flag without
+  # knowing if it's a robolectric test.
+  parser.add_argument(
+      '--single-variant',
+      action='store_true',
+      help='Run only a single SDK variant of Robolectric tests.')
 
   parser.add_argument('--list-tests',
                       action='store_true',
@@ -900,7 +906,6 @@ def AddJUnitTestOptions(parser):
                       help='Path to search for native libraries.')
   parser.add_argument(
       '--resource-apk',
-      required=True,
       help='Path to .ap_ containing binary resources for Robolectric.')
   parser.add_argument('--shadows-allowlist',
                       help='Path to Allowlist file for Shadows.')

@@ -17,6 +17,7 @@
 #import "ios/chrome/browser/favicon/model/ios_chrome_favicon_loader_factory.h"
 #import "ios/chrome/browser/favicon/model/ios_chrome_large_icon_service_factory.h"
 #import "ios/chrome/browser/history/model/history_service_factory.h"
+#import "ios/chrome/browser/incognito_reauth/ui_bundled/incognito_reauth_scene_agent.h"
 #import "ios/chrome/browser/intents/model/intents_constants.h"
 #import "ios/chrome/browser/intents/model/user_activity_browser_agent.h"
 #import "ios/chrome/browser/main/ui_bundled/browser_lifecycle_manager.h"
@@ -32,11 +33,15 @@
 #import "ios/chrome/browser/shared/model/browser/browser_list_factory.h"
 #import "ios/chrome/browser/shared/model/browser/test/test_browser.h"
 #import "ios/chrome/browser/shared/model/profile/test/test_profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/scene_commands.h"
+#import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/fake_authentication_service_delegate.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
 #import "ios/chrome/browser/signin/model/identity_test_environment_browser_state_adaptor.h"
 #import "ios/chrome/browser/sync/model/send_tab_to_self_sync_service_factory.h"
+#import "ios/chrome/common/ui/reauthentication/reauthentication_module.h"
 #import "ios/chrome/test/ios_chrome_scoped_testing_local_state.h"
 #import "ios/public/provider/chrome/browser/user_feedback/user_feedback_data.h"
 #import "ios/testing/scoped_block_swizzler.h"
@@ -73,10 +78,6 @@
                                     dismissOmnibox:(BOOL)dismissOmnibox
                                         completion:(ProceduralBlock)completion {
   _applicationMode = targetMode;
-}
-
-- (BOOL)URLIsOpenedInRegularMode:(const GURL&)URL {
-  return NO;
 }
 @end
 
@@ -140,11 +141,24 @@ class SceneControllerTest : public PlatformTest {
         base::MakeRefCounted<network::WeakWrapperSharedURLLoaderFactory>(
             &test_loader_factory_));
 
-    scene_controller_.browserLifecycleManager =
-        [[BrowserLifecycleManager alloc] initWithProfile:profile_.get()
-                                              sceneState:scene_state_
-                                     applicationEndpoint:nil
-                                        settingsEndpoint:nil];
+    mock_scene_handler_ = OCMProtocolMock(@protocol(SceneCommands));
+    mock_settings_handler_ = OCMProtocolMock(@protocol(SettingsCommands));
+    CommandDispatcher* dispatcher = browser_->GetCommandDispatcher();
+    [dispatcher startDispatchingToTarget:mock_scene_handler_
+                             forProtocol:@protocol(SceneCommands)];
+    [dispatcher startDispatchingToTarget:mock_settings_handler_
+                             forProtocol:@protocol(SettingsCommands)];
+
+    IncognitoReauthSceneAgent* reauth_agent = [[IncognitoReauthSceneAgent alloc]
+        initWithReauthModule:[[ReauthenticationModule alloc] init]
+                sceneHandler:mock_scene_handler_];
+    [scene_state_ addAgent:reauth_agent];
+
+    scene_controller_.browserLifecycleManager = [[BrowserLifecycleManager alloc]
+         initWithProfile:profile_.get()
+              sceneState:scene_state_
+           sceneEndpoint:mock_scene_handler_
+        settingsEndpoint:mock_settings_handler_];
     [scene_controller_
             .browserLifecycleManager createMainCoordinatorAndInterface];
 
@@ -206,6 +220,8 @@ class SceneControllerTest : public PlatformTest {
   std::unique_ptr<TestProfileIOS> profile_;
   std::unique_ptr<Browser> browser_;
   InternalFakeSceneController* scene_controller_;
+  id mock_scene_handler_;
+  id mock_settings_handler_;
   SceneState* scene_state_;
   ProfileState* profile_state_;
   id fake_scene_;
@@ -218,17 +234,6 @@ class SceneControllerTest : public PlatformTest {
 // fresh open in new window coming from ios dock. 'Dock' is considered the
 // default when the new window opening request is external to chrome and
 // unknown.
-
-// Tests that scene controller updates scene state's incognitoContentVisible
-// when the relevant scene commands is called.
-TEST_F(SceneControllerTest, UpdatesIncognitoContentVisibility) {
-  [scene_controller_ setIncognitoContentVisible:NO];
-  EXPECT_FALSE(scene_state_.incognitoState.incognitoContentVisible);
-  [scene_controller_ setIncognitoContentVisible:YES];
-  EXPECT_TRUE(scene_state_.incognitoState.incognitoContentVisible);
-  [scene_controller_ setIncognitoContentVisible:NO];
-  EXPECT_FALSE(scene_state_.incognitoState.incognitoContentVisible);
-}
 
 // Tests that scene controller correctly handles an external intent to
 // OpenIncognitoSearch.
@@ -288,80 +293,6 @@ TEST_F(SceneControllerTest, TestOpenQRScannerForShortcutItem) {
             [scene_controller_ applicationMode]);
   EXPECT_EQ(START_QR_CODE_SCANNER,
             [connection_information_ startupParameters].postOpeningAction);
-}
-
-// Tests that "Report an issue" populates user feedback data with available
-// information on the family member role for the signed-in user.
-TEST_F(SceneControllerTest, TestReportAnIssueViewControllerWithFamilyResponse) {
-  MakePrimaryAccountAvailable("foo@gmail.com");
-  SetAutomaticIssueOfAccessTokens(/*grant=*/true);
-
-  base::RunLoop run_loop;
-  UserFeedbackDataCallback completion =
-      base::BindRepeating(^(UserFeedbackData* data) {
-        EXPECT_EQ(UserFeedbackSender::ToolsMenu, data.origin);
-        EXPECT_FALSE(data.currentPageIsIncognito);
-        EXPECT_NSEQ(data.familyMemberRole, @"child");
-      }).Then(run_loop.QuitClosure());
-
-  [scene_controller_
-      presentReportAnIssueViewController:base_view_controller_
-                                  sender:UserFeedbackSender::ToolsMenu
-                        userFeedbackData:[[UserFeedbackData alloc] init]
-                                 timeout:base::Seconds(1)
-                              completion:std::move(completion)];
-
-  // Create the family members fetch response.
-  kidsmanagement::ListMembersResponse list_family_members_response;
-  supervised_user::SetFamilyMemberAttributesForTesting(
-      list_family_members_response.add_members(), kidsmanagement::CHILD, "foo");
-  test_loader_factory_.SimulateResponseForPendingRequest(
-      "https://kidsmanagement-pa.googleapis.com/kidsmanagement/v1/families/"
-      "mine/members?alt=proto&allow_empty_family=true",
-      list_family_members_response.SerializeAsString());
-
-  run_loop.Run();
-}
-
-// Tests that "Report an issue" populates user feedback data for signed-in user.
-TEST_F(SceneControllerTest, TestReportAnIssueViewControllerForSignedInUser) {
-  MakePrimaryAccountAvailable("foo@gmail.com");
-
-  base::RunLoop run_loop;
-  UserFeedbackDataCallback completion =
-      base::BindRepeating(^(UserFeedbackData* data) {
-        EXPECT_EQ(UserFeedbackSender::ToolsMenu, data.origin);
-        EXPECT_FALSE(data.currentPageIsIncognito);
-        EXPECT_EQ(nil, data.familyMemberRole);
-      }).Then(run_loop.QuitClosure());
-
-  [scene_controller_
-      presentReportAnIssueViewController:base_view_controller_
-                                  sender:UserFeedbackSender::ToolsMenu
-                        userFeedbackData:[[UserFeedbackData alloc] init]
-                                 timeout:base::Seconds(0)
-                              completion:std::move(completion)];
-  run_loop.Run();
-}
-
-// Tests that "Report an issue" populates user feedback data for signed-out
-// user.
-TEST_F(SceneControllerTest, TestReportAnIssueViewControllerForSignedOutUser) {
-  base::RunLoop run_loop;
-  UserFeedbackDataCallback completion =
-      base::BindRepeating(^(UserFeedbackData* data) {
-        EXPECT_EQ(UserFeedbackSender::ToolsMenu, data.origin);
-        EXPECT_FALSE(data.currentPageIsIncognito);
-        EXPECT_EQ(nil, data.familyMemberRole);
-      }).Then(run_loop.QuitClosure());
-
-  [scene_controller_
-      presentReportAnIssueViewController:base_view_controller_
-                                  sender:UserFeedbackSender::ToolsMenu
-                        userFeedbackData:[[UserFeedbackData alloc] init]
-                                 timeout:base::Seconds(1)
-                              completion:std::move(completion)];
-  run_loop.Run();
 }
 
 }  // namespace

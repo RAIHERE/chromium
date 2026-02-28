@@ -68,7 +68,6 @@
 #include "services/service_manager/public/cpp/interface_provider.h"
 #include "third_party/blink/public/common/associated_interfaces/associated_interface_provider.h"
 #include "third_party/blink/public/common/input/web_keyboard_event.h"
-#include "third_party/blink/public/platform/web_runtime_features_base.h"
 #include "third_party/blink/public/web/web_autofill_state.h"
 #include "third_party/blink/public/web/web_document.h"
 #include "third_party/blink/public/web/web_form_control_element.h"
@@ -338,6 +337,16 @@ AutofillAgent::Config CreateConfig(bool uses_platform_autofill) {
       AutofillAgent::UserGestureRequired(true),
       AutofillAgent::UsesKeyboardAccessoryForSuggestions(BUILDFLAG(IS_ANDROID)),
   };
+}
+
+bool ShouldTriggerAtMemorySearch(const blink::WebFormControlElement& element) {
+  if (!base::FeatureList::IsEnabled(features::kAutofillAtMemory)) {
+    return false;
+  }
+  const unsigned int sel_start = element.SelectionStart();
+  const unsigned int sel_end = element.SelectionEnd();
+  return sel_start == sel_end && sel_start >= 2 &&
+         element.EditingValue().Substring(sel_start - 2, 2).Equals("@@");
 }
 
 }  // namespace
@@ -914,6 +923,12 @@ void AutofillAgent::OnTextFieldValueChanged(
   // showing up.
   ClearPreviewedForm();
 
+  if (ShouldTriggerAtMemorySearch(element)) {
+    ShowSuggestions(element, AutofillSuggestionTriggerSource::kAtMemory,
+                    form_cache, std::nullopt);
+    return;
+  }
+
   const auto input_element = element.DynamicTo<WebInputElement>();
   if (input_element && input_element.IsTextField()) {
     password_autofill_agent_->UpdatePasswordStateForTextChange(input_element,
@@ -1082,19 +1097,23 @@ void AutofillAgent::ApplyFieldsAction(
   } else {
     was_last_action_fill_ = true;
 
-    if (blink::WebRuntimeFeaturesBase::IsAutofillEventEnabled() &&
+    if (document.IsAutofillEventEnabled() &&
         action_type == mojom::FormActionType::kFill) {
       form_util::DispatchAutofillEvent(document, fields, fill_id,
                                        supports_refill);
     }
 
-    std::vector<FieldRendererId> filled_element_ids = base::ToVector(
+    std::vector<WebFormControlElement> filled_elements = base::ToVector(
         form_util::ApplyFieldsAction(document, fields, action_type,
                                      action_persistence, field_data_manager()),
-        &std::pair<FieldRendererId, WebAutofillState>::first);
-    std::erase_if(filled_element_ids, [](FieldRendererId filled_element_id) {
-      return !form_util::GetFormControlByRendererId(filled_element_id);
-    });
+        [](const auto& p) {
+          FieldRendererId filled_element_id = p.first;
+          return form_util::GetFormControlByRendererId(filled_element_id);
+        });
+    std::erase_if(filled_elements,
+                  [](const WebFormControlElement& filled_element) {
+                    return !filled_element;
+                  });
 
     // This map contains for each filled field (returned by
     // `form_util::ApplyFieldsAction()`) the corresponding current owning form.
@@ -1103,15 +1122,12 @@ void AutofillAgent::ApplyFieldsAction(
     // function dynamic changes can occur to the DOM.
     auto filled_fields_and_forms =
         base::MakeFlatMap<FieldRendererId, FormRendererId>(
-            filled_element_ids, {},
-            [](FieldRendererId filled_element_id)
+            filled_elements, {},
+            [](const WebFormControlElement& filled_element)
                 -> std::pair<FieldRendererId, FormRendererId> {
-              WebFormControlElement element =
-                  form_util::GetFormControlByRendererId(filled_element_id);
-              CHECK(element);
-              return {filled_element_id,
+              return {form_util::GetFieldRendererId(filled_element),
                       form_util::GetFormRendererId(
-                          element.GetOwningFormForAutofill())};
+                          filled_element.GetOwningFormForAutofill())};
             });
 
     form_tracker_->TrackAutofilledElement(filled_fields_and_forms);
@@ -1515,7 +1531,10 @@ void AutofillAgent::ShowSuggestions(
         password_generation_agent_->ShowPasswordGenerationSuggestions(
             input_element, form_cache)) {
       is_popup_possibly_visible_ = true;
-      return;
+      if (!base::FeatureList::IsEnabled(
+              features::kAutofillAndroidKeyboardAccessoryDynamicPositioning)) {
+        return;
+      }
     }
     bool password_agent_handled_request = TryShowPasswordSuggestions(
         input_element, IsPasswordsAutofillManuallyTriggered(trigger_source),
@@ -2099,9 +2118,8 @@ void AutofillAgent::JavaScriptChangedValue(WebFormControlElement element,
   }
 }
 
-void AutofillAgent::TrackAutofilledElement(
-    const WebFormControlElement& element) {
-  form_tracker_->TrackAutofilledElement(element);
+void AutofillAgent::TrackAutofilledElement(FieldRendererId field_id) {
+  form_tracker_->TrackAutofilledElement(field_id);
 }
 
 void AutofillAgent::UpdateStateForTextChange(

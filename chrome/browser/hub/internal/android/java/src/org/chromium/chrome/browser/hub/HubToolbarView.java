@@ -45,7 +45,7 @@ import com.google.android.material.tabs.TabLayout.OnTabSelectedListener;
 import com.google.android.material.tabs.TabLayout.Tab;
 
 import org.chromium.base.Callback;
-import org.chromium.base.supplier.MonotonicObservableSupplier;
+import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
@@ -77,7 +77,7 @@ public class HubToolbarView extends LinearLayout {
     private boolean mManualSearchBoxAnimation;
     private final AnimationHandler mHubSearchAnimatorHandler;
     private final Handler mHandler;
-    private @Nullable MonotonicObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
+    private @Nullable NonNullObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
     private @Nullable List<FullButtonData> mCachedButtonDataList;
     private final int mSearchBoxHeightPx;
     private final boolean mIsSquishAnimationEnabled;
@@ -384,6 +384,14 @@ public class HubToolbarView extends LinearLayout {
                                     HubColors.getPaneSwitcherTabItemHoverColor(
                                             context, colorScheme),
                             color -> updateTabItemBackgroundColor(context, color)));
+
+            mixer.registerBlend(
+                    new SingleHubViewColorBlend(
+                            PANE_COLOR_BLEND_ANIMATION_DURATION_MS,
+                            colorScheme ->
+                                    HubColors.getPaneSwitcherTabItemFocusColor(
+                                            context, colorScheme),
+                            color -> updateTabItemFocusColor(context, color)));
         }
     }
 
@@ -431,6 +439,20 @@ public class HubToolbarView extends LinearLayout {
             if (tabView != null) {
                 GradientDrawable background = (GradientDrawable) tabView.getBackground();
                 background.setColor(colorStateList);
+            }
+        }
+    }
+
+    private void updateTabItemFocusColor(Context context, @ColorInt int color) {
+        ColorStateList colorStateList = HubColors.generateFocusStrokeColorStateList(color);
+        int strokeWidth =
+                context.getResources()
+                        .getDimensionPixelSize(R.dimen.hub_pane_switcher_tab_stroke_width);
+        for (int i = 0; i < mPaneSwitcher.getTabCount(); i++) {
+            View tabView = getButtonView(i);
+            if (tabView != null) {
+                GradientDrawable background = (GradientDrawable) tabView.getBackground();
+                background.setStroke(strokeWidth, colorStateList);
             }
         }
     }
@@ -643,7 +665,7 @@ public class HubToolbarView extends LinearLayout {
     }
 
     public void setXrSpaceModeObservableSupplier(
-            @Nullable MonotonicObservableSupplier<Boolean> xrSpaceModeObservableSupplier) {
+            NonNullObservableSupplier<Boolean> xrSpaceModeObservableSupplier) {
         mXrSpaceModeObservableSupplier = xrSpaceModeObservableSupplier;
         HubColors.setXrSpaceModeObservableSupplier(xrSpaceModeObservableSupplier);
     }

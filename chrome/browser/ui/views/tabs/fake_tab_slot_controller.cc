@@ -25,6 +25,10 @@ void FakeTabSlotController::ToggleTabGroupCollapsedState(
     const tab_groups::TabGroupId group,
     ToggleTabGroupCollapsedStateOrigin origin) {}
 
+int FakeTabSlotController::GetTabCount() const {
+  return tab_container_ ? tab_container_->GetTabCount() : 0;
+}
+
 bool FakeTabSlotController::IsActiveTab(const TabSlotView* tab) const {
   return active_tab_ == views::AsViewClass<Tab>(tab);
 }
@@ -130,9 +134,3 @@ TabGroup* FakeTabSlotController::GetTabGroup(
     const tab_groups::TabGroupId& group_id) const {
   return nullptr;
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-bool FakeTabSlotController::IsLockedForOnTask() {
-  return on_task_locked_;
-}
-#endif

@@ -34,12 +34,19 @@ function replyWithPostMessageAndPostReply(messageBody: object) {
   });
 }
 
-const body = document.getElementsByTagName('body')[0];
-if (body) {
-  body.appendChild(document.createTextNode('injected_script_loaded'));
+function addBodyElementOnLoad() {
+  const body = document.getElementsByTagName('body')[0];
+  if (body) {
+    body.appendChild(document.createTextNode('injected_script_loaded'));
+  }
+}
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', addBodyElementOnLoad);
+} else {
+  addBodyElementOnLoad();
 }
 
-const javaScriptFeatureTest = new CrWebApi();
+const javaScriptFeatureTest = new CrWebApi('javaScriptFeatureTest');
 
 javaScriptFeatureTest.addFunction('getErrorCount', getErrorCount);
 javaScriptFeatureTest.addFunction('replaceDivContents', replaceDivContents);
@@ -48,4 +55,4 @@ javaScriptFeatureTest.addFunction(
     'replyWithPostMessageAndPostReply', replyWithPostMessageAndPostReply);
 javaScriptFeatureTest.addProperty('errorReceivedCount', errorReceivedCount_);
 
-gCrWeb.registerApi('javaScriptFeatureTest', javaScriptFeatureTest);
+gCrWeb.registerApi(javaScriptFeatureTest);

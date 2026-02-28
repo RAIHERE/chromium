@@ -36,6 +36,7 @@
 #include "services/network/public/mojom/permissions_policy/permissions_policy_feature.mojom-blink.h"
 #include "third_party/blink/public/platform/browser_interface_broker_proxy.h"
 #include "third_party/blink/public/platform/platform.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_accuracy_mode.h"
 #include "third_party/blink/renderer/core/frame/deprecation/deprecation.h"
 #include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/frame/navigator.h"
@@ -54,6 +55,7 @@
 
 namespace blink {
 namespace {
+using AccuracyMode = V8AccuracyMode::Enum;
 
 const char kPermissionDeniedErrorMessage[] = "User denied Geolocation";
 const char kFeaturePolicyErrorMessage[] =
@@ -78,8 +80,14 @@ Geoposition* CreateGeoposition(
           ? std::make_optional(position.heading)
           : std::nullopt,
       position.speed >= 0. ? std::optional(position.speed) : std::nullopt);
+  AccuracyMode accuracy_mode = AccuracyMode::kPrecise;
+  if (RuntimeEnabledFeatures::ApproximateGeolocationWebVisibleAPIEnabled()) {
+    accuracy_mode = position.is_precise ? AccuracyMode::kPrecise
+                                        : AccuracyMode::kApproximate;
+  }
   return MakeGarbageCollected<Geoposition>(
-      coordinates, ConvertTimeToEpochTimeStamp(position.timestamp));
+      coordinates, ConvertTimeToEpochTimeStamp(position.timestamp),
+      V8AccuracyMode(accuracy_mode));
 }
 
 GeolocationPositionError* CreatePositionError(
@@ -133,6 +141,9 @@ PositionOptions* OverrideAccuracyHint(const PositionOptions* options) {
   copied_options->setTimeout(options->timeout());
   copied_options->setMaximumAge(options->maximumAge());
   copied_options->setEnableHighAccuracy(true);
+  if (RuntimeEnabledFeatures::ApproximateGeolocationWebVisibleAPIEnabled()) {
+    copied_options->setAccuracyMode(options->accuracyMode());
+  }
   return copied_options;
 }
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -414,12 +425,19 @@ bool Geolocation::DoesOwnNotifier(GeoNotifier* notifier) const {
 bool Geolocation::HaveSuitableCachedPosition(const PositionOptions* options) {
   if (!last_position_)
     return false;
-  if (!options->maximumAge())
-    return false;
   EpochTimeStamp current_time_millis =
       ConvertTimeToEpochTimeStamp(base::Time::Now());
-  return last_position_->timestamp() >
-         current_time_millis - options->maximumAge();
+  bool is_last_position_suitable =
+      options->maximumAge() &&
+      last_position_->timestamp() > current_time_millis - options->maximumAge();
+  if (!is_last_position_suitable && !watchers_->IsEmpty()) {
+    UseCounter::Count(
+        DomWindow(),
+        WebFeature::
+            kGeolocationRequestPositionWithPotentiallyUpToDateWatchedCachedPosition);
+  }
+
+  return is_last_position_suitable;
 }
 
 void Geolocation::clearWatch(int watch_id) {
@@ -692,14 +710,29 @@ void Geolocation::HandlePermissionError() {
 }
 
 void Geolocation::UpdateAccuracyHint() {
-  const bool new_enable_high_accuracy =
-      std::ranges::any_of(*one_shots_,
-                          [](const auto& notifier) {
-                            return notifier->Options()->enableHighAccuracy();
-                          }) ||
-      std::ranges::any_of(watchers_->Notifiers(), [](const auto& notifier) {
-        return notifier->Options()->enableHighAccuracy();
-      });
+  auto is_approximate = [](const auto& notifier) {
+    return notifier->Options()->accuracyMode().AsEnum() ==
+           V8AccuracyMode::Enum::kApproximate;
+  };
+
+  // AccuracyMode::kApproximate takes precedence. If any request is approximate,
+  // we must respect that constraint.
+  const bool has_approximate_request =
+      std::ranges::any_of(*one_shots_, is_approximate) ||
+      std::ranges::any_of(watchers_->Notifiers(), is_approximate);
+
+  bool new_enable_high_accuracy = false;
+  if (!has_approximate_request) {
+    auto wants_high_accuracy = [](const auto& notifier) {
+      return notifier->Options()->enableHighAccuracy();
+    };
+
+    // If there are no approximate requests, we enable high accuracy if at least
+    // one request has enableHighAccuracy is true.
+    new_enable_high_accuracy =
+        std::ranges::any_of(*one_shots_, wants_high_accuracy) ||
+        std::ranges::any_of(watchers_->Notifiers(), wants_high_accuracy);
+  }
 
   if (new_enable_high_accuracy != enable_high_accuracy_) {
     enable_high_accuracy_ = new_enable_high_accuracy;

@@ -427,14 +427,6 @@ void GpuChannelMessageFilter::CreateGpuMemoryBuffer(
     const viz::SharedImageFormat& format,
     gfx::BufferUsage buffer_usage,
     CreateGpuMemoryBufferCallback callback) {
-  if (!viz::HasEquivalentBufferFormat(format)) {
-    // Client GMB code still operates on BufferFormat so the SharedImageFormat
-    // received here must have an equivalent BufferFormat.
-    LOG(ERROR) << "Invalid format." << format.ToString();
-    std::move(callback).Run(gfx::GpuMemoryBufferHandle());
-    return;
-  }
-
   gfx::GpuMemoryBufferHandle handle;
   if (SharedImageFactory::IsNativeBufferSupported(format, buffer_usage,
                                                   gpu_extra_info_)) {
@@ -1123,18 +1115,9 @@ void GpuChannel::CacheBlob(gpu::GpuDiskCacheType type,
 }
 
 uint64_t GpuChannel::GetMemoryUsage() const {
-  // Collect the unique memory trackers in use by the |stubs_|.
-  base::flat_set<MemoryTracker*> unique_memory_trackers;
-  unique_memory_trackers.reserve(stubs_.size());
   uint64_t size = 0;
   for (const auto& kv : stubs_) {
     size += kv.second->GetMemoryTracker()->GetSize();
-    MemoryTracker* tracker = kv.second->GetContextGroupMemoryTracker();
-    if (!tracker || !unique_memory_trackers.insert(tracker).second) {
-      // We already counted that tracker.
-      continue;
-    }
-    size += tracker->GetSize();
   }
   size += shared_image_stub_->GetSize();
 

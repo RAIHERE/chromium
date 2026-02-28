@@ -86,16 +86,12 @@ export class DriveModuleElement extends DriveModuleElementBase {
 
   protected onDismissButtonClick_() {
     FileProxy.getHandler().dismissModule();
-    this.dispatchEvent(new CustomEvent('dismiss-module-instance', {
-      bubbles: true,
-      composed: true,
-      detail: {
-        message: loadTimeData.getStringF(
-            'dismissModuleToastMessage',
-            loadTimeData.getString('modulesFilesSentence')),
-        restoreCallback: () => FileProxy.getHandler().restoreModule(),
-      },
-    }));
+    this.fire('dismiss-module-instance', {
+      message: loadTimeData.getStringF(
+          'dismissModuleToastMessage',
+          loadTimeData.getString('modulesFilesSentence')),
+      restoreCallback: () => FileProxy.getHandler().restoreModule(),
+    });
   }
 
   protected onInfoButtonClick_() {
@@ -104,6 +100,12 @@ export class DriveModuleElement extends DriveModuleElementBase {
 
   protected onInfoDialogClose_() {
     this.showInfoDialog_ = false;
+  }
+}
+
+declare global {
+  interface HTMLElementTagNameMap {
+    'ntp-drive-module-redesigned': DriveModuleElement;
   }
 }
 

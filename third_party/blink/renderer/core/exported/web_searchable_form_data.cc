@@ -57,9 +57,8 @@ namespace {
 void GetFormEncoding(const HTMLFormElement& form, TextEncoding* encoding) {
   String str(form.FastGetAttribute(html_names::kAcceptCharsetAttr));
   str.Replace(',', ' ');
-  Vector<String> charsets;
-  str.Split(' ', charsets);
-  for (const String& charset : charsets) {
+  Vector<StringView> charsets = StringView(str).SplitSkippingEmpty(' ');
+  for (const auto& charset : charsets) {
     *encoding = TextEncoding(charset);
     if (encoding->IsValid())
       return;
@@ -206,7 +205,7 @@ bool BuildSearchString(const HTMLFormElement& form,
                                               FormDataEncoder::kNormalizeCRLF);
       encoded_string->push_back('=');
       if (control == text_element) {
-        encoded_string->AppendSpan(base::span_from_cstring("{searchTerms}"));
+        encoded_string->append_range(base::span_from_cstring("{searchTerms}"));
         is_element_found = true;
       } else {
         FormDataEncoder::EncodeStringAsFormData(

@@ -5,7 +5,7 @@
 import '//resources/cr_elements/cr_icon/cr_icon.js';
 import '//resources/cr_elements/cr_menu_selector/cr_menu_selector.js';
 
-import {CrRouter} from '//resources/js/cr_router.js';
+import {loadTimeData} from '//resources/js/load_time_data.js';
 import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 
 import {getCss} from './sidebar.css.js';
@@ -18,13 +18,21 @@ interface MenuItem {
 }
 
 export enum Page {
-  USER_SKILLS = 'user-skills',
-  DISCOVER_SKILLS = 'discover-skills',
+  USER_SKILLS = 'yourSkills',
+  DISCOVER_SKILLS = 'browse',
 }
 
 export class SkillsSidebarElement extends CrLitElement {
   static get is() {
     return 'skills-sidebar';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
   }
 
   static override get properties() {
@@ -33,37 +41,24 @@ export class SkillsSidebarElement extends CrLitElement {
     };
   }
 
-  // TODO(b/475607224): Instead of hardcoding, add resource strings for
-  // the name.
   readonly menuItems: MenuItem[] = [
     {
       icon: 'skills:bolt',
-      name: 'Your skills',
+      name: loadTimeData.getString('userSkillsTitle'),
       page: Page.USER_SKILLS,
     },
     {
       icon: 'skills:explore',
-      name: 'Discover skills',
+      name: loadTimeData.getString('browseSkillsTitle'),
       page: Page.DISCOVER_SKILLS,
     },
   ];
 
   protected accessor selectedPage: Page = Page.USER_SKILLS;
 
-  override render() {
-    return getHtml.bind(this)();
-  }
-
-  static override get styles() {
-    return getCss();
-  }
-
-  protected onMenuItemSelect_(e: CustomEvent<{item: HTMLAnchorElement}>): void {
+  protected onIronActivate_(e: CustomEvent<{item: HTMLAnchorElement}>): void {
     const newUrl = new URL(e.detail.item.href);
-    CrRouter.getInstance().setPath(newUrl.pathname);
-    // setPath() doesn't trigger a popstate event, so we need to dispatch a
-    // navigate-to event to update the page.
-    this.fire('navigate-to', {path: newUrl.pathname});
+    this.fire('route-click', {path: newUrl.pathname});
   }
 
   // Prevent clicks on sidebar items from navigating and reloading the page.

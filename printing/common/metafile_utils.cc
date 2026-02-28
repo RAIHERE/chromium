@@ -37,15 +37,9 @@
 #include "ui/gfx/skia_span_util.h"
 
 #if BUILDFLAG(IS_WIN)
-// XpsObjectModel.h indirectly includes <wincrypt.h> which is
-// incompatible with Chromium's OpenSSL. By including wincrypt_shim.h
-// first, problems are avoided.
-// clang-format off
-#include "base/win/wincrypt_shim.h"
+#include <objbase.h>
 
 #include <XpsObjectModel.h>
-#include <objbase.h>
-// clang-format on
 
 #include "third_party/skia/include/docs/SkXPSDocument.h"
 #include "third_party/skia/include/encode/SkPngRustEncoder.h"
@@ -86,6 +80,16 @@ sk_sp<SkPicture> GetEmptyPicture() {
   return rec.finishRecordingAsPicture();
 }
 
+void AppendCheckedStateIfTrue(const ui::AXNode* ax_node,
+                              SkPDF::StructureElementNode* tag) {
+  // Handle checked state (default "off").
+  if (ax_node->data().GetCheckedState() == ax::mojom::CheckedState::kTrue) {
+    tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
+                                chrome_pdf::kPDFPrintFieldCheckedAttribute,
+                                chrome_pdf::kPDFCheckedOnAttribute);
+  }
+}
+
 void AppendFormFieldDescFromAccessibleName(const ui::AXNode* ax_node,
                                            SkPDF::StructureElementNode* tag) {
   auto name_from = ax_node->GetNameFrom();
@@ -104,6 +108,24 @@ void AppendFormFieldDescFromAccessibleName(const ui::AXNode* ax_node,
           chrome_pdf::kPDFPrintFieldAttributeOwner,
           chrome_pdf::kPDFPrintFieldDescAttribute, SkString(name_ref));
     }
+  }
+}
+
+// Maps AX ListStyle to PDF ListNumbering attribute value.
+const char* GetListNumberingFromListStyle(ax::mojom::ListStyle list_style) {
+  switch (list_style) {
+    case ax::mojom::ListStyle::kDisc:
+      return chrome_pdf::kPDFListNumberingDisc;
+    case ax::mojom::ListStyle::kCircle:
+      return chrome_pdf::kPDFListNumberingCircle;
+    case ax::mojom::ListStyle::kSquare:
+      return chrome_pdf::kPDFListNumberingSquare;
+    case ax::mojom::ListStyle::kNumeric:
+      return chrome_pdf::kPDFListNumberingDecimal;
+    case ax::mojom::ListStyle::kImage:
+    case ax::mojom::ListStyle::kOther:
+    case ax::mojom::ListStyle::kNone:
+      return nullptr;
   }
 }
 
@@ -152,6 +174,9 @@ bool RecursiveBuildStructureTree(const ui::AXNode* ax_node,
       }
       break;
     }
+    case ax::mojom::Role::kFigcaption:
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeCaption;
+      break;
     case ax::mojom::Role::kCode:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeCode;
       break;
@@ -171,9 +196,34 @@ bool RecursiveBuildStructureTree(const ui::AXNode* ax_node,
     case ax::mojom::Role::kStrong:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeStrong;
       break;
-    case ax::mojom::Role::kList:
-      tag->fTypeString = chrome_pdf::kPDFStructureTypeList;
+    case ax::mojom::Role::kRuby:
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeRuby;
       break;
+    case ax::mojom::Role::kRubyAnnotation:
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeRubyText;
+      break;
+    case ax::mojom::Role::kList: {
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeList;
+      // Get the list style from the first list item child to determine
+      // ordered vs unordered list type for the ListNumbering attribute.
+      for (size_t i = 0; i < ax_node->GetUnignoredChildCount(); i++) {
+        const ui::AXNode* child = ax_node->GetUnignoredChildAtIndex(i);
+        if (child->GetRole() == ax::mojom::Role::kListItem) {
+          int list_style_int =
+              child->GetIntAttribute(ax::mojom::IntAttribute::kListStyle);
+          auto list_style = static_cast<ax::mojom::ListStyle>(list_style_int);
+          const char* list_numbering =
+              GetListNumberingFromListStyle(list_style);
+          if (list_numbering) {
+            tag->fAttributes.appendName(chrome_pdf::kPDFListAttributeOwner,
+                                        chrome_pdf::kPDFListNumberingAttribute,
+                                        list_numbering);
+          }
+          break;
+        }
+      }
+      break;
+    }
     case ax::mojom::Role::kListMarker:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeListItemLabel;
       break;
@@ -236,47 +286,70 @@ bool RecursiveBuildStructureTree(const ui::AXNode* ax_node,
       tag->fTypeString = chrome_pdf::kPDFStructureTypeNonStruct;
       valid = true;
       break;
-    case ax::mojom::Role::kCheckBox: {
+    case ax::mojom::Role::kCheckBox:
+    case ax::mojom::Role::kSwitch:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeForm;
       tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
                                   chrome_pdf::kPDFPrintFieldRoleAttribute,
                                   chrome_pdf::kPDFRoleCheckBoxAttribute);
 
-      // The default value of the "checked" attribute is "Off". All other
-      // CheckedStates options do not clearly apply to PDF.
-      if (ax_node->data().GetCheckedState() == ax::mojom::CheckedState::kTrue) {
-        tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
-                                    chrome_pdf::kPDFPrintFieldCheckedAttribute,
-                                    chrome_pdf::kPDFCheckedOnAttribute);
-      }
+      AppendCheckedStateIfTrue(ax_node, tag);
 
-      // Add Desc attribute from accessible name.
       AppendFormFieldDescFromAccessibleName(ax_node, tag);
 
       // In case someone is printing to PDF a web page that is 100% checkboxes
       // (no kStaticText nodes), the PDF should still be tagged.
       valid = true;
       break;
-    }
-    case ax::mojom::Role::kRadioButton: {
+    case ax::mojom::Role::kRadioButton:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeForm;
       tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
                                   chrome_pdf::kPDFPrintFieldRoleAttribute,
                                   chrome_pdf::kPDFRoleRadioButtonAttribute);
 
-      // Handle checked state (default "off").
-      if (ax_node->data().GetCheckedState() == ax::mojom::CheckedState::kTrue) {
-        tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
-                                    chrome_pdf::kPDFPrintFieldCheckedAttribute,
-                                    chrome_pdf::kPDFCheckedOnAttribute);
-      }
+      AppendCheckedStateIfTrue(ax_node, tag);
 
-      // Add Desc attribute from accessible name.
       AppendFormFieldDescFromAccessibleName(ax_node, tag);
 
       valid = true;
       break;
-    }
+    case ax::mojom::Role::kToggleButton:
+      // Toggle button has pressed state (aria-pressed) mapped to checked.
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeForm;
+      tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
+                                  chrome_pdf::kPDFPrintFieldRoleAttribute,
+                                  chrome_pdf::kPDFRolePushButtonAttribute);
+
+      AppendCheckedStateIfTrue(ax_node, tag);
+
+      AppendFormFieldDescFromAccessibleName(ax_node, tag);
+
+      valid = true;
+      break;
+    case ax::mojom::Role::kButton:
+    case ax::mojom::Role::kPopUpButton:
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeForm;
+      tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
+                                  chrome_pdf::kPDFPrintFieldRoleAttribute,
+                                  chrome_pdf::kPDFRolePushButtonAttribute);
+
+      AppendFormFieldDescFromAccessibleName(ax_node, tag);
+
+      valid = true;
+      break;
+    case ax::mojom::Role::kTextField:
+    case ax::mojom::Role::kTextFieldWithComboBox:
+    case ax::mojom::Role::kSearchBox:
+    case ax::mojom::Role::kSpinButton:
+      tag->fTypeString = chrome_pdf::kPDFStructureTypeForm;
+      tag->fAttributes.appendName(chrome_pdf::kPDFPrintFieldAttributeOwner,
+                                  chrome_pdf::kPDFPrintFieldRoleAttribute,
+                                  chrome_pdf::kPDFRoleTextValueAttribute);
+
+      AppendFormFieldDescFromAccessibleName(ax_node, tag);
+
+      valid = true;
+      break;
     default:
       tag->fTypeString = chrome_pdf::kPDFStructureTypeNonStruct;
       break;

@@ -96,21 +96,6 @@ bool DeviceHasEnoughMemoryForPrerender() {
   return base::SysInfo::AmountOfPhysicalMemory().InMiB() > memory_threshold_mb;
 }
 
-base::MemoryPressureLevel GetCurrentMemoryPressureLevel() {
-  // Ignore the memory pressure event if the memory control is disabled.
-  if (!base::FeatureList::IsEnabled(
-          blink::features::kPrerender2MemoryControls)) {
-    return base::MEMORY_PRESSURE_LEVEL_NONE;
-  }
-
-  auto* monitor = base::MemoryPressureMonitor::Get();
-  if (!monitor) {
-    return base::MEMORY_PRESSURE_LEVEL_NONE;
-  }
-  return monitor->GetCurrentPressureLevel(
-      base::MemoryPressureMonitorTag::kPrerenderHostRegistry);
-}
-
 // Create a resource request for `back_url` that only checks whether the
 // resource is in the HTTP cache.
 std::unique_ptr<network::SimpleURLLoader> CreateHttpCacheQueryingResourceLoad(
@@ -1320,17 +1305,6 @@ void PrerenderHostRegistry::OnActivationFinished(
 }
 
 PrerenderHost* PrerenderHostRegistry::FindNonReservedHostById(
-    FrameTreeNodeId frame_tree_node_id) {
-  auto* frame_tree_node = FrameTreeNode::GloballyFindByID(frame_tree_node_id);
-  if (!frame_tree_node) {
-    return nullptr;
-  }
-  PrerenderHostId prerender_host_id =
-      frame_tree_node->frame_tree().delegate()->GetPrerenderHostId();
-  return FindNonReservedHostById(prerender_host_id);
-}
-
-PrerenderHost* PrerenderHostRegistry::FindNonReservedHostById(
     PrerenderHostId prerender_host_id) {
   auto id_iter = prerender_host_by_id_.find(prerender_host_id);
   if (id_iter == prerender_host_by_id_.end()) {
@@ -1992,6 +1966,17 @@ PrerenderHostRegistry::GetTimerTaskRunner() {
   return timer_task_runner_for_testing_
              ? timer_task_runner_for_testing_
              : base::SingleThreadTaskRunner::GetCurrentDefault();
+}
+
+base::MemoryPressureLevel
+PrerenderHostRegistry::GetCurrentMemoryPressureLevel() {
+  // Ignore the memory pressure event if the memory control is disabled.
+  if (!base::FeatureList::IsEnabled(
+          blink::features::kPrerender2MemoryControls)) {
+    return base::MEMORY_PRESSURE_LEVEL_NONE;
+  }
+
+  return memory_pressure_level();
 }
 
 void PrerenderHostRegistry::SetTaskRunnerForTesting(

@@ -121,13 +121,13 @@ const auto kHeaderPrefixesToIgnoreAfterRevalidation =
 
 inline bool ShouldUpdateHeaderAfterRevalidation(const AtomicString& header) {
   for (const auto* header_to_ignore : kHeadersToIgnoreAfterRevalidation) {
-    if (EqualIgnoringASCIICase(header, header_to_ignore)) {
+    if (EqualIgnoringAsciiCase(header, header_to_ignore)) {
       return false;
     }
   }
   for (const auto* header_prefix_to_ignore :
        kHeaderPrefixesToIgnoreAfterRevalidation) {
-    if (header.StartsWithIgnoringASCIICase(header_prefix_to_ignore)) {
+    if (header.StartsWithIgnoringAsciiCase(header_prefix_to_ignore)) {
       return false;
     }
   }
@@ -923,8 +923,8 @@ void Resource::OnMemoryDump(WebMemoryDumpLevelOfDetail level_of_detail,
   if (level_of_detail == WebMemoryDumpLevelOfDetail::kDetailed) {
     String url_to_report = Url().GetString();
     if (url_to_report.length() > kMaxURLReportLength) {
-      url_to_report.Truncate(kMaxURLReportLength);
-      url_to_report = StrCat({url_to_report, "..."});
+      url_to_report =
+          StrCat({StringView(url_to_report, 0, kMaxURLReportLength), "..."});
     }
     dump->AddString("url", "", url_to_report);
 

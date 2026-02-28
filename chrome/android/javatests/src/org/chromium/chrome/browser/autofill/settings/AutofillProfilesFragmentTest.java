@@ -27,6 +27,9 @@ import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.atLeastOnce;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import android.app.Activity;
@@ -36,11 +39,14 @@ import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.view.KeyEvent;
+import android.view.View;
 import android.widget.EditText;
 import android.widget.TextView;
 
 import androidx.annotation.LayoutRes;
-import androidx.appcompat.app.AlertDialog;
+import androidx.preference.Preference;
+import androidx.preference.PreferenceCategory;
+import androidx.preference.PreferenceScreen;
 import androidx.test.espresso.intent.Intents;
 import androidx.test.espresso.matcher.ViewMatchers.Visibility;
 import androidx.test.filters.MediumTest;
@@ -53,6 +59,7 @@ import org.junit.ClassRule;
 import org.junit.Rule;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
@@ -70,7 +77,11 @@ import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.autofill.AndroidAutofillAvailabilityStatus;
 import org.chromium.chrome.browser.autofill.AutofillClientProviderUtils;
 import org.chromium.chrome.browser.autofill.AutofillTestHelper;
-import org.chromium.chrome.browser.autofill.editors.EditorDialogView;
+import org.chromium.chrome.browser.autofill.autofill_ai.EntityDataManager;
+import org.chromium.chrome.browser.autofill.autofill_ai.EntityDataManager.EntityDataManagerObserver;
+import org.chromium.chrome.browser.autofill.autofill_ai.EntityDataManagerFactory;
+import org.chromium.chrome.browser.autofill.editors.address.AddressEditorMediator;
+import org.chromium.chrome.browser.autofill.editors.address.EditorDialogView;
 import org.chromium.chrome.browser.autofill.options.AutofillOptionsFragment;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.flags.ChromeSwitches;
@@ -83,6 +94,9 @@ import org.chromium.chrome.test.R;
 import org.chromium.components.autofill.AutofillProfile;
 import org.chromium.components.autofill.FieldType;
 import org.chromium.components.autofill.RecordType;
+import org.chromium.components.autofill.autofill_ai.EntityInstance;
+import org.chromium.components.autofill.autofill_ai.EntityInstanceWithLabels;
+import org.chromium.components.autofill.autofill_ai.utils.TestUtils;
 import org.chromium.components.browser_ui.settings.CardWithButtonPreference;
 import org.chromium.components.browser_ui.settings.ChromeSwitchPreference;
 import org.chromium.components.signin.base.AccountInfo;
@@ -92,7 +106,12 @@ import org.chromium.components.signin.test.util.TestAccounts;
 import org.chromium.components.sync.SyncService;
 import org.chromium.components.sync.UserSelectableType;
 import org.chromium.ui.KeyboardVisibilityDelegate;
+import org.chromium.ui.modaldialog.ModalDialogManager;
+import org.chromium.ui.modaldialog.ModalDialogProperties;
+import org.chromium.ui.modelutil.PropertyModel;
 
+import java.time.LocalDate;
+import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -188,11 +207,15 @@ public class AutofillProfilesFragmentTest {
     @Mock private IdentityServicesProvider mIdentityServicesProvider;
     @Mock private IdentityManager mIdentityManagerMock;
     @Mock private SyncService mSyncService;
+    private static EntityDataManager sEntityDataManager;
 
     private final AutofillTestHelper mHelper = new AutofillTestHelper();
 
     @BeforeClass
     public static void setUpClass() {
+        sEntityDataManager = mock(EntityDataManager.class);
+        when(sEntityDataManager.getEntitiesWithLabels()).thenReturn(Collections.emptyList());
+        EntityDataManagerFactory.setInstanceForTesting(sEntityDataManager);
         sSettingsActivityTestRule.startSettingsActivity();
     }
 
@@ -462,11 +485,11 @@ public class AutofillProfilesFragmentTest {
         HistogramWatcher deletionCanceledHistogramWatcher =
                 HistogramWatcher.newBuilder()
                         .expectBooleanRecordTimes(
-                                EditorDialogView.PROFILE_DELETED_HISTOGRAM,
+                                AddressEditorMediator.PROFILE_DELETED_HISTOGRAM,
                                 /* value= */ false,
                                 /* times= */ 1)
                         .expectBooleanRecordTimes(
-                                EditorDialogView.PROFILE_DELETED_SETTINGS_HISTOGRAM,
+                                AddressEditorMediator.PROFILE_DELETED_SETTINGS_HISTOGRAM,
                                 /* value= */ false,
                                 /* times= */ 1)
                         .build();
@@ -476,9 +499,11 @@ public class AutofillProfilesFragmentTest {
         rule.clickInEditorAndWaitForConfirmationDialog(R.id.delete_menu_id);
 
         // Verify the confirmation message is correct.
-        AlertDialog confirmationDialog = editorDialog.getConfirmationDialogForTest();
-        assertNotNull(confirmationDialog);
-        TextView messageView = confirmationDialog.findViewById(R.id.confirmation_dialog_message);
+        ModalDialogManager dialogManager = editorDialog.getModalDialogManagerForTest();
+        assertNotNull(dialogManager);
+        PropertyModel propertyModel = dialogManager.getCurrentPresenterForTest().getDialogModel();
+        View dialogView = propertyModel.get(ModalDialogProperties.CUSTOM_VIEW);
+        TextView messageView = dialogView.findViewById(R.id.description_text_view);
         assertEquals(expectedConfirmationMessage, messageView.getText().toString());
 
         // Click cancel and ensure we return to the editor, then the main list.
@@ -496,11 +521,11 @@ public class AutofillProfilesFragmentTest {
         HistogramWatcher deletionConfirmedHistogramWatcher =
                 HistogramWatcher.newBuilder()
                         .expectBooleanRecordTimes(
-                                EditorDialogView.PROFILE_DELETED_HISTOGRAM,
+                                AddressEditorMediator.PROFILE_DELETED_HISTOGRAM,
                                 /* value= */ true,
                                 /* times= */ 1)
                         .expectBooleanRecordTimes(
-                                EditorDialogView.PROFILE_DELETED_SETTINGS_HISTOGRAM,
+                                AddressEditorMediator.PROFILE_DELETED_SETTINGS_HISTOGRAM,
                                 /* value= */ true,
                                 /* times= */ 1)
                         .build();
@@ -521,7 +546,7 @@ public class AutofillProfilesFragmentTest {
     @Feature({"Preferences"})
     public void testDeleteLocalProfile() throws Exception {
         Context context = sSettingsActivityTestRule.getFragment().getContext();
-        setUpMockSyncService(false, new HashSet());
+        setUpMockSyncService(new HashSet());
         testDeleteProfile(
                 "Seb Doe",
                 7 /* toggle + add button + 4 profiles + plus address entry */,
@@ -533,7 +558,7 @@ public class AutofillProfilesFragmentTest {
     @Feature({"Preferences"})
     public void testDeleteSyncableProfile() throws Exception {
         Context context = sSettingsActivityTestRule.getFragment().getContext();
-        setUpMockSyncService(true, Collections.singleton(UserSelectableType.AUTOFILL));
+        setUpMockSyncService(Collections.singleton(UserSelectableType.AUTOFILL));
         testDeleteProfile(
                 "Seb Doe",
                 7 /* toggle + add button + 4 profiles + plus address entry */,
@@ -858,7 +883,7 @@ public class AutofillProfilesFragmentTest {
         when(IdentityServicesProvider.get().getIdentityManager(any()))
                 .thenReturn(mIdentityManagerMock);
         when(mIdentityManagerMock.hasPrimaryAccount(ConsentLevel.SIGNIN)).thenReturn(false);
-        setUpMockSyncService(false, new HashSet<>());
+        setUpMockSyncService(new HashSet<>());
 
         verifyAddressProfileIcons(/* expectedLocalIconLayout= */ 0);
     }
@@ -868,7 +893,7 @@ public class AutofillProfilesFragmentTest {
     @Feature({"Preferences"})
     public void testLocalProfiles_NoSync() throws Exception {
         setUpMockPrimaryAccount(TestAccounts.ACCOUNT1);
-        setUpMockSyncService(false, new HashSet<>());
+        setUpMockSyncService(new HashSet<>());
 
         verifyAddressProfileIcons(R.layout.autofill_settings_local_profile_icon);
     }
@@ -878,7 +903,7 @@ public class AutofillProfilesFragmentTest {
     @Feature({"Preferences"})
     public void testDisplayedProfileIcons_AddressesNotSynced() throws Exception {
         setUpMockPrimaryAccount(TestAccounts.ACCOUNT1);
-        setUpMockSyncService(true, new HashSet<>());
+        setUpMockSyncService(new HashSet<>());
 
         verifyAddressProfileIcons(R.layout.autofill_settings_local_profile_icon);
     }
@@ -888,7 +913,7 @@ public class AutofillProfilesFragmentTest {
     @Feature({"Preferences"})
     public void testDisplayedProfileIcons_AddressesSynced() throws Exception {
         setUpMockPrimaryAccount(TestAccounts.ACCOUNT1);
-        setUpMockSyncService(true, Collections.singleton(UserSelectableType.AUTOFILL));
+        setUpMockSyncService(Collections.singleton(UserSelectableType.AUTOFILL));
 
         verifyAddressProfileIcons(/* expectedLocalIconLayout= */ 0);
     }
@@ -897,7 +922,7 @@ public class AutofillProfilesFragmentTest {
     @MediumTest
     public void testSettingsState_thirdPartyMode() throws Exception {
         setUpMockPrimaryAccount(TestAccounts.ACCOUNT1);
-        setUpMockSyncService(true, Collections.singleton(UserSelectableType.AUTOFILL));
+        setUpMockSyncService(Collections.singleton(UserSelectableType.AUTOFILL));
 
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
@@ -968,16 +993,16 @@ public class AutofillProfilesFragmentTest {
         // Trigger address profile list rebuild.
         mHelper.setProfile(sAccountProfile);
 
-        CardWithButtonPreference disabled_settings_info_pref =
+        CardWithButtonPreference disabledSettingsInfoPref =
                 autofillProfileFragment.findPreference(
                         AutofillProfilesFragment.DISABLED_SETTINGS_INFO);
-        assertNotNull(disabled_settings_info_pref);
+        assertNotNull(disabledSettingsInfoPref);
         onView(allOf(withId(R.id.icon), isDescendantOfA(withId(R.id.card_layout))))
                 .check(matches(isDisplayed()));
-        String title = disabled_settings_info_pref.getTitle().toString();
+        String title = disabledSettingsInfoPref.getTitle().toString();
         assertThat(title)
                 .isEqualTo(context.getString(R.string.autofill_disable_settings_explanation_title));
-        String summary = disabled_settings_info_pref.getSummary().toString();
+        String summary = disabledSettingsInfoPref.getSummary().toString();
         assertThat(summary)
                 .isEqualTo(context.getString(R.string.autofill_disable_settings_explanation));
 
@@ -991,6 +1016,158 @@ public class AutofillProfilesFragmentTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     sSettingsActivityTestRule.getActivity().onBackPressed();
+                });
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"Preferences"})
+    public void testAutofillAiEntities_renderedCorrectly() throws Exception {
+        EntityInstanceWithLabels entity1 =
+                new EntityInstanceWithLabels(
+                        "guid1",
+                        /* entityInstanceLabel= */ "Vehicle",
+                        /* entityInstanceSubLabel= */ "Mercedez",
+                        /* storedInWallet= */ false);
+
+        EntityInstanceWithLabels entity2 =
+                new EntityInstanceWithLabels(
+                        "guid2",
+                        /*entityName*/ "Passport",
+                        /* entityInstanceSubLabel= */ "Germany",
+                        /* storedInWallet= */ false);
+
+        when(sEntityDataManager.getEntitiesWithLabels())
+                .thenReturn(Arrays.asList(entity1, entity2));
+        EntityDataManagerFactory.setInstanceForTesting(sEntityDataManager);
+
+        // Trigger a rebuild of the profile list to pick up the new mock entities.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> sSettingsActivityTestRule.getFragment().onPersonalDataChanged());
+
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    AutofillProfilesFragment fragment = sSettingsActivityTestRule.getFragment();
+                    Preference vehicleCategory = fragment.findPreference("Vehicle");
+                    Criteria.checkThat(
+                            "Vehicle entity category should exist",
+                            vehicleCategory,
+                            Matchers.notNullValue());
+                    Preference vehicleEntity = fragment.findPreference("guid1");
+                    Criteria.checkThat(
+                            "Vehicle entity should exist", vehicleEntity, Matchers.notNullValue());
+                    Criteria.checkThat(
+                            "Vehicle summary should match",
+                            vehicleEntity.getSummary(),
+                            Matchers.is("Mercedez"));
+
+                    Preference passportCategory = fragment.findPreference("Passport");
+                    Criteria.checkThat(
+                            "Passport entity category should exist",
+                            passportCategory,
+                            Matchers.notNullValue());
+                    Preference passportEntity = fragment.findPreference("guid2");
+                    Criteria.checkThat(
+                            "Passport entity should exist",
+                            passportEntity,
+                            Matchers.notNullValue());
+                    Criteria.checkThat(
+                            "Passport summary should match",
+                            passportEntity.getSummary(),
+                            Matchers.is("Germany"));
+
+                    PreferenceScreen screen = fragment.getPreferenceScreen();
+                    int categoryCount = 0;
+                    for (int i = 0; i < screen.getPreferenceCount(); i++) {
+                        if (screen.getPreference(i) instanceof PreferenceCategory) {
+                            categoryCount++;
+                        }
+                    }
+                    Criteria.checkThat(
+                            "Entities category count should be 2", categoryCount, Matchers.is(2));
+                });
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"Preferences"})
+    public void testAutofillAiEntities_opensEditorOnClick() throws Exception {
+        EntityInstanceWithLabels entity1 =
+                new EntityInstanceWithLabels(
+                        "guid1",
+                        /* entityInstanceLabel= */ "Vehicle",
+                        /* entityInstanceSubLabel= */ "Mercedez",
+                        /* storedInWallet= */ false);
+
+        when(sEntityDataManager.getEntitiesWithLabels()).thenReturn(Arrays.asList(entity1));
+
+        EntityInstance entityInstance =
+                new EntityInstance.Builder(TestUtils.getVehicleEntityType())
+                        .setGUID("guid1")
+                        .setRecordType(
+                                org.chromium.components.autofill.autofill_ai.RecordType.LOCAL)
+                        .setModifiedDate(LocalDate.of(2026, 2, 12))
+                        .setUseCount(0)
+                        .build();
+
+        when(sEntityDataManager.getEntityInstance("guid1")).thenReturn(entityInstance);
+        EntityDataManagerFactory.setInstanceForTesting(sEntityDataManager);
+
+        // Trigger a rebuild of the profile list to pick up the new mock entities.
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> sSettingsActivityTestRule.getFragment().onPersonalDataChanged());
+
+        Preference vehicleEntity =
+                ThreadUtils.runOnUiThreadBlocking(
+                        () -> sSettingsActivityTestRule.getFragment().findPreference("guid1"));
+        ThreadUtils.runOnUiThreadBlocking(vehicleEntity::performClick);
+
+        onView(withText("Edit Vehicle")).check(matches(isDisplayed()));
+    }
+
+    @Test
+    @MediumTest
+    @Feature({"Preferences"})
+    public void testAutofillAiEntities_rebuildsOnEntityChange() throws Exception {
+        EntityInstanceWithLabels entity1 =
+                new EntityInstanceWithLabels(
+                        "guid1",
+                        /* entityInstanceLabel= */ "Vehicle",
+                        /* entityInstanceSubLabel= */ "Mercedez",
+                        /* storedInWallet= */ false);
+
+        when(sEntityDataManager.getEntitiesWithLabels()).thenReturn(Arrays.asList(entity1));
+        EntityDataManagerFactory.setInstanceForTesting(sEntityDataManager);
+
+        // Capture the observer registered by the fragment.
+        ArgumentCaptor<EntityDataManagerObserver> captor =
+                ArgumentCaptor.forClass(EntityDataManagerObserver.class);
+        verify(sEntityDataManager, atLeastOnce()).registerDataObserver(captor.capture());
+        EntityDataManagerObserver observer = captor.getValue();
+
+        // Initially check that the entity is rendered.
+        ThreadUtils.runOnUiThreadBlocking(() -> observer.onEntityInstancesChanged());
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    Preference vehicleEntity =
+                            sSettingsActivityTestRule.getFragment().findPreference("guid1");
+                    Criteria.checkThat(
+                            "Vehicle entity should exist", vehicleEntity, Matchers.notNullValue());
+                });
+
+        // Change the entities and notify the observer.
+        when(sEntityDataManager.getEntitiesWithLabels()).thenReturn(Collections.emptyList());
+        ThreadUtils.runOnUiThreadBlocking(() -> observer.onEntityInstancesChanged());
+
+        // Verify that the entity is gone.
+        CriteriaHelper.pollUiThread(
+                () -> {
+                    Preference vehicleEntity =
+                            sSettingsActivityTestRule.getFragment().findPreference("guid1");
+                    Criteria.checkThat(
+                            "Vehicle entity should no longer exist",
+                            vehicleEntity,
+                            Matchers.nullValue());
                 });
     }
 
@@ -1052,10 +1229,9 @@ public class AutofillProfilesFragmentTest {
         when(mIdentityManagerMock.hasPrimaryAccount(ConsentLevel.SIGNIN)).thenReturn(true);
     }
 
-    private void setUpMockSyncService(boolean enabled, Set<Integer> selectedTypes) {
+    private void setUpMockSyncService(Set<Integer> selectedTypes) {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> SyncServiceFactory.setInstanceForTesting(mSyncService));
-        when(mSyncService.isSyncFeatureEnabled()).thenReturn(enabled);
         when(mSyncService.getSelectedTypes()).thenReturn(selectedTypes);
     }
 }

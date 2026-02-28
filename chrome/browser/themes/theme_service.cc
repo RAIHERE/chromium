@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include "base/auto_reset.h"
 #include "base/command_line.h"
@@ -272,11 +273,11 @@ void ThemeService::RegisterProfilePrefs(
                                 SK_ColorTRANSPARENT);
   registry->RegisterIntegerPref(
       prefs::kDeprecatedBrowserColorSchemeDoNotUse,
-      static_cast<int>(ThemeService::BrowserColorScheme::kSystem),
+      std::to_underlying(ThemeService::BrowserColorScheme::kSystem),
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
   registry->RegisterIntegerPref(
       prefs::kBrowserColorScheme,
-      static_cast<int>(ThemeService::BrowserColorScheme::kSystem));
+      std::to_underlying(ThemeService::BrowserColorScheme::kSystem));
   registry->RegisterIntegerPref(
       prefs::kDeprecatedUserColorDoNotUse, SK_ColorTRANSPARENT,
       user_prefs::PrefRegistrySyncable::SYNCABLE_PREF);
@@ -1086,7 +1087,7 @@ bool ThemeService::DisableExtension(const std::string& extension_id) {
     // Do not disable the previous theme if it is already uninstalled. Sending
     // |ThemeServiceObserver::OnThemeChanged()| causes the previous theme to be
     // uninstalled when the notification causes the remaining infobar to close
-    // and does not open any new infobars. See crbug.com/468280.
+    // and does not open any new infobars. See crbug.com/41163322.
     extensions::ExtensionRegistrar::Get(profile_)->DisableExtension(
         extension_id, {extensions::disable_reason::DISABLE_USER_ACTION});
     return true;

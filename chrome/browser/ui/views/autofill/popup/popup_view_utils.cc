@@ -547,6 +547,8 @@ bool IsExpandableSuggestionType(SuggestionType type) {
     case SuggestionType::kInsecureContextPaymentDisabledMessage:
     case SuggestionType::kManageAddress:
     case SuggestionType::kManageAutofillAi:
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+    case SuggestionType::kManageAutofillAiTravel:
     case SuggestionType::kManageCreditCard:
     case SuggestionType::kManageIban:
     case SuggestionType::kManageLoyaltyCard:
@@ -566,7 +568,10 @@ bool IsExpandableSuggestionType(SuggestionType type) {
     case SuggestionType::kWebauthnCredential:
     case SuggestionType::kWebauthnSignInWithAnotherDevice:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kAtMemorySearchResult:
     case SuggestionType::kOneTimePasswordEntry:
+    case SuggestionType::kLoadingThrobber:
+    case SuggestionType::kBnplFootnote:
       return false;
   }
 }

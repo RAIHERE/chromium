@@ -30,8 +30,8 @@ if (is_win) {
     sources = [
       "callback_work_item.cc",
       "callback_work_item.h",
-      "conditional_work_item_list.cc",
-      "conditional_work_item_list.h",
+      "conditional_work_item.cc",
+      "conditional_work_item.h",
       "copy_tree_work_item.cc",
       "copy_tree_work_item.h",
       "create_dir_work_item.cc",
@@ -265,6 +265,16 @@ source_set("constants") {
 }
 
 if (is_win) {
+  source_set("isolation_support") {
+    public = [ "isolation_support.h" ]
+    sources = [ "isolation_support.cc" ]
+
+    deps = [
+      "//base",
+      "//chrome/install_static:install_static_util",
+    ]
+  }
+
   source_set("did_run_support") {
     public = [ "update_did_run_state.h" ]
 
@@ -319,7 +329,7 @@ if (is_win) {
       "auto_launch_util_unittest.cc",
       "beacons_unittest.cc",
       "callback_work_item_unittest.cc",
-      "conditional_work_item_list_unittest.cc",
+      "conditional_work_item_unittest.cc",
       "copy_tree_work_item_unittest.cc",
       "create_dir_work_item_unittest.cc",
       "create_reg_key_work_item_unittest.cc",
@@ -335,6 +345,7 @@ if (is_win) {
       "initial_preferences_unittest.cc",
       "install_util_unittest.cc",
       "installation_state_unittest.cc",
+      "isolation_support_unittest.cc",
       "l10n_string_util_unittest.cc",
       "logging_installer_unittest.cc",
       "lzma_util_unittest.cc",
@@ -358,6 +369,7 @@ if (is_win) {
     ]
 
     deps = [
+      ":isolation_support",
       ":test_support",
       ":with_rc_strings",
       "//base",

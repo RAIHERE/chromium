@@ -165,37 +165,43 @@ class ReusingTextShaper final {
   const ShapeResult* Shape(const InlineItem& start_item,
                            const Font& font,
                            unsigned end_offset) {
-    auto ShapeFunc = [&]() -> const ShapeResult* {
+    auto ShapeFunc = [&]() -> ShaperResult {
       return ShapeWithoutCache(start_item, font, end_offset);
     };
     if (allow_shape_cache_) {
       return font.PrimaryFont()->GetShapeCache().GetOrCreate(
           shaper_.GetText(), start_item.Direction(), ShapeFunc);
     }
-    return ShapeFunc();
+    return ShapeFunc().shape_result;
   }
 
  private:
-  const ShapeResult* ShapeWithoutCache(const InlineItem& start_item,
-                                       const Font& font,
-                                       unsigned end_offset) {
+  ShaperResult ShapeWithoutCache(const InlineItem& start_item,
+                                 const Font& font,
+                                 unsigned end_offset) {
     const unsigned start_offset = start_item.StartOffset();
     DCHECK_LT(start_offset, end_offset);
 
-    if (!reusable_items_)
-      return Reshape(start_item, font, start_offset, end_offset);
+    if (!reusable_items_) {
+      return {Reshape(start_item, font, start_offset, end_offset),
+              /*can_cache=*/true};
+    }
 
     // TODO(yosin): We should support segment text
-    if (data_.segments)
-      return Reshape(start_item, font, start_offset, end_offset);
+    if (data_.segments) {
+      return {Reshape(start_item, font, start_offset, end_offset),
+              /*can_cache=*/true};
+    }
 
     HeapVector<Member<const ShapeResult>> reusable_shape_results =
         CollectReusableShapeResults(start_offset, end_offset, font,
                                     start_item.Direction());
     ClearCollectionScope clear_scope(&reusable_shape_results);
 
-    if (reusable_shape_results.empty())
-      return Reshape(start_item, font, start_offset, end_offset);
+    if (reusable_shape_results.empty()) {
+      return {Reshape(start_item, font, start_offset, end_offset),
+              /*can_cache=*/true};
+    }
 
     ShapeResult* shape_result =
         ShapeResult::CreateEmpty(*reusable_shape_results.front());
@@ -219,13 +225,20 @@ class ReusingTextShaper final {
           offset, std::min(reusable_shape_result->EndIndex(), end_offset),
           shape_result);
       offset = shape_result->EndIndex();
-      if (offset == end_offset)
-        return shape_result;
+      if (offset == end_offset) {
+        break;
+      }
     }
-    DCHECK_LT(offset, end_offset);
-    AppendShapeResult(*Reshape(start_item, font, offset, end_offset),
-                      shape_result);
-    return shape_result;
+
+    if (offset < end_offset) {
+      AppendShapeResult(*Reshape(start_item, font, offset, end_offset),
+                        shape_result);
+    }
+
+    // Don't allow this shape-result to be inserted into the cache. It's
+    // created from previous shape-results and as such may differ from a
+    // shape-result created without previous shape-results.
+    return {shape_result, /*can_cache=*/false};
   }
 
   void AppendShapeResult(const ShapeResult& shape_result, ShapeResult* target) {
@@ -388,7 +401,7 @@ void CollectInlinesInternal(ItemsBuilder* builder,
         return;
 
       builder->ClearInlineFragment(node);
-    } else if (node->IsAtomicInlineLevel()) {
+    } else if (node->IsAtomicInline()) {
       if (node->IsLayoutOutsideListMarker()) {
         // LayoutListItem produces the 'outside' list marker as an inline
         // block. This is an out-of-flow item whose position is computed
@@ -1453,9 +1466,6 @@ bool InlineNode::IsNGShapeCacheAllowed(const String& text_content,
   // loop below. Finally, check that the font meet requirements on the font
   // family list to avoid expensive hash key calculations.
   if (items.size() != 1) {
-    return false;
-  }
-  if (text_content.length() > NGShapeCache::kMaxTextLengthOfEntries) {
     return false;
   }
   const InlineItem& single_item = *items[0];

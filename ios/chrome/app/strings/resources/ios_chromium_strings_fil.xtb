@@ -7,11 +7,13 @@
 <translation id="1091252999271033193">Nangangahulugan itong hihilingin ng Chromium ang pang-mobile na site sa lahat ng pagkakataon.</translation>
 <translation id="1115463765356382667">Kumpletuhin ang mga iminumungkahing pagkilos na ito sa ibaba para masulit ang Chromium.</translation>
 <translation id="1185134272377778587">Tungkol sa Chromium</translation>
+<translation id="119044033865561140">Buksan kaagad ang Chromium kapag ginagamit mo ang iPad mo</translation>
 <translation id="1211450393895337634">Mas mabilis na buksan ang Chromium kapag handa ka nang mag-browse sa iyong iPad.</translation>
 <translation id="1229234641991056119">Gamitin sa Chromium ang iyong mga password, history, mga bookmark, at mga credit card sa Safari</translation>
 <translation id="1257458525759135959">Para makapag-save ng mga larawan, mag-tap sa Mga Setting para payagan ang Chromium na magdagdag sa iyong mga larawan</translation>
 <translation id="1260702988262336471">Buksan ang menu ng Chromium</translation>
 <translation id="12739128458173458">Para maipadala ang tab na ito sa ibang device, mag-sign in sa Chromium sa parehong device.</translation>
+<translation id="1279797561821266129">Mas mabilis na i-access ang Chromium mula sa iyong dock</translation>
 <translation id="1361748954329991663">Luma na ang Chromium. Kung walang available na update sa <ph name="BEGIN_LINK" />App Store<ph name="END_LINK" />, posibleng hindi na sinusuportahan ng iyong device ang mga bagong bersyon ng Chromium.</translation>
 <translation id="1383876407941801731">Hanapin</translation>
 <translation id="1423007117030725713">Magsimula ng paghahanap sa isang bagong tab sa Chromium.</translation>
@@ -87,6 +89,7 @@ Subukang maghintay nang ilang minuto bago mag-sign out. Kung magsa-sign out ka n
 <translation id="2517624234762908348">I-sync ang iyong data ng Chromium</translation>
 <translation id="2575968074225731646">Mas mabilis na i-access ang Chromium mula sa Dock ng iyong iPhone.</translation>
 <translation id="2592940277904433508">Ipagpatuloy ang paggamit ng Chromium</translation>
+<translation id="2601766165676560303">Tema ng Chromium para sa iPhone at iPad</translation>
 <translation id="2607609479243848905">Kung nakalimutan mo ang iyong passphrase o gusto mong baguhin ang setting na ito, <ph name="BEGIN_LINK" />i-delete ang data sa Chromium sa iyong account<ph name="END_LINK" />.</translation>
 <translation id="2640367368802736659">Tip sa Chromium: Hanapin ang nakikita mo gamit ang Google Lens</translation>
 <translation id="2650312721222849884">Para makita ang iyong mga tab sa kahit saan ka man gumagamit ng Chromium, i-on ang pag-sync</translation>
@@ -132,7 +135,6 @@ Subukang maghintay nang ilang minuto bago lumipat ng account. Kung lilipat ka ng
 <translation id="3728124580182886854">I-link ang Chromium at iba pang serbisyo ng Google para sa pag-personalize at iba pang layunin</translation>
 <translation id="377649297473651452">Naka-expand na view ng Autofill ng Chromium</translation>
 <translation id="3780779443901618967">Babalaan ka tungkol sa mga mapanganib na site, kahit iyong mga hindi alam ng Google noon, sa pamamagitan ng pagsusuri sa higit pang data mula sa mga site kaysa sa karaniwang proteksyon. Puwede mong piliing laktawan ang mga babala ng Chromium.</translation>
-<translation id="3793136096560888222">Mag-edit ng larawan gamit ang Gemini sa Chromium</translation>
 <translation id="3805899903892079518">Walang access ang Chromium sa mga larawan o video mo. I-enable ang access sa Mga Setting ng iOS &gt; Privacy &gt; Mga Larawan.</translation>
 <translation id="3816686541346279443">Mag-aalok ang Chromium na i-save ang iyong password.</translation>
 <translation id="3827545470516145620">Mayroon kang standard na proteksyon sa seguridad sa device na ito</translation>
@@ -177,6 +179,7 @@ Para baguhin ang setting na ito, <ph name="BEGIN_LINK" />i-delete ang data sa Ch
 <translation id="4790638144988730920">Patuloy na gamitin ang data sa Chromium sa iyong Google Account.</translation>
 <translation id="4828317641996116749">Hindi masuri ng Chromium ang lahat ng password. Subukan ulit sa ibang pagkakataon.</translation>
 <translation id="4856138222358683580">Mga aksyon sa Chromium</translation>
+<translation id="4869706986935301458">Buksan kaagad ang Chromium kapag ginagamit mo ang iPhone mo</translation>
 <translation id="4904452304169763785">Mga alerto sa anumang isyu sa privacy o seguridad na dine-detect ng Chromium para sa iyo.</translation>
 <translation id="4908570938463711775">Alamin ang mga kapaki-pakinabang na pangunahing kaalaman sa Chromium para makapagsimula ka</translation>
 <translation id="4962295957157529683">Tapusin ang ginagawa mo sa iyong iba pang nakabukas na window ng Chromium.</translation>
@@ -296,6 +299,7 @@ Ang taong may passphrase mo lang ang makakapagbasa ng iyong naka-encrypt na data
 <translation id="7395825497086981028">Ise-save ang iyong password sa Password Manager para sa <ph name="EMAIL" />.</translation>
 <translation id="7434848749522628428">Ise-save ang passkey na ito sa Password Manager para sa <ph name="USER_EMAIL" /></translation>
 <translation id="7504829997542308412">Buksan ang Chromium</translation>
+<translation id="7507535968973352823">Ilagay ang Chromium sa ibabang bahagi para ma-access ito anumang oras</translation>
 <translation id="7531461704633548377">Mula sa Chromium</translation>
 <translation id="7554983317097061001">Tip sa Chromium: Ilipat ang Chromium sa dock</translation>
 <translation id="7576863740961052505">Pamahalaan ang mga setting ng Chromium</translation>
@@ -371,4 +375,5 @@ Subukang maghintay nang ilang minuto bago mag-sign out. Kung magsa-sign out ka n
 <translation id="924957577793602335">Gawing iyo ang Chromium</translation>
 <translation id="981812233959540767">Laruin ang Dino Game ng Chromium</translation>
 <translation id="985602178874221306">Ang Mga May-akda ng Chromium</translation>
+<translation id="986520777495807752">Itakda ang Chromium bilang default</translation>
 </translationbundle>

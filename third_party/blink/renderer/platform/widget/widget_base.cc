@@ -691,6 +691,10 @@ void WidgetBase::OnCommitRequested() {
   client_->OnCommitRequested();
 }
 
+void WidgetBase::WillBeginImplCommit() {
+  client_->WillBeginImplCommit();
+}
+
 void WidgetBase::DidBeginMainFrame() {
   UpdateTextInputState();
   client_->DidBeginMainFrame();
@@ -1920,6 +1924,13 @@ bool WidgetBase::AreMainFramesPausedOrDeferred() const {
   cc::LayerTreeHost* host = LayerTreeHost();
   CHECK(host);
   return host->MainFrameUpdatesAreDeferred() || host->IsRenderingPaused();
+}
+
+void WidgetBase::RequestEfficientScheduling(
+    const bool prefer_efficient_scheduling) const {
+  if (LayerTreeHost()) [[likely]] {
+    LayerTreeHost()->RequestEfficientScheduling(prefer_efficient_scheduling);
+  }
 }
 
 }  // namespace blink

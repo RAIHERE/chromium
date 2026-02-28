@@ -13,16 +13,18 @@ import androidx.annotation.VisibleForTesting;
 import androidx.core.graphics.Insets;
 import androidx.core.view.WindowInsetsCompat;
 
+import org.chromium.base.Log;
 import org.chromium.base.ObserverList;
 import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.base.supplier.OneshotSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider;
 import org.chromium.chrome.browser.layouts.LayoutType;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationConfigManager;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils;
-import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundImageType;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
 import org.chromium.chrome.browser.ntp_customization.theme.chrome_colors.NtpThemeColorInfo;
 import org.chromium.chrome.browser.ntp_customization.theme.upload_image.BackgroundImageInfo;
 import org.chromium.chrome.browser.tab.EmptyTabObserver;
@@ -36,6 +38,7 @@ import org.chromium.ui.insets.InsetObserver;
 @NullMarked
 /** Class to consume top Insets to make supported native page (NTP) truly edge to edge. */
 public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, TopInsetProvider {
+    private static final String TAG = "TopInset";
     private final ObserverList<Observer> mObservers = new ObserverList<>();
     private final NullableObservableSupplier<Tab> mTabSupplier;
     private final TabObserver mTabObserver;
@@ -44,6 +47,7 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
     private final InsetObserver.WindowInsetsConsumer mWindowInsetsConsumer;
     private final OneshotSupplier<LayoutStateProvider> mLayoutStateProviderSupplier;
     private final NtpCustomizationConfigManager.HomepageStateListener mHomepageStateListener;
+    private final boolean mEnableLogs;
 
     private Insets mSystemInsets = Insets.NONE;
     private int mAppliedTopPadding;
@@ -78,6 +82,7 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
         mInsetObserver = insetObserver;
         mTabSupplier = tabSupplier;
         mLayoutStateProviderSupplier = layoutStateProviderSupplier;
+        mEnableLogs = ChromeFeatureList.sNewTabPageCustomizationV2EnableLogs.getValue();
 
         // Observing the events when 1) a Tab shows its native page or 2) a native page
         // navigates to a URL for web page. This observer is only added when needed.
@@ -112,14 +117,16 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
                         } else {
                             mIsTabSwitcherShowing = false;
                         }
+                    }
 
-                        // When GTS is hiding, ToolbarPositionController updates the position of
-                        // toolbar in #onFinishedShowing() of the next layout. Therefore, calling
-                        // retriggerOnApplyWindowInsets() to apply the top insets if the transition
-                        // happens from GTS to a NTP. This can't be handled in #onTabSwitched()
-                        // which happens before the ToolbarPositionController updates the Toolbar's
-                        // position.
-                        if (mInTabSwitcherToNtpTransition && layoutType == LayoutType.BROWSING) {
+                    @Override
+                    public void onFinishedHiding(int layoutType) {
+                        // When GTS is hiding, calling retriggerOnApplyWindowInsets() to apply the
+                        // top insets if the transition happens from GTS to a NTP. This can't be
+                        // handled in #onTabSwitched() which happens before the
+                        // ToolbarPositionController updates the Toolbar's position.
+                        if (mInTabSwitcherToNtpTransition
+                                && layoutType == LayoutType.TAB_SWITCHER) {
                             mInTabSwitcherToNtpTransition = false;
                             mInsetObserver.retriggerOnApplyWindowInsets();
                         }
@@ -134,10 +141,10 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
                     @Override
                     public void onBackgroundImageChanged(
                             Bitmap originalBitmap,
-                            @Nullable BackgroundImageInfo backgroundImageInfo,
+                            BackgroundImageInfo backgroundImageInfo,
                             boolean fromInitialization,
-                            @NtpBackgroundImageType int oldType,
-                            @NtpBackgroundImageType int newType) {
+                            @NtpBackgroundType int oldType,
+                            @NtpBackgroundType int newType) {
                         onNtpBackgroundChanged(fromInitialization, oldType, newType);
                     }
 
@@ -146,19 +153,14 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
                             @Nullable NtpThemeColorInfo ntpThemeColorInfo,
                             @ColorInt int backgroundColor,
                             boolean fromInitialization,
-                            @NtpBackgroundImageType int oldType,
-                            @NtpBackgroundImageType int newType) {
+                            @NtpBackgroundType int oldType,
+                            @NtpBackgroundType int newType) {
                         onNtpBackgroundChanged(fromInitialization, oldType, newType);
                     }
 
                     @Override
-                    public void onBackgroundReset(@NtpBackgroundImageType int oldType) {
+                    public void onBackgroundReset(@NtpBackgroundType int oldType) {
                         onNtpBackgroundReset(oldType);
-                    }
-
-                    @Override
-                    public void refreshWindowInsets(boolean consumeTopInset) {
-                        TopInsetCoordinator.this.refreshWindowInsets(consumeTopInset);
                     }
                 };
         NtpCustomizationConfigManager.getInstance()
@@ -177,7 +179,6 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
         // We shouldn't use mTrackingTab, which can be set to null in removeObservers(), and it
         // won't be updated if mTabSupplierObserver is removed.
         Tab currentTab = mTabSupplier.get();
-        if (currentTab == null) return windowInsetsCompat;
 
         mSystemInsets = windowInsetsCompat.getInsets(WindowInsetsCompat.Type.systemBars());
 
@@ -186,6 +187,14 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
         // is called to change the top padding of EdgeToEdgeLayout.
         mConsumeTopInset = NtpCustomizationUtils.supportsEnableEdgeToEdgeOnTop(currentTab);
         computeEdgePaddings();
+        if (mEnableLogs) {
+            Log.i(
+                    TAG,
+                    "TopInsetCoordinator %s consume top padding, and the top padding added to the"
+                            + " parent layout will be: %d.",
+                    (mConsumeTopInset ? "will" : "will not"),
+                    mAppliedTopPadding);
+        }
         notifyObservers();
 
         if (!mConsumeTopInset) return windowInsetsCompat;
@@ -264,6 +273,13 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
             shouldReTriggerOnApplyWindowInsets = true;
         }
 
+        if (mEnableLogs) {
+            Log.i(
+                    TAG,
+                    "onTabSwitched %s trigger OnApplyWindowInsets with current Tab %s a NTP.",
+                    (shouldReTriggerOnApplyWindowInsets ? "will" : "will not"),
+                    isRegularNtp ? "is" : "isn't");
+        }
         if (shouldReTriggerOnApplyWindowInsets) {
             mInsetObserver.retriggerOnApplyWindowInsets();
         }
@@ -271,7 +287,12 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
 
     private void notifyObservers() {
         for (var observer : mObservers) {
-            observer.onToEdgeChange(mSystemInsets.top, mConsumeTopInset);
+            observer.onToEdgeChange(
+                    mSystemInsets.top,
+                    mConsumeTopInset,
+                    mLayoutStateProvider != null
+                            ? mLayoutStateProvider.getActiveLayoutType()
+                            : LayoutType.NONE);
         }
     }
 
@@ -289,12 +310,12 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
     @VisibleForTesting
     void onNtpBackgroundChanged(
             boolean fromInitialization,
-            @NtpBackgroundImageType int oldType,
-            @NtpBackgroundImageType int newType) {
+            @NtpBackgroundType int oldType,
+            @NtpBackgroundType int newType) {
         if (oldType == newType) return;
 
         boolean shouldRefreshWindowInsets = false;
-        if (oldType == NtpBackgroundImageType.DEFAULT) {
+        if (oldType == NtpBackgroundType.DEFAULT) {
             addObservers();
             shouldRefreshWindowInsets = true;
         }
@@ -305,17 +326,11 @@ public class TopInsetCoordinator implements InsetObserver.WindowInsetsConsumer, 
     }
 
     @VisibleForTesting
-    void onNtpBackgroundReset(@NtpBackgroundImageType int oldType) {
-        if (oldType == NtpBackgroundImageType.DEFAULT) return;
+    void onNtpBackgroundReset(@NtpBackgroundType int oldType) {
+        if (oldType == NtpBackgroundType.DEFAULT) return;
 
         removeObservers();
         refreshWindowInsets(/* consumeTopInset= */ false);
-    }
-
-    /** Returns the system's top inset. */
-    @Override
-    public int getSystemTopInset() {
-        return mSystemInsets.top;
     }
 
     // Adds observers which track Tab and Layout transitions and are only needed when the customized

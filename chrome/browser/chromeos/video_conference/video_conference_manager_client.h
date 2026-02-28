@@ -8,6 +8,7 @@
 #include <map>
 #include <utility>
 
+#include "ash/system/video_conference/video_conference_common.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/unguessable_token.h"
@@ -32,7 +33,7 @@ struct VideoConferencePermissions;
 //    2. Allowing the manager to query the client and perform actions by
 //       implementing the VideoConferenceManagerClient crosapi interface.
 class VideoConferenceManagerClientImpl
-    : public crosapi::mojom::VideoConferenceManagerClient {
+    : public ash::VideoConferenceManagerClient {
  public:
   // The passed `video_conference_manager_ash` must outlive this instance.
   explicit VideoConferenceManagerClientImpl(
@@ -60,25 +61,22 @@ class VideoConferenceManagerClientImpl
 
   // Notifies VCManager of media device usage while the device is system
   // disabled.
-  void HandleDeviceUsedWhileDisabled(
-      crosapi::mojom::VideoConferenceMediaDevice device,
-      const std::u16string& app_name);
+  void HandleDeviceUsedWhileDisabled(ash::VideoConferenceMediaDevice device,
+                                     const std::u16string& app_name);
 
-  // crosapi::mojom::VideoConferenceManagerClient overrides
+  // ash::VideoConferenceManagerClient overrides
   void GetMediaApps(GetMediaAppsCallback callback) override;
   void ReturnToApp(const base::UnguessableToken& id,
                    ReturnToAppCallback callback) override;
   void SetSystemMediaDeviceStatus(
-      crosapi::mojom::VideoConferenceMediaDevice device,
-      bool disabled,
+      ash::VideoConferenceMediaDevice device,
+      bool enabled,
       SetSystemMediaDeviceStatusCallback callback) override;
-  void StopAllScreenShare() override;
 
  protected:
   // Sends VcManager the updated `VideoConferenceMediaUsageStatus`. Can be
   // overridden by test clients.
-  virtual void NotifyManager(
-      crosapi::mojom::VideoConferenceMediaUsageStatusPtr status);
+  virtual void NotifyManager(ash::VideoConferenceMediaUsageStatus status);
 
  private:
   friend class FakeVideoConferenceManagerClient;
@@ -89,14 +87,14 @@ class VideoConferenceManagerClientImpl
 
   // Sends a new client update to the VC Manager. Uses mojo for lacros-chrome
   // clients.
-  void SendClientUpdate(crosapi::mojom::VideoConferenceClientUpdatePtr update);
+  void SendClientUpdate(ash::VideoConferenceClientUpdate update);
 
   // Unique id associated with this client. It is used by the VcManager to
   // identify clients.
   const base::UnguessableToken client_id_;
 
   // Previous status
-  crosapi::mojom::VideoConferenceMediaUsageStatusPtr status_;
+  ash::VideoConferenceMediaUsageStatus status_;
 
   std::unique_ptr<VideoConferenceMediaListener> media_listener_;
 

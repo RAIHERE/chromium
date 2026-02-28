@@ -5,6 +5,7 @@
 #include "third_party/blink/renderer/core/paint/compositing/compositing_reason_finder.h"
 
 #include "third_party/blink/renderer/core/css/css_property_names.h"
+#include "third_party/blink/renderer/core/css/properties/css_bitset.h"
 #include "third_party/blink/renderer/core/dom/document.h"
 #include "third_party/blink/renderer/core/dom/node.h"
 #include "third_party/blink/renderer/core/frame/local_frame.h"
@@ -92,6 +93,15 @@ CompositingReasons CompositingReasonsForWillChange(const ComputedStyle& style) {
   }
   if (style.HasWillChangeMixBlendModeHint()) {
     reasons |= CompositingReason::kWillChangeMixBlendMode;
+  }
+  // Even though 'mask' generally implies mask-image, will-change treats them
+  // separately, so we need to check them both to get accurate backdrop filter
+  // reasons.
+  if (style.HasWillChangeMaskHint()) {
+    reasons |= CompositingReason::kWillChangeMask;
+  }
+  if (style.HasWillChangeMaskImageHint()) {
+    reasons |= CompositingReason::kWillChangeMaskImage;
   }
 
   // kWillChangeOther is needed only when none of the explicit kWillChange*
@@ -277,10 +287,9 @@ CompositingReasons CompositingReasonsForScrollDependentPosition(
   // position elements are composited under overflow: hidden, which can still
   // have smooth scroll animations.
   if (const auto* constraints = layer.GetLayoutObject().StickyConstraints()) {
-    if (!constraints->is_fixed_to_view &&
-        constraints->containing_scroll_container_layer->GetScrollableArea()
-            ->HasOverflow())
+    if (constraints->HasScrollDependentOffset()) {
       reasons |= CompositingReason::kStickyPosition;
+    }
   }
 
   return reasons;
@@ -331,20 +340,30 @@ bool IsEligibleForElementCapture(const LayoutObject& object) {
 CompositingReasons CompositingReasonFinder::DirectReasonsForPaintProperties(
     const LayoutObject& object,
     const LayoutObject* container_for_fixed_position) {
-  if (object.GetDocument().Printing())
+  if (object.GetDocument().Printing()) {
     return CompositingReason::kNone;
+  }
+
+  CompositingReasons reasons = CompositingReason::kNone;
 
   auto* element = DynamicTo<Element>(object.GetNode());
-  if (element && RuntimeEnabledFeatures::CanvasDrawElementEnabled()) {
-    if (auto* canvas = DynamicTo<HTMLCanvasElement>(
-            element->ParentOrShadowHostNode())) [[unlikely]] {
-      if (canvas->layoutSubtree()) {
-        return CompositingReason::kCanvasChild;
+  if (element && IsA<LayoutBox>(object) &&
+      RuntimeEnabledFeatures::CanvasDrawElementEnabled()) {
+    if (element->IsInCanvasSubtree()) [[unlikely]] {
+      auto* canvas_parent =
+          DynamicTo<HTMLCanvasElement>(element->parentElement());
+      if (canvas_parent && canvas_parent->layoutSubtree() &&
+          !canvas_parent->IsInCanvasSubtree()) {
+        reasons |= CompositingReason::kCanvasChild;
+      } else {
+        // Disable compositing for elements in canvas subtrees other than the
+        // direct children of the outermost canvas element.
+        return CompositingReason::kNone;
       }
     }
   }
 
-  auto reasons = CompositingReasonsFor3DSceneLeaf(object);
+  reasons |= CompositingReasonsFor3DSceneLeaf(object);
 
   if (object.CanHaveAdditionalCompositingReasons())
     reasons |= object.AdditionalCompositingReasons();
@@ -491,8 +510,19 @@ CompositingReasons CompositingReasonFinder::CompositingReasonsForAnimation(
   if (style.HasCurrentTranslateAnimation() &&
       ObjectTypeSupportsCompositedTransformAnimation(object))
     reasons |= CompositingReason::kActiveTranslateAnimation;
-  if (style.HasCurrentOpacityAnimation())
-    reasons |= CompositingReason::kActiveOpacityAnimation;
+  // Opacity needs an additional check that the base value for opacity is not
+  // marked as important. The compositor does not know about the effect
+  // of an important property on composite ordering, and it is unsafe to use
+  // the fast path even when updating opacity from main. Other properties do not
+  // require the same added safeguard since they don't have the same fast path
+  // mechanics for deferred updates from main.
+  if (style.HasCurrentOpacityAnimation()) {
+    const CSSBitset* important_properties = style.GetBaseImportantSet();
+    if (!important_properties ||
+        !important_properties->Has(CSSPropertyID::kOpacity)) {
+      reasons |= CompositingReason::kActiveOpacityAnimation;
+    }
+  }
   if (style.HasCurrentFilterAnimation())
     reasons |= CompositingReason::kActiveFilterAnimation;
   if (style.HasCurrentBackdropFilterAnimation())

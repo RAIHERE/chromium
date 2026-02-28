@@ -168,7 +168,9 @@ enum class PixFlowExitedReason {
   kCctWithGboardAsDefaultIme = 18,
   // Pix code was static and not supported.
   kStaticCode = 19,
-  kMaxValue = kStaticCode
+  // Pix code was copied within an iframe whose URL is not in the allowlist.
+  kIframeUrlNotAllowlisted = 20,
+  kMaxValue = kIframeUrlNotAllowlisted
 };
 // LINT.ThenChange(/tools/metrics/histograms/metadata/facilitated_payments/enums.xml:FacilitatedPayments.PixFlowExitedReason)
 
@@ -230,9 +232,12 @@ enum class PixCodeValidationResult {
 // Converts `PaymentLinkValidator::Scheme` to a string for logging.
 std::string SchemeToString(PaymentLinkValidator::Scheme scheme);
 
-// Log when a Pix code is copied to the clippboard on an allowlisted merchant
+// Log when a Pix code is copied to the clippboard on any merchant
 // website.
 void LogPixCodeCopied(ukm::SourceId ukm_source_id);
+
+// Log that a Pix code is copied to the clipboard within any iframe.
+void LogPixCodeCopiedInIframe();
 
 // Log when a given payment link in a certain page for an eWallet push payment
 // flow is detected.

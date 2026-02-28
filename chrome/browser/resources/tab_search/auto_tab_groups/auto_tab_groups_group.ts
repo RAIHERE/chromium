@@ -41,6 +41,14 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
     return 'auto-tab-groups-group';
   }
 
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
   static override get properties() {
     return {
       tabs: {type: Array},
@@ -70,14 +78,6 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
   protected accessor showInput_: boolean = false;
   protected accessor tabDatas_: TabData[] = [];
   private accessor changedName_: boolean = false;
-
-  static override get styles() {
-    return getCss();
-  }
-
-  override render() {
-    return getHtml.bind(this)();
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -171,14 +171,14 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
     }
   }
 
-  protected onInputKeyDown_(event: KeyboardEvent) {
+  protected onInputKeydown_(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       event.stopPropagation();
       this.showInput_ = false;
     }
   }
 
-  protected onListKeyDown_(event: KeyboardEvent) {
+  protected onSelectorKeydown_(event: KeyboardEvent) {
     const selector = this.$.selector;
     if (selector.selected === undefined) {
       return;
@@ -208,7 +208,7 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
     }
   }
 
-  protected onSelectedChanged_() {
+  protected onSelectorIronSelect_() {
     if (this.$.selector.selectedItem) {
       const selectedItem = this.$.selector.selectedItem as TabSearchItemElement;
       const selectedItemCloseButton =
@@ -219,7 +219,7 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
     }
   }
 
-  protected onTabRemove_(e: Event) {
+  protected onTabClose_(e: Event) {
     const index = getEventTargetIndex(e);
     const tab = this.tabs[index];
     this.fire('remove-tab', {organizationId: this.organizationId, tab});
@@ -253,27 +253,19 @@ export class AutoTabGroupsGroupElement extends CrLitElement {
   protected onRejectGroupClick_(event: CustomEvent) {
     event.stopPropagation();
     event.preventDefault();
-    this.dispatchEvent(new CustomEvent('reject-click', {
-      bubbles: true,
-      composed: true,
-      detail: {organizationId: this.organizationId},
-    }));
+    this.fire('reject-click', {organizationId: this.organizationId});
   }
 
   protected onCreateGroupClick_(event: CustomEvent) {
     event.stopPropagation();
     event.preventDefault();
-    this.dispatchEvent(new CustomEvent('create-group-click', {
-      bubbles: true,
-      composed: true,
-      detail: {
-        organizationId: this.organizationId,
-        tabs: this.tabs,
-      },
-    }));
+    this.fire('create-group-click', {
+      organizationId: this.organizationId,
+      tabs: this.tabs,
+    });
   }
 
-  protected onNameChanged_(e: CustomEvent<{value: string}>) {
+  protected onInputValueChanged_(e: CustomEvent<{value: string}>) {
     if (this.name !== e.detail.value) {
       this.name = e.detail.value;
       this.changedName_ = true;

@@ -5,6 +5,7 @@
 #include "chrome/browser/ui/toolbar/app_menu_model.h"
 
 #include <algorithm>
+#include <optional>
 #include <vector>
 
 #include "base/command_line.h"
@@ -15,6 +16,7 @@
 #include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
+#include "chrome/browser/browser_features.h"
 #include "chrome/browser/defaults.h"
 #include "chrome/browser/password_manager/password_manager_test_util.h"
 #include "chrome/browser/prefs/browser_prefs.h"
@@ -59,6 +61,7 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/policy/system_features_disable_list_policy_handler.h"
+#include "chromeos/constants/chromeos_features.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -346,9 +349,7 @@ TEST_F(AppMenuModelTest, DeclutterTabsItem) {
 #if BUILDFLAG(ENABLE_GLIC)
 TEST_F(AppMenuModelTest, GlicItem) {
   feature_list_.Reset();
-  feature_list_.InitWithFeatures(
-      {features::kGlic, features::kGlicRollout, features::kTabstripComboButton},
-      {});
+  feature_list_.InitWithFeatures({features::kGlic, features::kGlicRollout}, {});
 
   TestLogMetricsAppMenuModel model(this, browser());
   model.Init();
@@ -577,6 +578,86 @@ TEST_F(AppMenuModelTest, ProfileSyncOnTest) {
   EXPECT_TRUE(profile_menu->IsEnabledAt(sync_settings_index));
 }
 
+#if BUILDFLAG(GOOGLE_CHROME_BRANDING)
+bool DoesHelpMenuHaveCommand(const AppMenuModel& model, int command_id) {
+  const size_t help_menu_index =
+      model.GetIndexOfCommandId(IDC_HELP_MENU).value();
+  ui::SimpleMenuModel* help_menu = static_cast<ui::SimpleMenuModel*>(
+      model.GetSubmenuModelAt(help_menu_index));
+  return help_menu->GetIndexOfCommandId(command_id).has_value();
+}
+
+TEST_F(AppMenuModelTest, Feedback_UserFeedbackAllowedPolicy) {
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kUserFeedbackAllowed,
+                                               true);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_TRUE(DoesHelpMenuHaveCommand(model, IDC_FEEDBACK));
+  }
+
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kUserFeedbackAllowed,
+                                               false);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_FALSE(DoesHelpMenuHaveCommand(model, IDC_FEEDBACK));
+  }
+}
+
+class AppMenuReportUnsafeSiteTest : public base::test::WithFeatureOverride,
+                                    public AppMenuModelTest {
+ public:
+  AppMenuReportUnsafeSiteTest()
+      : WithFeatureOverride(features::kReportUnsafeSite) {}
+  ~AppMenuReportUnsafeSiteTest() override = default;
+};
+
+TEST_P(AppMenuReportUnsafeSiteTest,
+       ReportUnsafeSite_UserFeedbackAllowedPolicy) {
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kUserFeedbackAllowed,
+                                               true);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_EQ(IsParamFeatureEnabled(),
+              DoesHelpMenuHaveCommand(model, IDC_REPORT_UNSAFE_SITE));
+  }
+
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kUserFeedbackAllowed,
+                                               false);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_FALSE(DoesHelpMenuHaveCommand(model, IDC_REPORT_UNSAFE_SITE));
+  }
+}
+
+TEST_P(AppMenuReportUnsafeSiteTest, ReportUnsafeSite_SafeBrowsingDisabled) {
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kUserFeedbackAllowed,
+                                               true);
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kSafeBrowsingEnabled,
+                                               true);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_EQ(IsParamFeatureEnabled(),
+              DoesHelpMenuHaveCommand(model, IDC_REPORT_UNSAFE_SITE));
+  }
+
+  browser()->profile()->GetPrefs()->SetBoolean(prefs::kSafeBrowsingEnabled,
+                                               false);
+  {
+    AppMenuModel model(this, browser());
+    model.Init();
+    EXPECT_FALSE(DoesHelpMenuHaveCommand(model, IDC_REPORT_UNSAFE_SITE));
+  }
+}
+
+INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(AppMenuReportUnsafeSiteTest);
+
+#endif  // BUILDFLAG(GOOGLE_CHROME_BRANDING)
+
 class AppMenuModelSigninPromoTest : public base::test::WithFeatureOverride,
                                     public AppMenuModelTest {
  public:
@@ -783,16 +864,22 @@ TEST_F(TestAppMenuModelSafetyHubTest, SafetyHubMenuNotification) {
   EXPECT_FALSE(new_model.GetLabelAt(menu_index).empty());
 }
 
+#if BUILDFLAG(ENABLE_GLIC)
 class TabSearchMenuModelTest : public AppMenuModelTest {
  public:
   TabSearchMenuModelTest() = default;
   ~TabSearchMenuModelTest() override = default;
 
   void SetUp() override {
-    scoped_feature_list_.InitWithFeaturesAndParameters(
-        /*enabled_features=*/
-        {{features::kTabstripComboButton,
-          {{"tab_search_toolbar_button", "true"}}}},
+    // The kFeatureManagementGlic flag is needed at startup for a cached
+    // ChromeOS check. The rest of the flags are set at runtime to avoid needing
+    // to initialize the rest of Glic.
+    scoped_feature_list_.InitWithFeatures(
+        {
+#if BUILDFLAG(IS_CHROMEOS)
+            chromeos::features::kFeatureManagementGlic
+#endif  // BUILDFLAG(IS_CHROMEOS)
+        },
         /*disabled_features=*/{});
     AppMenuModelTest::SetUp();
   }
@@ -802,10 +889,23 @@ class TabSearchMenuModelTest : public AppMenuModelTest {
 };
 
 TEST_F(TabSearchMenuModelTest, TabSearchItem) {
+  base::test::ScopedFeatureList scoped_feature_list_;
+  scoped_feature_list_.InitWithFeatures(
+      /*enabled_features=*/{features::kGlic, features::kGlicRollout,
+#if BUILDFLAG(IS_CHROMEOS)
+                            chromeos::features::kFeatureManagementGlic
+#endif  // BUILDFLAG(IS_CHROMEOS)
+      },
+      /*disabled_features=*/{features::kGlicLocaleFiltering,
+                             features::kGlicCountryFiltering});
+
   AppMenuModel model(this, browser());
   model.Init();
   ToolsMenuModel toolModel(&model, browser());
-  size_t tab_search_index =
-      toolModel.GetIndexOfCommandId(IDC_TAB_SEARCH).value();
-  EXPECT_TRUE(toolModel.IsEnabledAt(tab_search_index));
+  std::optional<size_t> tab_search_index =
+      toolModel.GetIndexOfCommandId(IDC_TAB_SEARCH);
+  EXPECT_TRUE(tab_search_index.has_value());
+  EXPECT_TRUE(toolModel.IsEnabledAt(tab_search_index.value()));
 }
+
+#endif

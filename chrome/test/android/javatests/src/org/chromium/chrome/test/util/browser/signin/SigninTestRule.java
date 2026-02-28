@@ -119,9 +119,14 @@ public class SigninTestRule implements TestRule {
         mFakeAccountManagerFacade.setAccountFetchFailed();
     }
 
-    /** See {@link FakeAccountManagerFacade#blockGetAccounts(boolean)}. */
-    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdate(boolean populateCache) {
-        return mFakeAccountManagerFacade.blockGetAccounts(populateCache);
+    /** See {@link FakeAccountManagerFacade#blockGetAccounts}. */
+    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdate() {
+        return mFakeAccountManagerFacade.blockGetAccounts();
+    }
+
+    /** See {@link FakeAccountManagerFacade#blockGetAccountsAndPopulateCache}. */
+    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdateAndPopulateCache() {
+        return mFakeAccountManagerFacade.blockGetAccountsAndPopulateCache();
     }
 
     /**

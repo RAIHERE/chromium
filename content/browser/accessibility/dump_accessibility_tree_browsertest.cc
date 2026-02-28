@@ -110,7 +110,7 @@ void DumpAccessibilityTreeTest::ChooseFeatures(
   enabled_features->emplace_back(
       features::kEnableAccessibilityAriaVirtualContent);
   // crbug.com/339418716 - temporary until enabled by default
-  enabled_features->emplace_back(blink::features::kPermissionElement);
+  enabled_features->emplace_back(blink::features::kUserMediaElement);
 #if BUILDFLAG(IS_WIN)
   // Enable UIA MathML support for dump tests
   enabled_features->emplace_back(features::kUiaMathMlSupport);
@@ -1349,6 +1349,11 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest, AccessibilityAriaListBox) {
 }
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityAriaListboxGrouped) {
+  RunAriaTest(FILE_PATH_LITERAL("aria-listbox-grouped.html"));
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilityAriaListBoxDisabled) {
   RunAriaTest(FILE_PATH_LITERAL("aria-listbox-disabled.html"));
 }
@@ -1443,6 +1448,16 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest, AccessibilityAriaMeter) {
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilityMenuBarElementRoles) {
   RunHtmlTest(FILE_PATH_LITERAL("menubar-element-roles.html"));
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityMenuItemCheckBox) {
+  RunHtmlTest(FILE_PATH_LITERAL("menuitem-checkbox.html"));
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityMenuItemDisabled) {
+  RunHtmlTest(FILE_PATH_LITERAL("menuitem-disabled.html"));
 }
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
@@ -2259,9 +2274,6 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilitySelectListboxActivateOptions) {
-  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
-      switches::kEnableBlinkFeatures,
-      blink::features::kSelectMobileDesktopParity.name);
   RunHtmlTest(FILE_PATH_LITERAL("select-multiple-activate-options.html"));
 }
 
@@ -2417,6 +2429,11 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilityContenteditableOnDisallowedElement) {
   RunHtmlTest(FILE_PATH_LITERAL("contenteditable-on-disallowed-element.html"));
+}
+
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityContenteditableMultiNode) {
+  RunHtmlTest(FILE_PATH_LITERAL("contenteditable-multi-node.html"));
 }
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest, AccessibilityCustomElement) {
@@ -3512,6 +3529,21 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeWithProhibitedNamesTest,
 }
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityNameFromFieldset) {
+  RunHtmlTest(FILE_PATH_LITERAL("name-from-related-fieldset.html"));
+}
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest, AccessibilityNameFromLabel) {
+  RunHtmlTest(FILE_PATH_LITERAL("name-from-related-labelable.html"));
+}
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityNameFromSvgTitle) {
+  RunHtmlTest(FILE_PATH_LITERAL("name-from-related-svg.html"));
+}
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
+                       AccessibilityNameFromTableCaption) {
+  RunHtmlTest(FILE_PATH_LITERAL("name-from-related-title.html"));
+}
+IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilityNameFromPopovertargetAndInterestfor) {
   RunPopoverHintTest(
       FILE_PATH_LITERAL("name-from-popovertarget-and-interestfor.html"));
@@ -3699,9 +3731,6 @@ IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
 
 IN_PROC_BROWSER_TEST_P(DumpAccessibilityTreeTest,
                        AccessibilitySelectListboxModes) {
-  base::CommandLine::ForCurrentProcess()->AppendSwitchASCII(
-      switches::kEnableBlinkFeatures,
-      blink::features::kSelectMobileDesktopParity.name);
   RunHtmlTest(FILE_PATH_LITERAL("select-listbox-modes.html"));
 }
 

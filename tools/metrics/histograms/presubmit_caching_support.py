@@ -8,14 +8,13 @@ import os
 import pickle
 from typing import Optional, Any, Dict
 
-
 @dataclasses.dataclass(frozen=True)
 class _PresubmitCheckContext:
   """Describes and identifies a context of a specific presubmit check.
 
   This is used as a key to cache results of a presubmit check. The histograms
   directory hash is used to lower the probability of changes in one file
-  impacing health status of presubmit checks in the other. This still doesn't
+  impacting health status of presubmit checks in the other. This still doesn't
   eliminate the risk of changes from outside of this directory affecting the
   health status, but given how PRESUBMIT is triggered, this seems to be inline
   with the risk of that happening because of PRESUBMIT not being triggered.
@@ -88,6 +87,9 @@ class PresubmitCache:
         if loaded_cache.version == _CURRENT_CACHE_FILE_SCHEMA_VERSION:
           self._cache_contents = loaded_cache
       except pickle.PickleError:
+        pass
+      except ModuleNotFoundError:
+        # If changes were made to modules used we should drop the cache as well
         pass
 
   def _GetForContext(self, context: _PresubmitCheckContext) -> Optional[str]:

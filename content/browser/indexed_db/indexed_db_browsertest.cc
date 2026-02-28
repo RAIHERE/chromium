@@ -126,9 +126,12 @@ class IndexedDBBrowserTestBase : public ContentBrowserTest {
   }
 
   void SetUpCommandLine(base::CommandLine* command_line) override {
-    // Enable experimental web platform features to enable write access.
+    // Required for bucket durability.
     command_line->AppendSwitch(
         switches::kEnableExperimentalWebPlatformFeatures);
+    // Some tests force garbage collection to reproduce certain bugs.
+    command_line->AppendSwitchASCII(blink::switches::kJavaScriptFlags,
+                                    "--expose-gc");
   }
 
   void TearDownOnMainThread() override { failure_injector_.reset(); }
@@ -432,15 +435,8 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, ObjectStoreTest) {
                           0);
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.ObjectStoreAdd",
                           3);
-  // 2 of the adds succeed and one fails (due to the key already existing).
-  tester.ExpectBucketCount(
-      "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreAdd", 1, 2);
-  tester.ExpectBucketCount(
-      "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreAdd", 0, 1);
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.ObjectStoreGet",
                           3);
-  tester.ExpectBucketCount(
-      "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreGet", 1, 3);
 
   tester.ExpectTotalCount("WebCore.IndexedDB.Transaction.ReadWrite.TimeQueued",
                           0);
@@ -461,19 +457,12 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, ObjectStoreTest) {
   content::FetchHistogramsFromChildProcesses();
 
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.Open", 2);
-  tester.ExpectBucketCount("WebCore.IndexedDB.RequestDispatchOutcome.Open", 1,
-                           2);
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.ObjectStorePut",
                           0);
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.ObjectStoreAdd",
                           4);
-  // One more success than before.
-  tester.ExpectBucketCount(
-      "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreAdd", 1, 3);
   tester.ExpectTotalCount("WebCore.IndexedDB.RequestDuration2.ObjectStoreGet",
                           5);
-  tester.ExpectBucketCount(
-      "WebCore.IndexedDB.RequestDispatchOutcome.ObjectStoreGet", 1, 5);
 
   tester.ExpectTotalCount("WebCore.IndexedDB.Transaction.ReadWrite.TimeQueued",
                           0);
@@ -552,27 +541,11 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithLowQuota, QuotaTestWithCommit) {
   SimpleTest(GetTestUrl("indexeddb", "bug_1203335.html"));
 }
 
-class IndexedDBBrowserTestWithGCExposed : public IndexedDBBrowserTest {
- public:
-  IndexedDBBrowserTestWithGCExposed() = default;
-
-  IndexedDBBrowserTestWithGCExposed(const IndexedDBBrowserTestWithGCExposed&) =
-      delete;
-  IndexedDBBrowserTestWithGCExposed& operator=(
-      const IndexedDBBrowserTestWithGCExposed&) = delete;
-
-  void SetUpCommandLine(base::CommandLine* command_line) override {
-    command_line->AppendSwitchASCII(blink::switches::kJavaScriptFlags,
-                                    "--expose-gc");
-  }
-};
-
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed,
-                       DatabaseCallbacksTest) {
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, DatabaseCallbacksTest) {
   SimpleTest(GetTestUrl("indexeddb", "database_callbacks_first.html"));
 }
 
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, Bug941965Test) {
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, Bug941965Test) {
   // Double-open an incognito window to test that saving & reading a blob from
   // indexeddb works.
   Shell* incognito_browser = CreateOffTheRecordBrowser();
@@ -587,13 +560,17 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, Bug941965Test) {
   incognito_browser->Close();
 }
 
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, Bug346955148Test) {
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, Bug346955148Test) {
   SimpleTest(GetTestUrl("indexeddb", "bug_346955148.html"));
 }
 
 // Regression test for crbug.com/392376370
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, NestedBlob) {
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, NestedBlob) {
   SimpleTest(GetTestUrl("indexeddb", "nested_blob.html"));
+}
+
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, DbRestoresFromZygoticState) {
+  SimpleTest(GetTestUrl("indexeddb", "db_restores_from_zygotic_state.html"));
 }
 
 struct BlobModificationTime {
@@ -991,16 +968,26 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, DeleteBucketDataDeletesBlobs) {
   EXPECT_EQ(0, RequestUsage());
 }
 
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, BlobHistograms) {
+IN_PROC_BROWSER_TEST_P(IndexedDBIncognitoTest, BlobHistograms) {
   base::HistogramTester histograms;
-  SimpleTest(GetTestUrl("indexeddb", "simple_blob_read.html"));
-  histograms.ExpectBucketCount("IndexedDB.BackingStore.WriteBlobs.OnDisk",
-                               0 /*Status::Type::kOk*/, 1);
-  histograms.ExpectBucketCount("IndexedDB.BackingStore.ReadBlob.OnDisk",
-                               0 /*net::Error::OK*/, 1);
-  histograms.ExpectTotalCount("IndexedDB.BackendDuration.WriteBlobs.OnDisk", 1);
+  const std::string_view suffix = IsIncognito() ? "InMemory" : "OnDisk";
+
+  SimpleTest(GetTestUrl("indexeddb", "simple_blob_read.html"), shell_);
+  // LevelDB in-memory DBs don't log these histograms because they use a
+  // different code path for blobs.
+  int blob_event_count_expectation = (IsIncognito() && !using_sqlite_) ? 0 : 1;
+  histograms.ExpectBucketCount(
+      base::StrCat({"IndexedDB.BackingStore.WriteBlobs.", suffix}),
+      0 /*Status::Type::kOk*/, blob_event_count_expectation);
+  histograms.ExpectBucketCount(
+      base::StrCat({"IndexedDB.BackingStore.ReadBlob.", suffix}),
+      0 /*net::Error::OK*/, blob_event_count_expectation);
   histograms.ExpectTotalCount(
-      "IndexedDB.BackendDuration.CommitTransaction.OnDisk", 3);
+      base::StrCat({"IndexedDB.BackendDuration.WriteBlobs.", suffix}),
+      blob_event_count_expectation);
+  histograms.ExpectTotalCount(
+      base::StrCat({"IndexedDB.BackendDuration.CommitTransaction.", suffix}),
+      3);
 }
 
 // Regression test for crbug.com/330868483
@@ -1013,7 +1000,7 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, BlobHistograms) {
 //   4. the page reads the same blob, reusing the IndexedDBDataItemReader
 //   5. the blob reference is dropped and GC'd again
 //   6. don't crash
-IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTestWithGCExposed, ForceCloseWithBlob) {
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, ForceCloseWithBlob) {
   const GURL kTestUrl = GetTestUrl("indexeddb", "write_and_read_blob.html");
   SimpleTest(kTestUrl);
   DeleteBucketData(
@@ -1579,6 +1566,12 @@ IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, LargeValueIsWrapped) {
   }
 }
 
+// Tests that bucket deletion succeeds during opportunistic cleanup of recently
+// closed databases.
+IN_PROC_BROWSER_TEST_P(IndexedDBBrowserTest, BucketDeletionDuringCleanup) {
+  SimpleTest(GetTestUrl("indexeddb", "bucket_deletion_during_cleanup.html"));
+}
+
 // The blob key corruption test runs in a separate class to avoid corrupting
 // an IDB store that other tests use.
 // This test is for https://crbug.com/1039446.
@@ -1675,11 +1668,6 @@ INSTANTIATE_TEST_SUITE_P(All,
 
 INSTANTIATE_TEST_SUITE_P(All,
                          IndexedDBBrowserTestWithLowQuota,
-                         testing::Bool(),
-                         GetBackingStoreTestCaseName);
-
-INSTANTIATE_TEST_SUITE_P(All,
-                         IndexedDBBrowserTestWithGCExposed,
                          testing::Bool(),
                          GetBackingStoreTestCaseName);
 

@@ -12,6 +12,7 @@
 #include <optional>
 #include <utility>
 
+#include "base/auto_reset.h"
 #include "base/containers/fixed_flat_set.h"
 #include "base/hash/hash.h"
 #include "base/metrics/histogram_functions.h"
@@ -26,11 +27,11 @@
 #include "chrome/browser/extensions/window_controller_list.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/tab_group_sync/tab_group_sync_service_factory.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_navigator.h"
 #include "chrome/browser/ui/browser_navigator_params.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
-#include "chrome/browser/ui/tabs/tab_list_interface.h"
 #include "chrome/browser/ui/tabs/tab_muted_utils.h"
 #include "chrome/common/webui_url_constants.h"
 #include "components/data_sharing/public/features.h"
@@ -95,6 +96,9 @@ namespace extensions {
 
 namespace {
 
+// Whether to disable tab list editing for testing purposes.
+bool g_disable_tab_list_editing_for_testing = false;
+
 constexpr char kGroupNotFoundError[] = "No group with id: *.";
 constexpr char kInvalidUrlError[] = "Invalid url: \"*\".";
 
@@ -153,7 +157,7 @@ int GetTabIdForExtensions(WebContents& web_contents) {
 
 bool IsFileUrl(const GURL& url) {
   return url.SchemeIsFile() || (url.SchemeIs(content::kViewSourceScheme) &&
-                                GURL(url.GetContent()).SchemeIsFile());
+                                GURL(url.GetContentPiece()).SchemeIsFile());
 }
 
 ExtensionTabUtil::ScrubTabBehaviorType GetScrubTabBehaviorImpl(
@@ -318,17 +322,17 @@ WindowController* ExtensionTabUtil::GetControllerInProfileWithId(
     int window_id,
     bool also_match_incognito_profile,
     std::string* error_message) {
-  Profile* incognito_profile =
+  const Profile* incognito_profile =
       also_match_incognito_profile
           ? profile->GetPrimaryOTRProfile(/*create_if_needed=*/false)
           : nullptr;
-  for (auto* browser : GetAllBrowserWindowInterfaces()) {
-    if ((browser->GetProfile() == profile ||
-         browser->GetProfile() == incognito_profile)) {
-      WindowController* controller = WindowControllerFromBrowser(browser);
-      if (controller->GetWindowId() == window_id) {
-        return controller;
-      }
+  for (WindowController* window_controller :
+       *WindowControllerList::GetInstance()) {
+    const Profile* controller_profile = window_controller->profile();
+    if ((controller_profile == profile ||
+         controller_profile == incognito_profile) &&
+        window_controller->GetWindowId() == window_id) {
+      return window_controller;
     }
   }
 
@@ -412,7 +416,11 @@ api::tabs::Tab ExtensionTabUtil::CreateTabObject(
 
   tab_object.audible = get_audible();
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
+#if BUILDFLAG(IS_ANDROID)
+  tab_object.discarded = contents->WasDiscarded();
+  // TODO(crbug.com/371432155): Determine auto-discardable and frozen states on
+  // desktop Android where the TabLifecycleUnit is not available.
+#else
   auto* tab_lifecycle_unit_external =
       resource_coordinator::TabLifecycleUnitExternal::FromWebContents(contents);
 
@@ -430,7 +438,7 @@ api::tabs::Tab ExtensionTabUtil::CreateTabObject(
   tab_object.frozen = tab_lifecycle_unit_external &&
                       tab_lifecycle_unit_external->GetTabState() ==
                           ::mojom::LifecycleUnitState::FROZEN;
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
+#endif  // BUILDFLAG(IS_ANDROID)
 
   tab_object.muted_info = CreateMutedInfo(contents);
 
@@ -1360,30 +1368,42 @@ void ExtensionTabUtil::ClearBackForwardCache() {
 
 // static
 bool ExtensionTabUtil::IsTabStripEditable() {
+  if (g_disable_tab_list_editing_for_testing) {
+    return false;
+  }
+
+  // TODO(https://crbug.com/482088886): Migrate this to just use
+  // TabListInterface::CanEditTabList().
+
   // See comments in the header for why we need to check all of them.
   for (WindowController* window : *WindowControllerList::GetInstance()) {
-    if (!window->HasEditableTabStrip()) {
+    BrowserWindowInterface* browser_window_interface =
+        window->GetBrowserWindowInterface();
+    // browser_window_interface can be null for non-browser windows on ChromeOS.
+    if (!browser_window_interface) {
+      continue;
+    }
+    TabListInterface* tab_list =
+        TabListInterface::From(browser_window_interface);
+    if (tab_list && !tab_list->IsThisTabListEditable()) {
       return false;
     }
   }
   return true;
 }
 
+// static
 TabListInterface* ExtensionTabUtil::GetEditableTabList(
     BrowserWindowInterface& browser) {
-  if (!IsTabStripEditable()) {
+  if (!TabListInterface::CanEditTabList(*browser.GetProfile())) {
     return nullptr;
   }
   return TabListInterface::From(&browser);
 }
 
-#if BUILDFLAG(ENABLE_EXTENSIONS)
 // static
-TabStripModel* ExtensionTabUtil::GetEditableTabStripModel(Browser* browser) {
-  if (!IsTabStripEditable())
-    return nullptr;
-  return browser->tab_strip_model();
+base::AutoReset<bool> ExtensionTabUtil::DisableTabListEditingForTesting() {
+  return base::AutoReset<bool>(&g_disable_tab_list_editing_for_testing, true);
 }
-#endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
 }  // namespace extensions

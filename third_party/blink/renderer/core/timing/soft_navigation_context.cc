@@ -33,6 +33,34 @@ SoftNavigationContext::SoftNavigationContext(LocalDOMWindow& window)
       });
 }
 
+base::TimeTicks SoftNavigationContext::TimeOrigin() const {
+  if (processing_end_.is_null()) {
+    return url_change_time_;
+  }
+  if (url_change_time_.is_null()) {
+    return processing_end_;
+  }
+  return std::min(url_change_time_, processing_end_);
+}
+
+void SoftNavigationContext::AddUrl(
+    const String& url,
+    V8NavigationType::Enum navigation_type,
+    base::UnguessableToken same_document_metrics_token) {
+  // The navigation layer should never pass an empty URL.
+  CHECK(!url.empty());
+
+  // An interaction can lead to multiple URL changes, e.g. because of
+  // client-side redirects. Subsequent URL changes are no-ops.
+  if (!initial_url_.empty()) {
+    return;
+  }
+  initial_url_ = url;
+  navigation_type_ = navigation_type;
+  same_document_metrics_token_ = same_document_metrics_token;
+  url_change_time_ = base::TimeTicks::Now();
+}
+
 void SoftNavigationContext::AddModifiedNode(Node* node) {
   ++num_modified_dom_nodes_;
   TRACE_EVENT_INSTANT(
@@ -86,7 +114,13 @@ bool SoftNavigationContext::AddPaintedArea(PaintTimingRecord* record) {
 }
 
 bool SoftNavigationContext::SatisfiesSoftNavNonPaintCriteria() const {
-  return HasDomModification() && HasUrl() && !time_origin_.is_null();
+  if (HasDomModification() && HasUrl() && !ProcessingEnd().is_null()) {
+    CHECK(!UrlChangeTime().is_null());  // Implied by HasUrl()
+    // Implied by !UrlChangeTime().is_null() and !ProcessingEnd().is_null()
+    CHECK(!TimeOrigin().is_null());
+    return true;
+  }
+  return false;
 }
 
 bool SoftNavigationContext::SatisfiesSoftNavPaintCriteria(
@@ -135,7 +169,6 @@ void SoftNavigationContext::OnInputOrScroll() {
     return;
   }
   first_input_or_scroll_time_ = base::TimeTicks::Now();
-  latest_unemitted_icp_entry_ = nullptr;
 }
 
 // TODO(crbug.com/419386429): This gets called after each new presentation time
@@ -181,7 +214,9 @@ void SoftNavigationContext::WriteIntoTrace(
   dict.Add("performanceTimelineNavigationId", navigation_id_);
 
   dict.Add("URL", AttributionUrl());
-  dict.Add("timeOrigin", time_origin_);
+  dict.Add("timeOrigin", TimeOrigin());
+  dict.Add("urlChangeTime", url_change_time_);
+  dict.Add("processingEnd", processing_end_);
   dict.Add("firstContentfulPaint", FirstContentfulPaint());
 
   dict.Add("domModifications", num_modified_dom_nodes_);
@@ -192,14 +227,12 @@ void SoftNavigationContext::Trace(Visitor* visitor) const {
   visitor->Trace(lcp_calculator_);
   visitor->Trace(first_image_or_text_);
   visitor->Trace(window_);
-  visitor->Trace(latest_unemitted_icp_entry_);
 }
 
 void SoftNavigationContext::Shutdown() {
   lcp_calculator_ = nullptr;
   first_image_or_text_ = nullptr;
   window_ = nullptr;
-  latest_unemitted_icp_entry_ = nullptr;
 }
 
 void SoftNavigationContext::EmitSoftNavigation() {
@@ -222,24 +255,7 @@ void SoftNavigationContext::EmitSoftNavigation() {
   CHECK(performance);
   performance->AddSoftNavigationEntry(
       AtomicString(AttributionUrl()), TimeOrigin(),
-      FirstContentfulPaintTimingInfo(), NavigationId());
-
-  // TODO(crbug.com/448974465): We currently don't emit ICP entries or record
-  // metrics for soft navs that are interrupted by a new interaction when there
-  // is pending presentation feedback for FCP, but we do emit the soft nav
-  // entry. We might want to reconsider this.
-  if (!IsRecordingLargestContentfulPaint()) {
-    return;
-  }
-
-  // See method comments in the header for reasons why there might not be a
-  // pending ICP entry.
-  if (!latest_unemitted_icp_entry_) {
-    return;
-  }
-
-  performance->OnInteractionContentfulPaintUpdated(
-      std::exchange(latest_unemitted_icp_entry_, nullptr));
+      FirstContentfulPaintTimingInfo(), NavigationId(), NavigationType());
 }
 
 void SoftNavigationContext::Dispose() {
@@ -277,17 +293,7 @@ void SoftNavigationContext::EmitLcpPerformanceEntry(
       performance->MonotonicTimeToDOMHighResTimeStamp(load_time), id, url,
       element, window_, navigation_id_);
   entry->SetPaintTimingInfo(paint_timing_info);
-
-  // If the soft nav entry for this context was emitted, emit the ICP entry now;
-  // otherwise, buffer it until all the soft nav criteria are met, if ever, and
-  // emit in `EmitSoftNavigation()`.
-  if (WasEmitted() ||
-      RuntimeEnabledFeatures::SoftNavigationEagerIcpEntryEmissionEnabled()) {
-    CHECK(!latest_unemitted_icp_entry_);
-    performance->OnInteractionContentfulPaintUpdated(entry);
-  } else {
-    latest_unemitted_icp_entry_ = entry;
-  }
+  performance->OnInteractionContentfulPaintUpdated(entry);
 }
 
 void SoftNavigationContext::OnLcpMetricsForReportingChanged() {

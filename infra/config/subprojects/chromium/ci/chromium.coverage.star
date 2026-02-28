@@ -1347,6 +1347,9 @@ coverage_builder(
         ),
     ),
     gn_args = gn_args.config(
+        args = {
+            "enable_single_byte_coverage": True,
+        },
         configs = [
             "release_builder",
             "remoteexec",
@@ -1417,6 +1420,7 @@ coverage_builder(
             "not_site_per_process_blink_web_tests": targets.mixin(
                 args = [
                     "--additional-env-var=LLVM_PROFILE_FILE=${ISOLATED_OUTDIR}/profraw/default-%2m%c.profraw",
+                    "--timeout-multiplier=5",
                 ],
                 swarming = targets.swarming(
                     shards = 20,

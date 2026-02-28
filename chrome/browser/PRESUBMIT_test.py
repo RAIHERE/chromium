@@ -349,10 +349,41 @@ class CheckNewDirectoryHasBuildGnTest(unittest.TestCase):
             mock_input_api, mock_output_api)
         self.assertEqual(1, len(warnings))
         self.assertEqual(
-            'New directories under chrome/browser must have a BUILD.gn file.',
+            'New direct subdirectories of chrome/browser or '
+            'chrome/browser/ui must have a BUILD.gn file.',
             warnings[0].message)
         warning_items_norm = [s.replace('\\', '/') for s in warnings[0].items]
         self.assertEqual(['chrome/browser/new_dir'], warning_items_norm)
+
+    def testNewUiDirectoryMissingBuildGn(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/ui/new_ui/foo.cc', [''],
+                             action='A'),
+        ]
+        mock_input_api.InitFiles(mock_input_api.files)
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNewDirectoryHasBuildGn(
+            mock_input_api, mock_output_api)
+        self.assertEqual(1, len(warnings))
+        self.assertEqual(
+            'New direct subdirectories of chrome/browser or '
+            'chrome/browser/ui must have a BUILD.gn file.',
+            warnings[0].message)
+        warning_items_norm = [s.replace('\\', '/') for s in warnings[0].items]
+        self.assertEqual(['chrome/browser/ui/new_ui'], warning_items_norm)
+
+    def testNewNestedDirectoryMissingBuildGn(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/new_dir/nested_dir/foo.cc', [''],
+                             action='A'),
+        ]
+        mock_input_api.InitFiles(mock_input_api.files)
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNewDirectoryHasBuildGn(
+            mock_input_api, mock_output_api)
+        self.assertEqual([], warnings)
 
     def testExistingDirectoryWithMissingBuildGn(self):
         mock_input_api = MockInputApi()
@@ -400,6 +431,75 @@ class CheckNewDirectoryHasBuildGnTest(unittest.TestCase):
         mock_input_api.InitFiles(mock_input_api.files)
         mock_output_api = MockOutputApi()
         warnings = PRESUBMIT._CheckNewDirectoryHasBuildGn(
+            mock_input_api, mock_output_api)
+        self.assertEqual([], warnings)
+
+
+class CheckNoNewEnableGlicUsageTest(unittest.TestCase):
+    def testNewEnableGlicUsage(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/foo.cc', ['if (enable_glic) {'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
+            mock_input_api, mock_output_api)
+        self.assertEqual(1, len(warnings))
+        self.assertEqual(
+            'New usage of "enable_glic" or "ENABLE_GLIC" found in '
+            'chrome/browser/. Ignore this warning if this might be a false '
+            'positive. Otherwise, revise the code to retain code blocks that '
+            'are ran when the flag is enabled. See crbug.com/486982086.',
+            warnings[0].message)
+        self.assertEqual(1, len(warnings[0].items))
+
+    def testNewEnableGlicUsageUppercase(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/foo.cc', ['#if defined(ENABLE_GLIC)'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
+            mock_input_api, mock_output_api)
+        self.assertEqual(1, len(warnings))
+
+    def testNoEnableGlicUsage(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/foo.cc', ['if (something_else) {'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
+            mock_input_api, mock_output_api)
+        self.assertEqual([], warnings)
+
+    def testEnableGlicUsageOutsideChromeBrowser(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/common/foo.cc', ['if (enable_glic) {'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
+            mock_input_api, mock_output_api)
+        self.assertEqual([], warnings)
+
+    def testEnableGlicUsageInPresubmit(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/PRESUBMIT.py', ['if (enable_glic) {'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
+            mock_input_api, mock_output_api)
+        self.assertEqual([], warnings)
+
+    def testEnableGlicUsageSubstring(self):
+        mock_input_api = MockInputApi()
+        mock_input_api.files = [
+            MockAffectedFile('chrome/browser/foo.cc', ['if (dont_enable_glic_v2) {'], action='M'),
+        ]
+        mock_output_api = MockOutputApi()
+        warnings = PRESUBMIT._CheckNoNewEnableGlicUsage(
             mock_input_api, mock_output_api)
         self.assertEqual([], warnings)
 

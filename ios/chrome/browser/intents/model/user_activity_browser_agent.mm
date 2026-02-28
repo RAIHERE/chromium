@@ -20,7 +20,6 @@
 #import "components/handoff/handoff_utility.h"
 #import "components/prefs/pref_service.h"
 #import "components/search_engines/template_url_service.h"
-#import "ios/chrome/app/application_delegate/app_state.h"
 #import "ios/chrome/app/application_mode.h"
 #import "ios/chrome/app/profile/profile_init_stage.h"
 #import "ios/chrome/app/profile/profile_state.h"
@@ -46,7 +45,11 @@
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
+#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
+#import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/chrome/browser/url_loading/model/image_search_param_generator.h"
 #import "ios/chrome/browser/url_loading/model/url_loading_params.h"
 #import "ios/chrome/common/intents/AddBookmarkToChromeIntent.h"
@@ -54,8 +57,10 @@
 #import "ios/chrome/common/intents/OpenInChromeIncognitoIntent.h"
 #import "ios/chrome/common/intents/OpenInChromeIntent.h"
 #import "ios/chrome/common/intents/SearchInChromeIntent.h"
+#import "ios/chrome/grit/ios_strings.h"
 #import "ios/components/webui/web_ui_url_constants.h"
 #import "net/base/apple/url_conversions.h"
+#import "ui/base/l10n/l10n_util.h"
 #import "ui/base/page_transition_types.h"
 
 using base::UserMetricsAction;
@@ -81,7 +86,6 @@ NSArray* CompatibleModeForActivityType(NSString* activity_type) {
       [activity_type isEqualToString:kShortcutVoiceSearch] ||
       [activity_type isEqualToString:kShortcutQRScanner] ||
       [activity_type isEqualToString:kShortcutLensFromAppIconLongPress] ||
-      [activity_type isEqualToString:kShortcutLensFromSpotlight] ||
       [activity_type isEqualToString:kSiriShortcutAddBookmarkToChrome] ||
       [activity_type isEqualToString:kSiriShortcutAddReadingListItemToChrome] ||
       [activity_type isEqualToString:kSiriShortcutSearchInChrome] ||
@@ -514,6 +518,46 @@ BOOL UserActivityBrowserAgent::ProceedWithUserActivity(
   return array != nil;
 }
 
+void UserActivityBrowserAgent::
+    ShowToastWhenOpenExternalIntentInUnexpectedMode() {
+  id<SnackbarCommands> handler =
+      HandlerForProtocol(browser_->GetCommandDispatcher(), SnackbarCommands);
+
+  PrefService* prefs = profile_->GetPrefs();
+  BOOL force_incognito = IsIncognitoModeForced(prefs);
+
+  UrlLoadParams params = UrlLoadParams::InNewTab(GURL(kChromeUIManagementURL));
+  params.web_params.transition_type = ui::PAGE_TRANSITION_TYPED;
+
+  __weak id<TabOpening> weak_tab_opener = tab_opener_;
+  ProceduralBlock moreAction = ^{
+    [weak_tab_opener
+        dismissModalsAndMaybeOpenSelectedTabInMode:
+            force_incognito ? ApplicationModeForTabOpening::INCOGNITO
+                            : ApplicationModeForTabOpening::NORMAL
+                                 withUrlLoadParams:params
+                                    dismissOmnibox:YES
+                                        completion:nil];
+  };
+
+  SnackbarMessageAction* action = [[SnackbarMessageAction alloc] init];
+  action.handler = moreAction;
+  action.title = l10n_util::GetNSString(IDS_IOS_NAVIGATION_BAR_MORE_BUTTON);
+  action.accessibilityHint =
+      l10n_util::GetNSString(IDS_IOS_NAVIGATION_BAR_MORE_BUTTON);
+
+  NSString* text =
+      force_incognito
+          ? l10n_util::GetNSString(IDS_IOS_SNACKBAR_MESSAGE_INCOGNITO_FORCED)
+          : l10n_util::GetNSString(IDS_IOS_SNACKBAR_MESSAGE_INCOGNITO_DISABLED);
+
+  SnackbarMessage* message = [[SnackbarMessage alloc] initWithTitle:text];
+  message.action = action;
+
+  [handler showSnackbarMessage:message
+                withHapticType:UINotificationFeedbackTypeError];
+}
+
 #pragma mark - Internal methods.
 
 void UserActivityBrowserAgent::RecordMetricsForSiriShortcut(
@@ -549,8 +593,7 @@ BOOL UserActivityBrowserAgent::HandleShortcutItem(
 
   // Lens entry points should not open an extra new tab page.
   GURL startup_url =
-      ([shortcut_item.type isEqualToString:kShortcutLensFromAppIconLongPress] ||
-       [shortcut_item.type isEqualToString:kShortcutLensFromSpotlight])
+      [shortcut_item.type isEqualToString:kShortcutLensFromAppIconLongPress]
           ? GURL()
           : GURL(kChromeUINewTabURL);
 
@@ -594,12 +637,6 @@ BOOL UserActivityBrowserAgent::HandleShortcutItem(
     base::RecordAction(UserMetricsAction(
         "ApplicationShortcut.LensPressedFromAppIconLongPress"));
     startup_params.postOpeningAction = START_LENS_FROM_APP_ICON_LONG_PRESS;
-    connection_information_.startupParameters = startup_params;
-    return YES;
-  } else if ([shortcut_item.type isEqualToString:kShortcutLensFromSpotlight]) {
-    base::RecordAction(
-        UserMetricsAction("ApplicationShortcut.LensPressedFromSpotlight"));
-    startup_params.postOpeningAction = START_LENS_FROM_SPOTLIGHT;
     connection_information_.startupParameters = startup_params;
     return YES;
   } else if ([shortcut_item.type
@@ -832,11 +869,6 @@ void UserActivityBrowserAgent::HandleRouteToCorrectTab(
 
   params.from_external = true;
 
-  if (target_mode != ApplicationModeForTabOpening::INCOGNITO &&
-      [tab_opener_ URLIsOpenedInRegularMode:params.web_params.url]) {
-    // Record metric.
-  }
-
   base::OnceClosure closure =
       base::BindOnce(&UserActivityBrowserAgent::ClearStartupParameters,
                      weak_ptr_factory_.GetWeakPtr());
@@ -861,11 +893,6 @@ void UserActivityBrowserAgent::HandleUrlOpening(
 
     GURL result = GenerateResultGURLFromSearchQuery(query);
     params.web_params.url = result;
-  }
-
-  if (target_mode != ApplicationModeForTabOpening::INCOGNITO &&
-      [tab_opener_ URLIsOpenedInRegularMode:webpage_url]) {
-    // Record metric.
   }
 
   base::OnceClosure closure =

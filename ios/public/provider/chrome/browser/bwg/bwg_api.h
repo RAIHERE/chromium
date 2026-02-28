@@ -17,6 +17,7 @@ class AuthenticationService;
 @class GeminiPageContext;
 @class GeminiSettingsAction;
 @class GeminiSettingsMetadata;
+@class GeminiStartupConfiguration;
 @protocol BWGGatewayProtocol;
 
 typedef NS_ENUM(NSInteger, GeminiSettingsContext);
@@ -25,28 +26,28 @@ using BWGEligibilityCallback = void (^)(BOOL eligible);
 
 namespace ios::provider {
 
-// Enum representing the location permission state of the BWG experience. A full
-// permission grant is gated by first the OS level (for Chrome) location
-// permission and then the user level BWG-specific location permission.
+// Enum representing the location permission state of the Gemini experience.
+// A full permission grant is gated by first the OS level (for Chrome) location
+// permission and then the user level Gemini-specific location permission.
 // This needs to stay in sync with GCRGeminiLocationPermissionState (and its SDK
 // counterpart).
-enum class BWGLocationPermissionState {
+enum class GeminiLocationPermissionState {
   // Default state.
   kUnknown,
   // The location permission is fully granted.
   kFullyGranted,
   // The location permission is granted only at the OS level.
   kBWGDisabled,
-  // The location permission is disabled at both the OS level and BWG level.
+  // The location permission is disabled at both the OS level and Gemini level.
   kBWGAndOSDisabled,
   // The location permission is disable by an Enterprise policy.
   kEnterpriseDisabled,
 };
 
-// Enum representing the page context computation state of the BWG experience.
+// Enum representing a page context computation state for the Gemini experience.
 // This needs to stay in sync with GCRGeminiPageContextComputationState (and its
 // SDK counterpart).
-enum class BWGPageContextComputationState {
+enum class GeminiPageContextComputationState {
   // The state of the page context is unknown; this likely means that it was not
   // set.
   kUnknown,
@@ -65,10 +66,10 @@ enum class BWGPageContextComputationState {
   kPending,
 };
 
-// Enum representing the page context attachment state of the BWG experience.
+// Enum representing the page context attachment state of the Gemini experience.
 // This needs to stay in sync with GCRGeminiPageContextAttachmentState (and its
 // SDK counterpart).
-enum class BWGPageContextAttachmentState {
+enum class GeminiPageContextAttachmentState {
   // The attach state is unknown.
   kUnknown,
   // Page context should be attached.
@@ -83,16 +84,23 @@ enum class BWGPageContextAttachmentState {
 
 // Enum representing the Gemini view state.
 // This needs to stay in sync with GCRGeminiViewState (and its SDK counterpart).
+// LINT.IfChange(GeminiViewState)
 enum class GeminiViewState {
   // The Gemini view state is unknown.
   kUnknown,
-  // The Gemini view is hidden.
+  // The Gemini view is hidden. When the floaty is set to `kHidden`, the floaty
+  // is destructed and properties are stored in the view manager in the Gemini
+  // SDK. After this, setting the `GeminiViewState` to another state
+  // will reinitialize the floaty with stored properties from when the floaty
+  // was initially hidden.
   kHidden,
   // The Gemini view is collapsed (minimized) into a circle.
   kCollapsed,
   // The Gemini view is expanded.
   kExpanded,
+  kMaxValue = kExpanded,
 };
+// LINT.ThenChange(/tools/metrics/histograms/metadata/ios/enums.xml:GeminiViewState)
 
 // Enum representing the UI element type for which a change is requested.
 // This needs to stay in sync with GCRGeminiUIElementType (and its SDK
@@ -105,6 +113,10 @@ enum class GeminiUIElementType {
   // The zero state element.
   kZeroState,
 };
+
+// Configures Gemini with the given startup configuration.
+void ConfigureWithStartupConfiguration(
+    GeminiStartupConfiguration* startup_configuration);
 
 // Starts the overlay experience with the given configuration.
 void StartBwgOverlay(GeminiConfiguration* gemini_configuration);
@@ -126,7 +138,7 @@ void ResetGemini();
 
 // Updates the page attachment state of the floaty if it's invoked.
 void UpdatePageAttachmentState(
-    BWGPageContextAttachmentState bwg_attachment_state);
+    GeminiPageContextAttachmentState gemini_attachment_state);
 
 // Returns true if a URL is protected.
 bool IsProtectedUrl(std::string url);
@@ -160,6 +172,9 @@ GeminiViewState GetCurrentGeminiViewState();
 
 // Requests a UI change for a specific element type.
 void RequestUIChange(GeminiUIElementType ui_element_type);
+
+// Attaches an image to the Gemini floaty.
+void AttachImage(UIImage* image);
 
 }  // namespace ios::provider
 

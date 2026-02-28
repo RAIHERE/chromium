@@ -6,7 +6,12 @@
 
 #include <stddef.h>
 
+#include <algorithm>
+#include <iterator>
 #include <memory>
+#include <string>
+#include <utility>
+#include <vector>
 
 #include "base/command_line.h"
 #include "base/files/file_path.h"
@@ -22,6 +27,7 @@
 #include "base/scoped_observation.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/test/bind.h"
+#include "base/test/run_until.h"
 #include "base/test/test_timeouts.h"
 #include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
@@ -30,6 +36,8 @@
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/history/history_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/task_manager/providers/web_contents/web_contents_tags_manager.h"
+#include "chrome/browser/task_manager/web_contents_tags.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_finder.h"
@@ -40,6 +48,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_context.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
 #include "chrome/browser/ui/exclusive_access/fullscreen_controller.h"
@@ -273,7 +282,18 @@ NavigateToURLWithDispositionBlockUntilNavigationsComplete(
                         false),
           /*navigation_handle_callback=*/{});
   if (browser_test_flags & BROWSER_TEST_WAIT_FOR_BROWSER) {
+    // `WaitForBrowserNotInSet()` waits until the new browser is created, and
+    // `WaitForBrowserSetLastActive()` waits until the new browser is active.
+    // The latter is important because tests might rely on methods like
+    // `GetLastActiveBrowserWindowInterfaceWithAnyProfile()` or
+    // `ForEachCurrentBrowserWindowInterfaceOrderedByActivation()` to retrieve
+    // the browser window that is most recently active.
+    // It's possible for a browser to be created but not yet active. For
+    // example, when the `kWebUIReloadButtonDeferBrowserViewShow` feature
+    // parameter is true, the new window defers its initial show (and thus
+    // activation) until some initial WebUI has finished loading.
     browser = WaitForBrowserNotInSet(initial_browsers);
+    WaitForBrowserSetLastActive(browser);
     tab_strip = browser->GetTabStripModel();
   }
   if (browser_test_flags & BROWSER_TEST_WAIT_FOR_TAB) {
@@ -632,17 +652,20 @@ void WaitForBrowserSetLastActive(BrowserWindowInterface* browser,
 
 void SendToOmniboxAndSubmit(BrowserWindowInterface* browser,
                             std::string_view input,
-                            base::TimeTicks match_selection_timestamp) {
+                            base::TimeTicks match_selection_timestamp,
+                            bool wait_for_autocomplete_done) {
   LocationBar* location_bar =
       browser->GetBrowserForMigrationOnly()->window()->GetLocationBar();
   OmniboxView* omnibox = location_bar->GetOmniboxView();
   location_bar->GetOmniboxController()->edit_model()->OnSetFocus(
       /*control_down=*/false);
   omnibox->SetUserText(base::ASCIIToUTF16(input));
-  location_bar->GetOmniboxController()->edit_model()->OpenSelectionForTesting(
+  location_bar->GetOmniboxController()->edit_model()->OpenCurrentSelection(
       match_selection_timestamp);
 
-  WaitForAutocompleteDone(browser);
+  if (wait_for_autocomplete_done) {
+    WaitForAutocompleteDone(browser);
+  }
 }
 
 Browser* GetBrowserNotInSet(
@@ -706,6 +729,20 @@ void GetCookies(const GURL& url,
   }
 }
 
+const std::vector<raw_ptr<task_manager::WebContentsTag, VectorExperimental>>&
+GetAllTrackedTags() {
+  return task_manager::WebContentsTagsManager::GetInstance()->tracked_tags();
+}
+
+const std::vector<std::string> GetAllTrackedTagWebContentTitles() {
+  std::vector<std::string> titles;
+  std::ranges::transform(
+      GetAllTrackedTags(), std::back_inserter(titles), [&](const auto& tag) {
+        return base::UTF16ToUTF8(tag->web_contents()->GetTitle());
+      });
+  return titles;
+}
+
 // It would be nice to `AddAllBrowsers()` here, but we have to wait until our
 // subclass is constructed to `ProcessOneBrowser()`.  We can't put it off
 // until `Wait()` since we need to watch for anything that happens between now
@@ -716,7 +753,8 @@ AllTabsObserver::~AllTabsObserver() = default;
 
 void AllTabsObserver::AddAllBrowsers() {
   added_all_browsers_ = true;
-  browser_list_observation_.Observe(BrowserList::GetInstance());
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [&](BrowserWindowInterface* browser) {
         AddBrowser(browser);
@@ -759,7 +797,7 @@ void AllTabsObserver::OnTabStripModelChanged(
   AddWebContents(change.GetInsert()->contents[0].contents.get());
 }
 
-void AllTabsObserver::OnBrowserAdded(Browser* browser) {
+void AllTabsObserver::OnBrowserCreated(BrowserWindowInterface* browser) {
   AddBrowser(browser);
 }
 
@@ -876,8 +914,7 @@ class WaitHistoryLoadedObserver : public history::HistoryServiceObserver {
 
 WaitHistoryLoadedObserver::WaitHistoryLoadedObserver(
     content::MessageLoopRunner* runner)
-    : runner_(runner) {
-}
+    : runner_(runner) {}
 
 WaitHistoryLoadedObserver::~WaitHistoryLoadedObserver() = default;
 
@@ -930,8 +967,13 @@ void TabAddedWaiter::OnTabStripModelChanged(
   }
 }
 
-AllBrowserTabAddedWaiter::AllBrowserTabAddedWaiter() {
-  browser_list_observation_.Observe(BrowserList::GetInstance());
+AllBrowserTabAddedWaiter::AllBrowserTabAddedWaiter(
+    std::optional<size_t> expected_count)
+    : expected_count_(expected_count) {
+  // If `expected_count` is 0, `Wait()` will hang indefinitely.
+  CHECK_GE(expected_count_.value_or(1), 1u);
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
   ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
       [&](BrowserWindowInterface* browser) {
         browser->GetTabStripModel()->AddObserver(this);
@@ -943,52 +985,80 @@ AllBrowserTabAddedWaiter::~AllBrowserTabAddedWaiter() = default;
 
 content::WebContents* AllBrowserTabAddedWaiter::Wait() {
   run_loop_.Run();
-  return web_contents_;
+  CHECK_GE(web_contents_.size(), 1u);
+  return web_contents_[0];
 }
 
 void AllBrowserTabAddedWaiter::OnTabStripModelChanged(
     TabStripModel* tab_strip_model,
     const TabStripModelChange& change,
     const TabStripSelectionChange& selection) {
-  if (web_contents_)
+  if (change.type() != TabStripModelChange::kInserted) {
     return;
-
-  if (change.type() != TabStripModelChange::kInserted)
-    return;
-
-  web_contents_ = change.GetInsert()->contents[0].contents;
-  run_loop_.Quit();
+  }
+  web_contents_.push_back(change.GetInsert()->contents[0].contents.get());
+  if (expected_count_) {
+    EXPECT_LE(web_contents_.size(), expected_count_)
+        << "Unexpected tab created";
+  }
+  if (web_contents_.size() == expected_count_.value_or(1)) {
+    run_loop_.Quit();
+  }
 }
 
-void AllBrowserTabAddedWaiter::OnBrowserAdded(Browser* browser) {
-  browser->tab_strip_model()->AddObserver(this);
+void AllBrowserTabAddedWaiter::OnBrowserCreated(
+    BrowserWindowInterface* browser) {
+  browser->GetTabStripModel()->AddObserver(this);
 }
 
 BrowserDestroyedObserver::BrowserDestroyedObserver(
     BrowserWindowInterface* browser)
     : session_id_(browser ? std::make_optional(browser->GetSessionID())
                           : std::nullopt) {
-  browser_list_observation_.Observe(BrowserList::GetInstance());
+  if (browser) {
+    // Handle the case where the browser has already been closed and is awaiting
+    // destruction. ForEach will not iterate over closed browsers.
+    browser_was_closed_ = true;
+    GlobalBrowserCollection::GetInstance()->ForEach(
+        [&](BrowserWindowInterface* collection_browser) {
+          if (collection_browser == browser) {
+            browser_was_closed_ = false;
+            return false;
+          }
+          return true;
+        });
+    if (browser_was_closed_) {
+      browser_ = browser->GetWeakPtr();
+      return;
+    }
+  }
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
 }
 
 BrowserDestroyedObserver::~BrowserDestroyedObserver() = default;
 
 void BrowserDestroyedObserver::Wait() {
-  if (!was_removed_) {
+  if (!browser_was_closed_) {
     run_loop_.Run();
   }
+  // Wait for `browser_` to be destroyed.
+  EXPECT_TRUE(base::test::RunUntil([&]() { return !browser_; }));
 }
 
-void BrowserDestroyedObserver::OnBrowserRemoved(Browser* browser) {
+void BrowserDestroyedObserver::OnBrowserClosed(
+    BrowserWindowInterface* browser) {
   if (!session_id_.has_value() ||
       browser->GetSessionID() == session_id_.value()) {
-    was_removed_ = true;
+    browser_ = browser->GetWeakPtr();
+    browser_was_closed_ = true;
     run_loop_.Quit();
   }
 }
 
 BrowserCreatedObserver::BrowserCreatedObserver() {
-  browser_list_observation_.Observe(BrowserList::GetInstance());
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
 }
 
 BrowserCreatedObserver::~BrowserCreatedObserver() = default;
@@ -998,15 +1068,15 @@ Browser* BrowserCreatedObserver::Wait() {
     run_loop_.Run();
   }
   CHECK(browser_);
-  return browser_;
+  return browser_->GetBrowserForMigrationOnly();
 }
 
-void BrowserCreatedObserver::OnBrowserAdded(Browser* browser) {
+void BrowserCreatedObserver::OnBrowserCreated(BrowserWindowInterface* browser) {
   browser_ = browser;
   run_loop_.Quit();
 }
 
-void BrowserCreatedObserver::OnBrowserRemoved(Browser* browser) {
+void BrowserCreatedObserver::OnBrowserClosed(BrowserWindowInterface* browser) {
   // Clear `browser_` in the event of a removal to mitigate the risk of dangling
   // refs.
   browser_ = nullptr;

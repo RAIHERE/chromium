@@ -9,7 +9,6 @@
 <translation id="101823271612280837">ضبط متوقف شد. در حالت رایانه لوحی نمی‌توان از «داشبورد بازی‌ها» استفاده کرد.</translation>
 <translation id="1024364763893396229">ذخیره کردن <ph name="NAME" /></translation>
 <translation id="1032891413405719768">شارژ باتری قلم کم است</translation>
-<translation id="1036073649888683237">برای مدیریت اعلان‌ها، به «تنظیمات» بروید</translation>
 <translation id="1036348656032585052">خاموش کردن</translation>
 <translation id="1037492556044956303"><ph name="DEVICE_NAME" /> اضافه شد</translation>
 <translation id="1038106730571050514">نمایش پیشنهادها</translation>
@@ -58,7 +57,7 @@
 <translation id="1184126796192815024">این شبکه از جاری‌سازی برنامه‌ها از تلفنتان پشتیبانی نمی‌کند. از نقطه اتصال تلفنتان استفاده کنید. <ph name="LEARN_MORE" /></translation>
 <translation id="118437560755358292">برای ایمنی بیشتر، گذرواژه یا پین را وارد کنید</translation>
 <translation id="118532027333893379">برای ضبط تمام صفحه، روی هرجایی که می‌خواهید تک‌ضرب بزنید</translation>
-<translation id="1190609913194133056">مرکز اعلان</translation>
+<translation id="1190609913194133056">مرکز اعلان‌ها</translation>
 <translation id="1195412055398077112">بزرگ‌تر از صفحه</translation>
 <translation id="1195667586424773550">کشیدن پیوند به نوار نشانی برگه</translation>
 <translation id="119944043368869598">پاک کردن همه</translation>
@@ -342,7 +341,6 @@
 <translation id="2201071101391734388">عکس اخیر <ph name="INDEX" /> از <ph name="TOTAL_COUNT" />.</translation>
 <translation id="2201687081523799384">‏جمع کردن Google Tasks</translation>
 <translation id="2208323208084708176">حالت میز کار یکپارچه</translation>
-<translation id="2210311543574621570">‏وقتی‌که Ctrl و V را فشار دهید و نگه دارید، بریده‌دان را خواهید دید. برای خاموش کردن این میان‌بر می‌توانید «پرچم‌گذاری» ‎#clipboard-history-longpress را در chrome://flags غیرفعال کنید.</translation>
 <translation id="2215920961700443347">به اینترنت متصل نیستید. به اینترنت متصل شوید و دوباره امتحان کنید.</translation>
 <translation id="2222841058024245321">میز کار ۷</translation>
 <translation id="2223384056430485343">در صفحهٔ دونیمه</translation>
@@ -428,6 +426,7 @@
 <translation id="2478076885740497414">نصب برنامه</translation>
 <translation id="2482878487686419369">اعلان‌ها</translation>
 <translation id="2484513351006226581">برای تغییر جانمایی صفحه‌کلید، <ph name="KEYBOARD_SHORTCUT" /> را فشار دهید.</translation>
+<translation id="2485422356828889247">حذف نصب</translation>
 <translation id="2486214324139475545">پیش‌نمایش <ph name="DESK_NAME" />. میز کار فعال.</translation>
 <translation id="2486405091093637109">‫«<ph name="DISPLAY_NAME" />» به وضوح <ph name="RESOLUTION" /> (<ph name="REFRESH_RATE" /> هرتز) تغییر کرد. بدون تأیید کردن، تنظیمات قبلی <ph name="TIMEOUT_SECONDS" /> دیگر بازیابی خواهد شد.</translation>
 <translation id="2487915095798731898">پیوستن</translation>
@@ -1397,7 +1396,7 @@
 <translation id="5620979661744857819">با این کار، دسترسی برای <ph name="APP_NAME" /> و همه برنامه‌ها و وب‌سایت‌های دارای اجازه دوربین و میکروفون مجاز می‌شود. ممکن است لازم باشد صفحه وب را بازآوری کنید یا برنامه را دوباره راه‌اندازی کنید.</translation>
 <translation id="5625955975703555628">LTE+‎</translation>
 <translation id="5627392655516693966">گذرواژه‌تان تأیید نشد. دوباره امتحان کنید.</translation>
-<translation id="5632485077360054581">نمایش روش انجام کار</translation>
+<translation id="5632485077360054581">نشان دادن روش کار</translation>
 <translation id="5648021990716966815">فیش میکروفون</translation>
 <translation id="5652575806481723716"><ph name="FOCUSED_APP_NAME" /> به توجه شما نیاز دارد.</translation>
 <translation id="5662075790140998213">میز کار ۱۰</translation>
@@ -1744,7 +1743,7 @@
 <translation id="6732087373923685049">دوربین</translation>
 <translation id="6732800389263199929">بیش‌از <ph name="COUNT" /></translation>
 <translation id="6737983188036277605">دوربین و میکروفون درحال استفاده هستند</translation>
-<translation id="6739144137573853180">رفتن به تنظیمات</translation>
+<translation id="6739144137573853180">رفتن به «تنظیمات»</translation>
 <translation id="6747985245839783873">شارژ باتری <ph name="PERCENTAGE" /> درصد است. «بهینه‌سازی باتری» روشن است.</translation>
 <translation id="6751052314767925245">به‌اجبار اجراشده توسط سرپرست</translation>
 <translation id="6751826523481687655">ردیابی عملکرد روشن است</translation>
@@ -2195,7 +2194,6 @@
 <translation id="8241650983304689286">افزودن زبانه به «نمای دونیمه» جدید</translation>
 <translation id="8247060538831475781"><ph name="CONNECTION_STATUS" />، قدرت سیگنال <ph name="SIGNAL_STRENGTH" />، باتری تلفن<ph name="BATTERY_STATUS" /></translation>
 <translation id="825129991941217170">‏نشان دادن کل محتوای Google Drive</translation>
-<translation id="8257510091797044096">راه‌اندازی دستگاه</translation>
 <translation id="8261506727792406068">حذف</translation>
 <translation id="8262312463845990408">فعال/ غیرفعال کردن بازپخش</translation>
 <translation id="8268302343625273732">‏دیدن همه تکالیف در Google Classroom</translation>

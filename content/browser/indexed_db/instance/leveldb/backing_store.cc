@@ -88,6 +88,7 @@
 #include "third_party/blink/public/common/indexeddb/indexeddb_metadata.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/blink/public/mojom/blob/blob.mojom.h"
+#include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-shared.h"
 #include "third_party/leveldatabase/env_chromium.h"
 #include "third_party/leveldatabase/leveldb_chrome.h"
 #include "third_party/perfetto/include/perfetto/tracing/track.h"
@@ -172,13 +173,6 @@ leveldb_env::Options GetLevelDBOptions() {
   // Thread-safe: static local construction, and `leveldb::Cache` implements
   // internal synchronization.
   options.block_cache = leveldb_chrome::GetSharedWebBlockCache();
-
-  // Thread-safe: calls base histogram `FactoryGet()` methods, which are
-  // thread-safe.
-  options.on_get_error = base::BindRepeating(
-      ReportLevelDBError, "WebCore.IndexedDB.LevelDBReadErrors");
-  options.on_write_error = base::BindRepeating(
-      ReportLevelDBError, "WebCore.IndexedDB.LevelDBWriteErrors");
 
   // Thread-safe: static local construction, and `BloomFilterPolicy` state is
   // read-only after construction.
@@ -1283,7 +1277,8 @@ bool BackingStore::CanOpportunisticallyClose() const {
   return true;
 }
 
-void BackingStore::TearDown(base::WaitableEvent* signal_on_destruction) {
+void BackingStore::SignalWhenDestructionComplete(
+    base::WaitableEvent* signal_on_destruction) && {
   if (IsBlobCleanupPending()) {
     ForceRunBlobCleanup();
   }
@@ -1291,8 +1286,13 @@ void BackingStore::TearDown(base::WaitableEvent* signal_on_destruction) {
   db()->leveldb_state()->RequestDestruction(signal_on_destruction);
 }
 
-void BackingStore::InvalidateBlobReferences() {
+void BackingStore::OnForceClosing() {
+  // Invalidate blob references.
   active_blob_registry()->ForceShutdown();
+  // Don't run the preclosing tasks during ForceClose, whether or not we've
+  // started them. Compaction in particular can run long and cannot be
+  // interrupted, so it can cause shutdown hangs.
+  StopPreCloseTasks();
 }
 
 Status BackingStore::UpgradeBlobEntriesToV4(
@@ -1546,7 +1546,7 @@ BackingStore::DoOpenAndVerify(BucketContext& bucket_context,
       if (!ldb_status.IsNotFound()) {
         ReportLevelDBError("WebCore.IndexedDB.LevelDBOpenErrors", ldb_status);
       }
-      return {nullptr, std::move(ldb_status), IndexedDBDataLossInfo(),
+      return {nullptr, std::move(ldb_status), std::move(data_loss_info),
               is_disk_full};
     }
   }
@@ -1609,11 +1609,11 @@ BackingStore::DoOpenAndVerify(BucketContext& bucket_context,
                           bucket_context.AsWeakPtr()));
   status = backing_store->Initialize(/*clean_active_blob_journal=*/!in_memory);
   if (!status.ok()) [[unlikely]] {
-    base::WaitableEvent leveldb_destruct_event;
-    backing_store->TearDown(&leveldb_destruct_event);
+    base::WaitableEvent destruct_event;
+    std::move(*backing_store).SignalWhenDestructionComplete(&destruct_event);
     backing_store.reset();
-    leveldb_destruct_event.Wait();
-    return {nullptr, status, IndexedDBDataLossInfo(), /*is_disk_full=*/false};
+    destruct_event.Wait();
+    return {nullptr, status, std::move(data_loss_info), /*is_disk_full=*/false};
   }
   backing_store->db()->scopes()->StartRecoveryAndCleanupTasks();
   backing_store->bucket_context_ = &bucket_context;
@@ -1767,7 +1767,7 @@ Status BackingStore::Database::DeleteDatabase(
     base::OnceClosure on_complete) {
   TRACE_EVENT0("IndexedDB", "BackingStore::DeleteDatabase");
 
-  scoped_refptr<TransactionalLevelDBTransaction> transaction =
+  std::unique_ptr<TransactionalLevelDBTransaction> transaction =
       GetTransactionalLevelDBFactory()->CreateLevelDBTransaction(
           backing_store_->db(),
           backing_store_->db()->scopes()->CreateScope(std::move(locks)));

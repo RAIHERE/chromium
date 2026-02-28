@@ -9,8 +9,9 @@
 #include "chrome/browser/extensions/extension_tab_util.h"
 #include "chrome/browser/extensions/extension_ui_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/tabs/tab_list_interface.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/grit/generated_resources.h"
+#include "content/public/browser/navigation_handle.h"
 #include "content/public/browser/web_contents.h"
 #include "extensions/browser/permissions/site_permissions_helper.h"
 #include "extensions/buildflags/buildflags.h"
@@ -113,16 +114,9 @@ bool ExtensionsToolbarViewModel::AreActionsInitialized() {
 
 ExtensionsToolbarViewModel::ExtensionsToolbarButtonState
 ExtensionsToolbarViewModel::GetButtonState(
-    content::WebContents* web_contents) const {
-  // TODO(crbug.com/461983701): Refactor WebContents handling. Callers of
-  // GetButtonState and GetRequestAccessButtonParams should be responsible for
-  // handling potential nullptr WebContents and only call these methods with
-  // valid WebContents instances.
-  if (!web_contents) {
-    return ExtensionsToolbarButtonState::kDefault;
-  }
+    content::WebContents& web_contents) const {
   Profile* profile = browser_->GetProfile();
-  const GURL& url = web_contents->GetLastCommittedURL();
+  const GURL& url = web_contents.GetLastCommittedURL();
 
   if (actions_model_->IsRestrictedUrl(url)) {
     return ExtensionsToolbarButtonState::kAllExtensionsBlocked;
@@ -166,9 +160,9 @@ ExtensionsToolbarViewModel::GetRequestAccessButtonParams(
   Profile* profile = browser_->GetProfile();
   extensions::PermissionsManager* permissions_manager =
       extensions::PermissionsManager::Get(profile);
+  auto origin = web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin();
   extensions::PermissionsManager::UserSiteSetting site_setting =
-      permissions_manager->GetUserSiteSetting(
-          web_contents->GetPrimaryMainFrame()->GetLastCommittedOrigin());
+      permissions_manager->GetUserSiteSetting(origin);
 
   if (site_setting !=
       extensions::PermissionsManager::UserSiteSetting::kCustomizeByExtension) {
@@ -305,15 +299,20 @@ void ExtensionsToolbarViewModel::OnToolbarPinnedActionsChanged() {
 
 void ExtensionsToolbarViewModel::DidFinishNavigation(
     content::NavigationHandle* handle) {
+  if (!handle->IsInPrimaryMainFrame() || !handle->HasCommitted()) {
+    return;
+  }
   for (Observer& obs : observers_) {
-    obs.OnActiveWebContentsChanged();
+    obs.OnActiveWebContentsChanged(handle->IsSameDocument());
   }
 }
 
-void ExtensionsToolbarViewModel::OnActiveTabChanged(tabs::TabInterface* tab) {
-  WebContentsObserver::Observe(tab ? tab->GetContents() : nullptr);
+void ExtensionsToolbarViewModel::OnActiveTabChanged(TabListInterface& tab_list,
+                                                    tabs::TabInterface* tab) {
+  content::WebContents* contents = tab->GetContents();
+  WebContentsObserver::Observe(contents);
   for (Observer& obs : observers_) {
-    obs.OnActiveWebContentsChanged();
+    obs.OnActiveWebContentsChanged(/*is_same_document=*/false);
   }
 }
 
@@ -323,9 +322,9 @@ void ExtensionsToolbarViewModel::OnTabListDestroyed(
 }
 
 bool ExtensionsToolbarViewModel::AnyActionHasCurrentSiteAccess(
-    content::WebContents* web_contents) const {
+    content::WebContents& web_contents) const {
   for (const auto& [action_id, model] : actions_) {
-    if (model->GetSiteInteraction(web_contents) ==
+    if (model->GetSiteInteraction(&web_contents) ==
         extensions::SitePermissionsHelper::SiteInteraction::kGranted) {
       return true;
     }
@@ -401,6 +400,25 @@ void ExtensionsToolbarViewModel::OnHostAccessRequestsCleared(int tab_id) {
 void ExtensionsToolbarViewModel::OnHostAccessRequestDismissedByUser(
     const extensions::ExtensionId& extension_id,
     const url::Origin& origin) {
+  content::WebContents* web_contents = GetCurrentWebContents();
+  for (Observer& obs : observers_) {
+    obs.OnRequestAccessButtonParamsChanged(web_contents);
+  }
+}
+
+void ExtensionsToolbarViewModel::OnUserPermissionsSettingsChanged(
+    const extensions::PermissionsManager::UserPermissionsSettings& settings) {
+  for (Observer& obs : observers_) {
+    obs.OnToolbarControlStateUpdated();
+  }
+  // TODO(crbug.com/40857356): Update request access button hover card. This
+  // will be slightly different than 'OnToolbarActionUpdated' since site
+  // settings update are not tied to a specific action.
+}
+
+void ExtensionsToolbarViewModel::OnShowAccessRequestsInToolbarChanged(
+    const extensions::ExtensionId& extension_id,
+    bool can_show_requests) {
   content::WebContents* web_contents = GetCurrentWebContents();
   for (Observer& obs : observers_) {
     obs.OnRequestAccessButtonParamsChanged(web_contents);

@@ -9,10 +9,12 @@
 #include <functional>
 
 #include "base/containers/span.h"
+#include "base/functional/bind.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/raw_ref.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
+#include "base/types/expected.h"
 #include "components/unexportable_keys/background_task_origin.h"
 #include "components/unexportable_keys/background_task_priority.h"
 #include "components/unexportable_keys/ref_counted_unexportable_signing_key.h"
@@ -86,7 +88,6 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyServiceImpl
       BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) override;
   void DeleteAllKeysSlowlyAsync(
-      BackgroundTaskPriority priority,
       base::OnceCallback<void(ServiceErrorOr<size_t>)> callback) override;
   ServiceErrorOr<std::vector<uint8_t>> GetSubjectPublicKeyInfo(
       UnexportableKeyId key_id) const override;
@@ -135,12 +136,6 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyServiceImpl
   ExtractKeyFromMaps(UnexportableKeyId key_id);
 
   // Callback for `GetAllSigningKeysForGarbageCollectionSlowlyAsync()`.
-  void OnGetAllSigningKeysForGarbageCollectionSlowly(
-      base::OnceCallback<void(ServiceErrorOr<std::vector<UnexportableKeyId>>)>
-          client_callback,
-      ServiceErrorOr<
-          std::vector<scoped_refptr<RefCountedUnexportableSigningKey>>>
-          keys_or_error);
   ServiceErrorOr<std::vector<UnexportableKeyId>>
   OnGetAllSigningKeysForGarbageCollectionSlowlyImpl(
       ServiceErrorOr<
@@ -148,11 +143,6 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyServiceImpl
           keys_or_error);
 
   // Callback for `GenerateSigningKeySlowlyAsync()`.
-  void OnKeyGenerated(
-      base::OnceCallback<void(ServiceErrorOr<UnexportableKeyId>)>
-          client_callback,
-      ServiceErrorOr<scoped_refptr<RefCountedUnexportableSigningKey>>
-          key_or_error);
   ServiceErrorOr<UnexportableKeyId> OnKeyGeneratedImpl(
       ServiceErrorOr<scoped_refptr<RefCountedUnexportableSigningKey>>
           key_or_error);
@@ -164,11 +154,26 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyServiceImpl
           key_or_error);
 
   // Generic trampoline that runs the callback only if the WeakPtr used to bind
-  // this method is still valid.
-  template <typename... Args>
-  void RunCallbackIfAlive(base::OnceCallback<void(Args...)> callback,
-                          Args... args) {
-    std::move(callback).Run(std::forward<Args>(args)...);
+  // this method is still valid. In case it is not, the callback is run with
+  // `ServiceError::kOperationCancelled`.
+  //
+  // Supports an optional projection function that can be used to transform the
+  // result before passing it to the callback.
+  template <typename T, typename U = T>
+  base::OnceCallback<void(ServiceErrorOr<U>)> WrapCallbackWithErrorIfCancelled(
+      base::OnceCallback<void(ServiceErrorOr<T>)> callback,
+      base::OnceCallback<ServiceErrorOr<T>(ServiceErrorOr<U>)> proj =
+          base::BindOnce([](ServiceErrorOr<U> result) { return result; })) {
+    return base::BindOnce(
+        [](base::WeakPtr<UnexportableKeyServiceImpl> weak_ptr,
+           base::OnceCallback<void(ServiceErrorOr<T>)> callback,
+           base::OnceCallback<ServiceErrorOr<T>(ServiceErrorOr<U>)> proj,
+           ServiceErrorOr<U> result) {
+          std::move(callback).Run(
+              weak_ptr ? std::move(proj).Run(std::move(result))
+                       : base::unexpected(ServiceError::kOperationCancelled));
+        },
+        weak_ptr_factory_.GetWeakPtr(), std::move(callback), std::move(proj));
   }
 
   const raw_ref<UnexportableKeyTaskManager, DanglingUntriaged> task_manager_;
@@ -184,14 +189,7 @@ class COMPONENT_EXPORT(UNEXPORTABLE_KEYS) UnexportableKeyServiceImpl
   // session.
   KeyIdMap key_by_key_id_;
 
-  base::WeakPtrFactory<UnexportableKeyServiceImpl>
-      get_all_keys_weak_ptr_factory_{this};
-  base::WeakPtrFactory<UnexportableKeyServiceImpl>
-      generate_key_weak_ptr_factory_{this};
-  base::WeakPtrFactory<UnexportableKeyServiceImpl>
-      from_wrapped_key_weak_ptr_factory_{this};
-  base::WeakPtrFactory<UnexportableKeyServiceImpl> service_weak_ptr_factory_{
-      this};
+  base::WeakPtrFactory<UnexportableKeyServiceImpl> weak_ptr_factory_{this};
 };
 
 }  // namespace unexportable_keys

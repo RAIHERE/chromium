@@ -12,6 +12,8 @@
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
 #include "chrome/browser/command_observer.h"
+#include "chrome/browser/glic/browser_ui/glic_button_controller_delegate.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/toolbar/app_menu_icon_controller.h"
 #include "chrome/browser/ui/toolbar/back_forward_menu_model.h"
@@ -57,12 +59,17 @@ class PinnedToolbarActionsContainer;
 class ToolbarButton;
 class AvatarToolbarButtonBrowserTest;
 class ToolbarController;
+class ToolbarDivider;
 class OverflowButton;
 class PerformanceInterventionButton;
 
 namespace views {
 class FlexLayout;
-}
+}  // namespace views
+
+namespace glic {
+class ToolbarGlicButton;
+}  // namespace glic
 
 // The Browser Window's toolbar.
 class ToolbarView : public views::AccessiblePaneView,
@@ -72,7 +79,8 @@ class ToolbarView : public views::AccessiblePaneView,
                     public CommandObserver,
                     public AppMenuIconController::Delegate,
                     public ToolbarButtonProvider,
-                    public BrowserRootView::DropTarget {
+                    public BrowserRootView::DropTarget,
+                    public glic::GlicButtonControllerDelegate {
   METADATA_HEADER(ToolbarView, views::AccessiblePaneView)
 
  public:
@@ -83,7 +91,6 @@ class ToolbarView : public views::AccessiblePaneView,
                 // bar, used for popups.
     kCustomTab  // Custom tab bar, used in PWAs when a location
                 // needs to be displayed.
-                // TODO(crbug.com/474406675): Rename to WebApp or TabbedPWA.
   };
 
   DECLARE_CLASS_ELEMENT_IDENTIFIER_VALUE(kToolbarElementId);
@@ -135,6 +142,12 @@ class ToolbarView : public views::AccessiblePaneView,
 
   // Shows a bookmark bubble and anchors it appropriately.
   void ShowBookmarkBubble(const GURL& url, bool already_bookmarked);
+
+  // Used to test whether `test_point` should be treated as part of the caption
+  // bar, which means it can be used to drag the window or open the window
+  // context menu. Should only be called when the toolbar is in the caption
+  // area.
+  bool IsPositionInWindowCaption(const gfx::Point& test_point) const;
 
   // Accessors.
   Browser* browser() const { return browser_; }
@@ -255,6 +268,10 @@ class ToolbarView : public views::AccessiblePaneView,
       gfx::Point loc_in_local_coords) override;
   views::View* GetViewForDrop() override;
 
+  // GlicButtonControllerDelegate:
+  void SetGlicShowState(bool show) override;
+  void SetGlicPanelIsOpen(bool open) override;
+
   // Changes the visibility of the Chrome Labs entry point based on prefs.
   void OnChromeLabsPrefChanged();
 
@@ -269,6 +286,20 @@ class ToolbarView : public views::AccessiblePaneView,
 
   void NewTabButtonPressed(const ui::Event& event);
 
+  void OnVerticalTabStripModeChanged(
+      tabs::VerticalTabStripStateController* controller);
+
+#if BUILDFLAG(ENABLE_GLIC)
+  std::unique_ptr<glic::ToolbarGlicButton> CreateGlicButton();
+  void OnGlicButtonClicked();
+  void OnGlicButtonDismissed();
+  void OnGlicButtonHovered();
+  void OnGlicButtonMouseDown();
+  void OnGlicButtonAnimationEnded();
+  void ExecuteHideToolbarNudge(glic::ToolbarGlicButton* button);
+  void UpdateGlicButtonVisibility();
+#endif
+
   gfx::SlideAnimation size_animation_{this};
 
   // Controls. Most of these can be null, e.g. in popup windows. Only
@@ -282,9 +313,11 @@ class ToolbarView : public views::AccessiblePaneView,
   raw_ptr<SplitTabsToolbarButton> split_tabs_ = nullptr;
   raw_ptr<CustomTabBarView> custom_tab_bar_ = nullptr;
   raw_ptr<LocationBarView> location_bar_view_ = nullptr;
+
+  // An alias for `location_bar_view_` or `toolbar_webview_->GetLocationBar()`.
   raw_ptr<LocationBar> location_bar_ = nullptr;
   raw_ptr<ExtensionsToolbarDesktop> extensions_container_ = nullptr;
-  raw_ptr<views::View> toolbar_divider_ = nullptr;
+  raw_ptr<ToolbarDivider> toolbar_divider_ = nullptr;
   raw_ptr<BatterySaverButton> battery_saver_button_ = nullptr;
   raw_ptr<PerformanceInterventionButton> performance_intervention_button_ =
       nullptr;
@@ -295,6 +328,8 @@ class ToolbarView : public views::AccessiblePaneView,
   raw_ptr<BrowserAppMenuButton> app_menu_button_ = nullptr;
   raw_ptr<views::View> new_tab_button_ = nullptr;
   raw_ptr<PinnedActionToolbarButton> tab_search_button_ = nullptr;
+
+  raw_ptr<glic::ToolbarGlicButton> glic_button_ = nullptr;
 
   const raw_ptr<Browser> browser_;
   const raw_ptr<BrowserView> browser_view_;
@@ -329,6 +364,12 @@ class ToolbarView : public views::AccessiblePaneView,
   // due to small toolbar view width. Visibility controlled by
   // `toolbar_controller_`.
   raw_ptr<OverflowButton> overflow_button_ = nullptr;
+
+  // Subscription for when tab strip mode changes
+  base::CallbackListSubscription vertical_tab_subscription_;
+
+  bool should_display_vertical_tabs_ = false;
+  bool should_show_glic_button_ = false;
 };
 
 extern const ui::ClassProperty<bool>* const kActionItemUnderlineIndicatorKey;

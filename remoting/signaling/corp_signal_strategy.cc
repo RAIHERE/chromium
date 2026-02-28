@@ -21,6 +21,7 @@
 #include "remoting/base/logging.h"
 #include "remoting/base/rsa_key_pair.h"
 #include "remoting/signaling/corp_messaging_client.h"
+#include "remoting/signaling/jingle_message_xml_converter.h"
 #include "remoting/signaling/signaling_address.h"
 #include "remoting/signaling/xmpp_constants.h"
 #include "services/network/public/cpp/shared_url_loader_factory.h"
@@ -50,7 +51,6 @@ class CorpSignalStrategy::Core {
   const SignalingAddress& GetLocalAddress() const;
   void AddListener(Listener* listener);
   void RemoveListener(Listener* listener);
-  bool SendStanza(std::unique_ptr<jingle_xmpp::XmlElement> stanza);
   bool SendMessage(const SignalingAddress& destination_address,
                    SignalingMessage&& message);
   std::string GetNextId();
@@ -155,32 +155,6 @@ void CorpSignalStrategy::Core::RemoveListener(Listener* listener) {
   listeners_.RemoveObserver(listener);
 }
 
-bool CorpSignalStrategy::Core::SendStanza(
-    std::unique_ptr<jingle_xmpp::XmlElement> stanza) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  if (GetState() != CONNECTED) {
-    LOG(WARNING) << "Dropping signaling message because not connected.";
-    return false;
-  }
-
-  SignalingAddress to =
-      SignalingAddress::Parse(stanza.get(), SignalingAddress::TO);
-  if (to.empty()) {
-    LOG(ERROR) << "Invalid destination address.";
-    return false;
-  }
-
-  stanza->SetAttr(kQNameFrom, GetLocalAddress().id());
-
-  internal::PeerMessageStruct peer_message;
-  internal::IqStanzaStruct iq_stanza;
-  iq_stanza.xml = stanza->Str();
-  peer_message.payload = std::move(iq_stanza);
-
-  return SendMessage(to, std::move(peer_message));
-}
-
 bool CorpSignalStrategy::Core::SendMessage(
     const SignalingAddress& destination_address,
     SignalingMessage&& message) {
@@ -189,6 +163,36 @@ bool CorpSignalStrategy::Core::SendMessage(
   if (GetState() != CONNECTED) {
     LOG(WARNING) << "Dropping message because not connected.";
     return false;
+  }
+
+  // TODO: joedow - Use std::visit(absl::Overload(...), message->payload()).
+  std::unique_ptr<jingle_xmpp::XmlElement> stanza;
+  if (auto* jingle_message = std::get_if<JingleMessage>(&message)) {
+    if (destination_address.empty()) {
+      LOG(ERROR) << "Invalid destination address.";
+      return false;
+    }
+
+    jingle_message->from = GetLocalAddress();
+
+    stanza = JingleMessageToXml(*jingle_message);
+  } else if (auto* jingle_reply = std::get_if<JingleMessageReply>(&message)) {
+    if (destination_address.empty()) {
+      LOG(ERROR) << "Invalid destination address.";
+      return false;
+    }
+
+    jingle_reply->from = GetLocalAddress();
+
+    stanza = JingleMessageReplyToXml(*jingle_reply);
+  }
+  if (stanza) {
+    internal::PeerMessageStruct peer_message;
+    internal::IqStanzaStruct iq_stanza;
+    iq_stanza.xml = stanza->Str();
+    peer_message.payload = std::move(iq_stanza);
+
+    return SendMessage(destination_address, std::move(peer_message));
   }
 
   auto* peer_message = std::get_if<internal::PeerMessageStruct>(&message);
@@ -209,8 +213,7 @@ bool CorpSignalStrategy::Core::SendMessage(
     }
   });
   messaging_client_->SendMessage(SignalingAddress(messaging_authz_token_),
-                                 SignalingMessage(std::move(*peer_message)),
-                                 std::move(on_done));
+                                 std::move(message), std::move(on_done));
   return true;
 }
 
@@ -230,12 +233,6 @@ void CorpSignalStrategy::Core::OnIncomingMessage(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   HOST_LOG << "Received incoming message from " << sender_address.id();
-  for (auto& listener : listeners_) {
-    if (listener.OnSignalStrategyIncomingMessage(sender_address, message)) {
-      // Corp messaging does not support non-signaling messages like FTL does.
-      NOTREACHED();
-    }
-  }
 
   const auto* peer_message = std::get_if<internal::PeerMessageStruct>(&message);
   if (!peer_message) {
@@ -250,17 +247,8 @@ void CorpSignalStrategy::Core::OnIncomingMessage(
     return;
   }
 
-  auto stanza = base::WrapUnique<jingle_xmpp::XmlElement>(
-      jingle_xmpp::XmlElement::ForStr(iq_stanza_struct->xml));
-  if (!stanza) {
-    LOG(WARNING) << "Failed to parse XMPP: " << iq_stanza_struct->xml;
-    return;
-  }
-
-  SignalingAddress sender_address_from_iq =
-      SignalingAddress::Parse(stanza.get(), SignalingAddress::FROM);
-  if (sender_address_from_iq.empty()) {
-    LOG(WARNING) << "Received stanza with invalid sender.";
+  auto parsed_message = SignalStrategy::ParseStanzaXml(iq_stanza_struct->xml);
+  if (!parsed_message.has_value()) {
     return;
   }
 
@@ -277,7 +265,12 @@ void CorpSignalStrategy::Core::OnIncomingMessage(
     messaging_authz_token_ = authz_token;
   }
 
-  OnStanza(sender_address_from_iq, std::move(stanza));
+  for (auto& listener : listeners_) {
+    if (listener.OnSignalStrategyIncomingMessage(sender_address,
+                                                 *parsed_message)) {
+      return;
+    }
+  }
 }
 
 void CorpSignalStrategy::Core::OnChannelReady() {
@@ -317,37 +310,6 @@ void CorpSignalStrategy::Core::SetState(State state) {
   state_ = state;
   for (auto& observer : listeners_) {
     observer.OnSignalStrategyStateChange(state_);
-  }
-}
-
-void CorpSignalStrategy::Core::OnStanza(
-    const SignalingAddress& sender_address,
-    std::unique_ptr<jingle_xmpp::XmlElement> stanza) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  if (stanza->Name() != kQNameIq) {
-    LOG(WARNING) << "Received unexpected non-IQ packet " << stanza->Str();
-    return;
-  }
-  if (SignalingAddress(stanza->Attr(kQNameFrom)) != sender_address) {
-    LOG(WARNING) << "Expected sender: " << sender_address.id()
-                 << ", but received: " << stanza->Attr(kQNameFrom);
-    return;
-  }
-  if (SignalingAddress(stanza->Attr(kQNameTo)) != local_address_) {
-    LOG(WARNING) << "Expected receiver: " << local_address_.id()
-                 << ", but received: " << stanza->Attr(kQNameTo);
-    return;
-  }
-
-  HOST_LOG << "Received incoming stanza:\n"
-           << stanza->Str()
-           << "\n=========================================================";
-
-  for (auto& listener : listeners_) {
-    if (listener.OnSignalStrategyIncomingStanza(stanza.get())) {
-      return;
-    }
   }
 }
 
@@ -399,11 +361,6 @@ void CorpSignalStrategy::AddListener(Listener* listener) {
 
 void CorpSignalStrategy::RemoveListener(Listener* listener) {
   core_->RemoveListener(listener);
-}
-
-bool CorpSignalStrategy::SendStanza(
-    std::unique_ptr<jingle_xmpp::XmlElement> stanza) {
-  return core_->SendStanza(std::move(stanza));
 }
 
 bool CorpSignalStrategy::SendMessage(

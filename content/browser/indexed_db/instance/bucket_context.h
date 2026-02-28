@@ -11,6 +11,7 @@
 #include <optional>
 #include <queue>
 #include <string>
+#include <tuple>
 
 #include "base/auto_reset.h"
 #include "base/containers/flat_map.h"
@@ -51,6 +52,18 @@ namespace content::indexed_db {
 class BackingStore;
 class BucketContextHandle;
 class Database;
+
+// Used as a feature param by `kIdbSqliteOnDiskRollout`. Adding, removing and
+// reordering values is fine; just make sure to update
+// `kIdbSqliteOnDiskRolloutStages` when adding new values.
+enum class SqliteRolloutStage {
+  // Use LevelDB exclusively; delete SQLite stores if found.
+  kUseLevelDbOnly,
+  // Use SQLite for new stores and existing LevelDB stores that are corrupted.
+  kUseSqliteForNewStores,
+  // Use SQLite exclusively; delete LevelDB stores if found.
+  kUseSqliteOnly,
+};
 
 // BucketContext manages the per-bucket IndexedDB state, and other important
 // context like the backing store and lock manager.
@@ -153,7 +166,8 @@ class CONTENT_EXPORT BucketContext
       const base::FilePath& data_path);
 
   // All `BucketContext` instances created during the lifetime of the returned
-  // object will use SQLite iff `use_sqlite` is true.
+  // object will use SQLite iff `use_sqlite` is true, unless overridden for a
+  // specific instance with `SetSqliteRolloutStageForTesting()`.
   static base::AutoReset<std::optional<bool>> OverrideShouldUseSqliteForTesting(
       bool use_sqlite);
 
@@ -161,7 +175,11 @@ class CONTENT_EXPORT BucketContext
   // crbug.com/340398745.
   static void InsertTeardownStepForTesting(base::OnceClosure on_teardown);
 
-  bool ShouldUseSqlite() const { return should_use_sqlite_; }
+  static base::TimeDelta GetIdleTimeoutForTesting();
+
+  // Whether the backing store is using SQLite. `CHECK`s that the backing store
+  // exists.
+  bool IsUsingSqlite();
 
   void QueueRunTasks();
 
@@ -184,13 +202,9 @@ class CONTENT_EXPORT BucketContext
   // (i.e., had relaxed durability).
   uint64_t GetUsage(bool write_in_progress);
 
-  bool IsClosing() const {
-    return closing_stage_ != ClosingState::kNotClosing;
-  }
+  bool IsClosing() const { return closing_stage_ != ClosingState::kNotClosing; }
 
-  ClosingState closing_stage() const {
-    return closing_stage_;
-  }
+  ClosingState closing_stage() const { return closing_stage_; }
 
   void ReportOutstandingBlobs(bool blobs_outstanding);
 
@@ -216,23 +230,15 @@ class CONTENT_EXPORT BucketContext
     return bucket_info_.ToBucketLocator();
   }
   BackingStore* backing_store() {
-    return backing_store_.get();
+    return backing_store_ ? std::get<0>(*backing_store_).get() : nullptr;
   }
-  const DBMap& GetDatabasesForTesting() const {
-    return databases_;
-  }
-  PartitionedLockManager& lock_manager() {
-    return *lock_manager_;
-  }
-  const PartitionedLockManager& lock_manager() const {
-    return *lock_manager_;
-  }
+  const DBMap& GetDatabasesForTesting() const { return databases_; }
+  PartitionedLockManager& lock_manager() { return *lock_manager_; }
+  const PartitionedLockManager& lock_manager() const { return *lock_manager_; }
 
   Delegate& delegate() { return delegate_; }
 
-  base::OneShotTimer* close_timer() {
-    return &close_timer_;
-  }
+  base::OneShotTimer* close_timer() { return &close_timer_; }
 
   base::WeakPtr<BucketContext> AsWeakPtr() {
     return weak_factory_.GetWeakPtr();
@@ -309,14 +315,23 @@ class CONTENT_EXPORT BucketContext
   friend BucketContextHandle;
   friend class BackingStoreTestBase;
   friend class DatabaseTest;
-  friend class IndexedDBTest;
+  friend class IndexedDBTestBase;
   friend class TransactionTestBase;
 
   FRIEND_TEST_ALL_PREFIXES(IndexedDBTest, CompactionKillSwitchWorks);
   FRIEND_TEST_ALL_PREFIXES(IndexedDBTest, TooLongOrigin);
   FRIEND_TEST_ALL_PREFIXES(IndexedDBTest, BasicFactoryCreationAndTearDown);
+  FRIEND_TEST_ALL_PREFIXES(IndexedDBTestWithBucketType,
+                           ChangingEngineDeletesOtherEngineFiles);
+  FRIEND_TEST_ALL_PREFIXES(IndexedDBTestWithBucketType, UseSqliteForNewStores);
   FRIEND_TEST_ALL_PREFIXES(BucketContextTest, BucketSpaceDecay);
   FRIEND_TEST_ALL_PREFIXES(BucketContextTest, MetadataRecordingStateHistory);
+  FRIEND_TEST_ALL_PREFIXES(BucketContextTest,
+                           OverrideShouldUseSqliteForTesting);
+
+  // Overrides the rollout stage for this instance only. Must be called before
+  // backing store initialization.
+  void SetSqliteRolloutStageForTesting(SqliteRolloutStage stage);
 
   // The data structure that stores everything bound to the receiver. This will
   // be stored together with the receiver in the `mojo::ReceiverSet`.
@@ -351,6 +366,7 @@ class CONTENT_EXPORT BucketContext
   void StartClosing();
   void CloseNow();
   void StartPreCloseTasks();
+  void RunIdleTasks();
 
   void RunTasks();
 
@@ -390,8 +406,9 @@ class CONTENT_EXPORT BucketContext
   // Base directory for blobs and backing store files.
   const base::FilePath data_path_;
 
-  // True if the backing store is SQLite, or would be SQLite if it existed.
-  bool should_use_sqlite_ = false;
+  // Set at construction. Can be overridden by
+  // `SetSqliteRolloutStageForTesting()`.
+  SqliteRolloutStage sqlite_rollout_stage_;
 
   // True if there are blobs referencing this backing store that are still
   // alive. This is used as closing criteria for this object, see CanClose.
@@ -401,15 +418,18 @@ class CONTENT_EXPORT BucketContext
   bool running_tasks_ = false;
 
   ClosingState closing_stage_ = ClosingState::kNotClosing;
+  base::RetainingOneShotTimer idle_timer_;
+  std::optional<base::TimeTicks> last_idle_tasks_completion_time_;
   base::OneShotTimer close_timer_;
   std::unique_ptr<PartitionedLockManager> lock_manager_;
-  std::unique_ptr<BackingStore> backing_store_;
+  // <BackingStore, is_sqlite>. Set only after a successful call to
+  // `InitBackingStore()`.
+  std::optional<std::tuple<std::unique_ptr<BackingStore>, bool>> backing_store_;
   scoped_refptr<storage::QuotaManagerProxy> quota_manager_proxy_;
 
   // Databases in the backing store which are already loaded/represented by
   // Database objects. The backing store may have other databases which
   // have not yet been loaded.
-  uint32_t next_database_id_for_locks_ = 0;
   DBMap databases_;
   // This is the refcount for the number of BucketContextHandle's given out for
   // this bucket context using OpenReference. This is used as closing criteria

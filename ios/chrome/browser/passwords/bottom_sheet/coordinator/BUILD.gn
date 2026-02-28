@@ -8,11 +8,16 @@ source_set("coordinator") {
     "credential_suggestion_bottom_sheet_coordinator.mm",
     "credential_suggestion_bottom_sheet_mediator.h",
     "credential_suggestion_bottom_sheet_mediator.mm",
+    "credential_suggestion_bottom_sheet_mediator_base+Subclassing.h",
+    "credential_suggestion_bottom_sheet_mediator_base.h",
+    "credential_suggestion_bottom_sheet_mediator_base.mm",
     "passkey_creation_bottom_sheet_coordinator.h",
     "passkey_creation_bottom_sheet_coordinator.mm",
     "passkey_creation_bottom_sheet_mediator.h",
     "passkey_creation_bottom_sheet_mediator.mm",
     "passkey_creation_bottom_sheet_mediator_delegate.h",
+    "passkey_suggestion_bottom_sheet_mediator.h",
+    "passkey_suggestion_bottom_sheet_mediator.mm",
     "password_suggestion_bottom_sheet_exit_reason.h",
   ]
   deps = [
@@ -23,7 +28,6 @@ source_set("coordinator") {
     "//components/image_fetcher/core",
     "//components/image_fetcher/ios",
     "//components/password_manager/core/browser",
-    "//components/password_manager/core/browser/features:password_features",
     "//components/password_manager/ios",
     "//components/password_manager/ios:features",
     "//components/prefs",
@@ -31,6 +35,7 @@ source_set("coordinator") {
     "//components/signin/public/identity_manager",
     "//components/sync/service",
     "//components/webauthn/ios",
+    "//components/webauthn/ios:utils",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/autofill/model",
     "//ios/chrome/browser/autofill/model/bottom_sheet",
@@ -56,6 +61,7 @@ source_set("coordinator") {
     "//ios/chrome/browser/sync/model",
     "//ios/chrome/browser/tips_manager/model:factory",
     "//ios/chrome/browser/tips_manager/model:tips_manager",
+    "//ios/chrome/browser/webauthn/public",
     "//ios/chrome/browser/welcome_back/model:features",
     "//ios/chrome/common/ui/confirmation_alert",
     "//ios/chrome/common/ui/favicon:favicon_constants",
@@ -70,10 +76,15 @@ source_set("coordinator") {
 
 source_set("unit_tests") {
   testonly = true
-  sources = [ "credential_suggestion_bottom_sheet_mediator_unittest.mm" ]
+  sources = [
+    "credential_suggestion_bottom_sheet_mediator_unittest.mm",
+    "passkey_creation_bottom_sheet_mediator_unittest.mm",
+    "passkey_suggestion_bottom_sheet_mediator_unittest.mm",
+  ]
   deps = [
     ":coordinator",
     "//components/autofill/ios/browser",
+    "//components/autofill/ios/common",
     "//components/autofill/ios/form_util",
     "//components/password_manager/core/browser:test_support",
     "//components/password_manager/core/browser/features:password_features",
@@ -81,6 +92,12 @@ source_set("unit_tests") {
     "//components/password_manager/ios:password_manager_feature_header",
     "//components/password_manager/ios:test_support",
     "//components/prefs:test_support",
+    "//components/sync/protocol",
+    "//components/webauthn/core/browser:test_support",
+    "//components/webauthn/ios",
+    "//components/webauthn/ios:passkey_types",
+    "//components/webauthn/ios:test_support",
+    "//device/fido/public",
     "//ios/chrome/app/strings",
     "//ios/chrome/browser/autofill/model",
     "//ios/chrome/browser/favicon/model",
@@ -93,6 +110,7 @@ source_set("unit_tests") {
     "//ios/chrome/browser/shared/model/profile/test",
     "//ios/chrome/browser/shared/model/web_state_list",
     "//ios/chrome/browser/shared/model/web_state_list/test:test_support",
+    "//ios/chrome/common/ui/reauthentication",
     "//ios/web/public/test",
     "//ios/web/public/test/fakes",
     "//testing/gtest",

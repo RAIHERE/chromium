@@ -51,11 +51,16 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(int,
 // Avoids copying ResourceRequest::TrustedParams when possible.
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAvoidTrustedParamsCopies);
 
-// Sends touch moves async once the scroll has already started. This means the
-// generation of GestureScrollUpdate is not blocked on touch moves being handled
-// by RendererMain.
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
-    kAsyncTouchMovesImmediatelyAfterScroll);
+// Whether async touch moves are sent unthrottled to javascript handlers.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kUnthrottleAsyncTouchMoves);
+
+enum class AsyncTouchMoveThrottlingPolicy {
+  kUnthrottledWhenGsuUnconsumed,
+  kUnthrottledAlways
+};
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    AsyncTouchMoveThrottlingPolicy,
+    kAsyncTouchMoveThrottlingPolicyParam);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kLowerHighResolutionTimerThreshold);
 
@@ -98,6 +103,10 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAndroidSpellcheckNativeUi);
 // If enabled, provides API support for custom spell check menus that are
 // rendered by Android applications.
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAndroidSpellcheckFullApiBlink);
+
+// If enabled, the platform in the User-Agent metadata for Android desktop will
+// be "Android" instead of "Linux".
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAndroidDesktopUAPlatform);
 #endif
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
@@ -110,9 +119,6 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAudioWorkletThreadRealtimePeriodMac);
 #endif
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kAudioWorkletThreadPool);
-
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
-    kAutofillEnableSyntheticSelectMetricsLogging);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kAutofillFixFieldsAssociatedWithNestedFormsByParser);
@@ -225,9 +231,10 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
     kCacheStorageCodeCacheHintHeaderName);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCanvas2DHibernation);
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCanvas2DHibernationDefer);
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCanvas2DHibernationNoSmallCanvas);
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kCanvas2DHibernationReleaseTransferMemory);
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCanvas2DHibernationNoSmallCanvas);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCaptureJSExecutionLocation);
 
@@ -250,10 +257,24 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(int,
                                                kMaxDiskDataAllocatorCapacityMB);
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kLessAggressiveParkableString);
 
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCombineNewWindowIPCs);
+// Controls whether blink main thread rendering updates are forced while
+// compositor-thread animations are running, for the purpose of keeeping
+// IntersectionObserver and anchor positioning correctly up to date.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCompositedAnimationsForceMainFrames);
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kForceMainFramesForIntersectionObserver);
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kForceMainFramesForAnchorTransform);
+
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kConsumeCodeCacheOffThread);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kContentCaptureConstantStreaming);
+
+// If enabled, content:// URLs are considered local, and won't be allowed
+// to be downloaded.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kContentSchemeIsLocal);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kCreateImageBitmapOrientationNone);
 
@@ -650,6 +671,10 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kForceHighPerformanceGPUForWebGL);
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kForceOffTextAutosizing);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kFrameMetadataObserver);
+
+// If enabled, shared workers will be frozen when all their clients are in the
+// back/forward cache.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kFreezeSharedWorker);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kFrequencyCappingForLargeStickyAdDetection);
@@ -1378,6 +1403,9 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kDedicatedWorkerAblationStudyEnabled);
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(int,
                                                kDedicatedWorkerStartDelayInMs);
 
+// Enables Document Policy for DedicatedWorkers.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kDocumentPolicyInDedicatedWorker);
+
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kUpdatedDeviceMemoryLimitsFor2026);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kUseAncestorRenderFrameForWorker);
@@ -1623,6 +1651,9 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
     bool,
     kRestrictLinkHeaderOnSubresourceResourceLoad);
 
+// Enables the Rust-based BMP image decoder.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kRustyBmpFeature);
+
 // When enabled, it adds Payto URI Scheme to the safe list for
 // registerProtocolHandler. This feature is disabled by default
 // Payto URI Scheme explanation https://datatracker.ietf.org/doc/html/rfc8905
@@ -1714,6 +1745,10 @@ BLINK_COMMON_EXPORT extern const base::FeatureParam<bool>
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kServiceWorkerSyntheticResponse);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
+    bool,
+    kServiceWorkerSyntheticResponseUseCacheStorageParam);
+
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
     std::string,
     kServiceWorkerSyntheticResponseAllowedUrl);
 
@@ -1721,17 +1756,15 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
     std::string,
     kServiceWorkerSyntheticResponseDeniedUrlParams);
 
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
-    std::string,
-    kServiceWorkerSyntheticResponseIgnoredHeaders);
+enum class ServiceWorkerSyntheticResponseProcessingMode {
+  kDefault,
+  kBackgroundThread,
+  kNetworkService,
+};
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
-    bool,
+    ServiceWorkerSyntheticResponseProcessingMode,
     kServiceWorkerSyntheticResponseOffMainThread);
-
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
-    bool,
-    kServiceWorkerSyntheticResponseReportInconsistentHeader);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
     bool,
@@ -1839,6 +1872,13 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE_PARAM(
 // Feature flag for driving encoding with the Metronome by VSyncs.
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kVSyncEncoding);
 
+// Server-side kill switch for applying the local VisualViewport transform
+// (page scale + visual viewport location) when mapping visual rects into
+// viewport space in LayoutView's slow path (ancestor == nullptr). This keeps
+// results consistent with the GeometryMapper viewport fast path.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
+    kVisualRectMappingApplyLocalVisualViewportTransform);
+
 // Feature flag for controlling whether Web Bluetooth gatt.disconnect() can be
 // used to cancel an ongoing gatt.connect() and have it rejected with an ABORT
 // error. This makes the behavior match
@@ -1857,6 +1897,13 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWebRtcAudioSinkUseTimestampAligner);
 // Enables the use of specific thread types (kPresentation for video,
 // kInteractive for audio processing) for media tasks.
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWebRtcUseMediaThreadTypes);
+
+// When enabled, the main thread's type is reduced from `kDisplayCritical` to
+// `kDefault` when WebRTC is in use within the renderer. This is a simple
+// workaround meant to be merged to higher channels while we're working on a
+// more refined solution. See crbug.com/1513904.
+BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(
+    kRendererMainIsDefaultThreadTypeForWebRTC);
 
 // This feature enables using Post-Quantum Crypto(PQC) for DTLS to improve
 // WebRTC's security.
@@ -1885,7 +1932,6 @@ BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWebUSBTransferSizeLimit);
 
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWebviewAccelerateSmallCanvases);
 
-BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWorkerThreadSequentialShutdown);
 BLINK_COMMON_EXPORT BASE_DECLARE_FEATURE(kWorkerThreadRespectTermRequest);
 
 // Kill switch for https://crbug.com/415810136.

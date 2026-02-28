@@ -30,6 +30,7 @@ EntityDataManager::EntityDataManager(
     scoped_refptr<AutofillWebDataService> webdata_service,
     history::HistoryService* history_service,
     strike_database::StrikeDatabaseBase* strike_database,
+    AccessibilityAnnotatorDataAdapter* accessibility_annotator_data_adapter,
     GeoIpCountryCode variation_country_code)
     : webdata_service_(std::move(webdata_service)),
       entity_instance_cleaner_(this, sync_service, pref_service),
@@ -84,6 +85,13 @@ EntityDataManager::EntityDataManager(
                                 user_is_opted_in
                                     ? AutofillAiOptInStatus::kOptedIn
                                     : AutofillAiOptInStatus::kOptedOut);
+
+  if (base::FeatureList::IsEnabled(
+          features::kAutofillUseAccessibilityAnnotator) &&
+      accessibility_annotator_data_adapter) {
+    accessibility_annotator_data_adapter_observation_.Observe(
+        accessibility_annotator_data_adapter);
+  }
 }
 
 EntityDataManager::~EntityDataManager() {
@@ -116,7 +124,7 @@ void EntityDataManager::LoadEntities() {
           self->NotifyEntityInstancesChanged();
         }
       },
-      weak_ptr_factory_.GetWeakPtr()));
+      GetWeakPtr()));
 }
 
 void EntityDataManager::AddOrUpdateEntityInstance(EntityInstance entity) {
@@ -135,7 +143,7 @@ void EntityDataManager::AddOrUpdateEntityInstance(EntityInstance entity) {
             }
             self->NotifyEntityInstancesChanged();
           },
-          weak_ptr_factory_.GetWeakPtr()));
+          GetWeakPtr()));
 }
 
 void EntityDataManager::RemoveEntityInstance(EntityInstance::EntityId guid) {
@@ -155,7 +163,7 @@ void EntityDataManager::RemoveEntityInstance(EntityInstance::EntityId guid) {
             self->entities_.erase(eic.key());
             self->NotifyEntityInstancesChanged();
           },
-          weak_ptr_factory_.GetWeakPtr()));
+          GetWeakPtr()));
 }
 
 void EntityDataManager::RemoveEntityInstancesModifiedBetween(
@@ -202,6 +210,13 @@ void EntityDataManager::OnHistoryDeletions(
   if (save_strike_db_by_host_) {
     save_strike_db_by_host_->ClearStrikesWithHistory(deletion_info);
   }
+}
+
+void EntityDataManager::OnAccessibilityAnnotatorDataChanged(
+    AccessibilityAnnotatorDataAdapter& adapter) {
+  DCHECK(base::FeatureList::IsEnabled(
+      features::kAutofillUseAccessibilityAnnotator));
+  // TODO(crbug.com/483403739): Implement.
 }
 
 void EntityDataManager::RecordEntityUsed(const EntityInstance::EntityId& guid,

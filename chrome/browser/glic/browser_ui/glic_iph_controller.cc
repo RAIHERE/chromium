@@ -10,6 +10,7 @@
 #include "chrome/browser/glic/public/glic_keyed_service_factory.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/common/chrome_features.h"
+#include "components/feature_engagement/public/feature_constants.h"
 #include "components/tabs/public/tab_interface.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/user_education/common/user_education_features.h"
@@ -57,8 +58,7 @@ void GlicIphController::MaybeShowPromo() {
   }
   auto* const contents = tab->GetContents();
   if (!contents->GetURL().SchemeIsHTTPOrHTTPS() ||
-      contents->GetURL().GetHost() ==
-          GetGuestURL(window_->GetProfile()).GetHost() ||
+      contents->GetURL().GetHost() == GetGuestURL().GetHost() ||
       !contents->IsDocumentOnLoadCompletedInPrimaryMainFrame() ||
       !GlicEnabling::IsEnabledForProfile(window_->GetProfile())) {
     return;

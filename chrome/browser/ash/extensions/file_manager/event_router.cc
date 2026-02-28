@@ -119,7 +119,7 @@ bool DoFilesSwaWindowsExist(Profile* profile) {
 }
 
 // Checks if the Recovery Tool is running. This is a temporary solution.
-// TODO(mtomasz): Replace with crbug.com/341902 solution.
+// TODO(mtomasz): Replace with crbug.com/41088567 solution.
 bool IsRecoveryToolRunning(Profile* profile) {
   extensions::ExtensionPrefs* extension_prefs =
       extensions::ExtensionPrefs::Get(profile);
@@ -1558,7 +1558,7 @@ void EventRouter::OnAppRegistryCacheWillBeDestroyed(
 }
 
 void EventRouter::OnConnectionChanged(
-    const network::mojom::ConnectionType type) {
+    const net::NetworkChangeNotifier::ConnectionType type) {
   fmp::DeviceConnectionState result =
       content::GetNetworkConnectionTracker()->IsOffline()
           ? fmp::DeviceConnectionState::kOffline

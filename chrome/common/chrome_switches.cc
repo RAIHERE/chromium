@@ -85,10 +85,6 @@ const char kAppsGalleryDownloadURL[] = "apps-gallery-download-url";
 // Overrides the update url used by webstore extensions.
 const char kAppsGalleryUpdateURL[] = "apps-gallery-update-url";
 
-// Overrides the url that the browser treats as the webstore, granting it the
-// webstore APIs and giving it some special protections.
-const char kAppsGalleryURL[] = "apps-gallery-url";
-
 // Allowlist for Negotiate Auth servers
 const char kAuthServerAllowlist[] = "auth-server-allowlist";
 
@@ -165,7 +161,7 @@ const char kCrashOnHangThreads[] = "crash-on-hang-threads";
 // Browser tests may need to add this switch so that at least one browser
 // instance is created on startup.
 // TODO(nkostylev): Investigate if this switch could be removed.
-// (http://crbug.com/148675)
+// (http://crbug.com/40933835)
 const char kCreateBrowserOnStartupForTests[] =
     "create-browser-on-startup-for-tests";
 
@@ -248,7 +244,7 @@ const char kDisableStackProfiler[] = "disable-stack-profiler";
 // browser window is closed. Thus, we need a switch to force this behavior
 // for ChromeOS Aura, disable "zero window mode".
 // TODO(pkotwicz): Investigate if this bug can be removed.
-// (http://crbug.com/119175)
+// (http://crbug.com/40756809)
 const char kDisableZeroBrowsersOpenForTests[] =
     "disable-zero-browsers-open-for-tests";
 
@@ -949,6 +945,15 @@ const char kUninstall[] = "uninstall";
 // Specifies that the WebApp with the specified id should be uninstalled.
 const char kUninstallAppId[] = "uninstall-app-id";
 
+// Specifies that the browser is running isolated and should not attempt to
+// start a second isolated browser.
+const char kIsolated[] = "isolated";
+
+// Specifies that the browser should attempt to launch an isolated browser.
+// TODO(crbug.com/433545123): This is a temporary switch - replace this with a
+// configurable toggle in a future CL.
+const char kLaunchIsolated[] = "launch-isolated";
+
 // Specifies the version of the Progressive-Web-App launcher that launched
 // Chrome, used to determine whether to update all launchers.
 // NOTE: changing this switch requires adding legacy handling for the previous
@@ -1008,10 +1013,11 @@ const char kGlicResetMultiInstanceEnabledByTier[] =
 // multi-instance enablement. Intended for manual testing only.
 const char kGlicForceG1StatusForMultiInstance[] = "glic-force-g1-for-mi";
 
-// Configure preset guest URLs for manual testing. These are saved to profile
-// prefs and can be selected to override the default glic guest URL through
-// corresponding entries in chrome://flags.
+// Configure preset guest URLs for manual testing. These are saved to local
+// state prefs and can be selected to override the default glic guest URL
+// through corresponding entries in chrome://flags.
 const char kGlicGuestUrlPresetAutopush[] = "glic-guest-url-preset-autopush";
+const char kGlicGuestUrlPresetStaging[] = "glic-guest-url-preset-staging";
 const char kGlicGuestUrlPresetPreprod[] = "glic-guest-url-preset-preprod";
 const char kGlicGuestUrlPresetProd[] = "glic-guest-url-preset-prod";
 #endif

@@ -79,9 +79,6 @@ CGFloat CompactButtonHorizontalPadding() {
   if (self) {
     [self setupViews];
     [self updateLayout];
-    NSArray<UITrait>* traits = TraitCollectionSetForTraits(
-        @[ UITraitVerticalSizeClass.class, UITraitHorizontalSizeClass.class ]);
-    [self registerForTraitChanges:traits withAction:@selector(updateLayout)];
   }
   return self;
 }
@@ -102,6 +99,10 @@ CGFloat CompactButtonHorizontalPadding() {
           .active = YES;
     }
   }
+
+  NSArray<UITrait>* traits = TraitCollectionSetForTraits(
+      @[ UITraitVerticalSizeClass.class, UITraitHorizontalSizeClass.class ]);
+  [self registerForTraitChanges:traits withAction:@selector(updateLayout)];
   [super didMoveToSuperview];
 }
 
@@ -261,7 +262,7 @@ CGFloat CompactButtonHorizontalPadding() {
     buttonConfiguration.image = image;
     button = [UIButton buttonWithConfiguration:buttonConfiguration
                                  primaryAction:nil];
-    button.tintColor = TabGridGlassButtonTintColor();
+    button.tintColor = UIColor.clearColor;
   } else {
     button = [UIButton systemButtonWithPrimaryAction:nil];
     button.tintColor = UIColor.whiteColor;
@@ -541,6 +542,10 @@ CGFloat CompactButtonHorizontalPadding() {
   }
 
   if (useCompactLayout) {
+    if (IsChromeNextIaEnabled()) {
+      // If ChromeNext is enabled, there is no toolbar in normal mode compact.
+      return;
+    }
     if (self.page == TabGridPageTabGroups) {
       _doneButton.hidden = NO;
 

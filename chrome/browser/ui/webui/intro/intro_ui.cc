@@ -7,6 +7,7 @@
 #include "base/feature_list.h"
 #include "base/logging.h"
 #include "base/notreached.h"
+#include "build/branding_buildflags.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/webui/intro/intro_handler.h"
@@ -31,7 +32,11 @@ IntroUI::IntroUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       profile, chrome::kChromeUIIntroHost);
 
-  webui::SetupWebUIDataSource(source, kIntroResources, IDR_INTRO_INTRO_HTML);
+  webui::SetupWebUIDataSource(
+      source, kIntroResources,
+      base::FeatureList::IsEnabled(switches::kFirstRunDesktopRefresh)
+          ? IDR_INTRO_INTRO_REFRESH_HTML
+          : IDR_INTRO_INTRO_HTML);
 
   int title_id = IDS_FRE_SIGN_IN_TITLE_0;
 
@@ -57,6 +62,14 @@ IntroUI::IntroUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
        IDS_FRE_DEFAULT_BROWSER_ILLUSTRATION_ALT_TEXT},
       {"defaultBrowserSetAsDefault", IDS_FRE_DEFAULT_BROWSER_SET_AS_DEFAULT},
       {"defaultBrowserSkip", IDS_FRE_DEFAULT_BROWSER_SKIP},
+      // Strings for refreshed default browser promo subpage.
+      {"refreshDefaultBrowserTitle", IDS_FRE_REFRESH_DEFAULT_BROWSER_TITLE},
+      {"refreshDefaultBrowserSubtitle",
+       IDS_FRE_REFRESH_DEFAULT_BROWSER_SUBTITLE},
+      {"refreshDefaultBrowserSetAsDefault",
+       IDS_FRE_REFRESH_DEFAULT_BROWSER_SET_AS_DEFAULT},
+      {"refreshDefaultBrowserNoThanks",
+       IDS_FRE_REFRESH_DEFAULT_BROWSER_NO_THANKS},
   };
   source->AddLocalizedStrings(localized_strings);
 
@@ -94,8 +107,11 @@ IntroUI::IntroUI(content::WebUI* web_ui) : content::WebUIController(web_ui) {
                          switches::kUsePrimaryAndTonalButtonsForPromos));
 
   // Setup chrome://intro/default-browser UI.
-  source->AddResourcePath(chrome::kChromeUIIntroDefaultBrowserSubPage,
-                          IDR_INTRO_DEFAULT_BROWSER_DEFAULT_BROWSER_HTML);
+  source->AddResourcePath(
+      chrome::kChromeUIIntroDefaultBrowserSubPage,
+      base::FeatureList::IsEnabled(switches::kFirstRunDesktopRefresh)
+          ? IDR_INTRO_DEFAULT_BROWSER_DEFAULT_BROWSER_REFRESH_HTML
+          : IDR_INTRO_DEFAULT_BROWSER_DEFAULT_BROWSER_HTML);
 
   source->AddResourcePath("images/product-logo.svg", IDR_PRODUCT_LOGO_SVG);
   source->AddResourcePath("images/product-logo-animation.svg",

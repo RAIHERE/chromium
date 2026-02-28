@@ -30,6 +30,7 @@ import android.view.KeyCharacterMap;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
+import android.view.WindowManager;
 import android.view.inputmethod.BaseInputConnection;
 import android.view.inputmethod.CorrectionInfo;
 import android.view.inputmethod.DeleteGesture;
@@ -65,6 +66,7 @@ import org.chromium.blink_public.web.WebInputEventModifier;
 import org.chromium.blink_public.web.WebTextInputMode;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
+import org.chromium.content.R;
 import org.chromium.content.browser.GestureListenerManagerImpl;
 import org.chromium.content.browser.RenderCoordinatesImpl;
 import org.chromium.content.browser.WindowEventObserver;
@@ -92,6 +94,7 @@ import org.chromium.ui.base.ime.TextInputType;
 import org.chromium.ui.mojom.ImeTextSpanType;
 import org.chromium.ui.mojom.VirtualKeyboardPolicy;
 import org.chromium.ui.mojom.VirtualKeyboardVisibilityRequest;
+import org.chromium.ui.widget.Toast;
 
 import java.lang.ref.WeakReference;
 import java.lang.reflect.InvocationTargetException;
@@ -124,7 +127,11 @@ import java.util.List;
 @JNINamespace("content")
 @NullMarked
 public class ImeAdapterImpl
-        implements ImeAdapter, WindowEventObserver, UserData, InputMethodManagerWrapper.Delegate {
+        implements ImeAdapter,
+                WindowEventObserver,
+                UserData,
+                InputMethodManagerWrapper.Delegate,
+                AutocorrectManager.Delegate {
     private static final String TAG = "Ime";
     private static final boolean DEBUG_LOGS = false;
 
@@ -251,17 +258,15 @@ public class ImeAdapterImpl
 
     /**
      * Get {@link ImeAdapter} object used for the give WebContents. {@link #create()} should precede
-     * any calls to this.
+     * any calls to this. Returns null if the web contents are not initialized or if UserDataHost
+     * can't be found.
      *
      * @param webContents {@link WebContents} object.
      * @return {@link ImeAdapter} object.
      */
-    public static ImeAdapterImpl fromWebContents(WebContents webContents) {
-        ImeAdapterImpl ret =
-                webContents.getOrSetUserData(
-                        ImeAdapterImpl.class, UserDataFactoryLazyHolder.INSTANCE);
-        assert ret != null;
-        return ret;
+    public static @Nullable ImeAdapterImpl fromWebContents(WebContents webContents) {
+        return webContents.getOrSetUserData(
+                ImeAdapterImpl.class, UserDataFactoryLazyHolder.INSTANCE);
     }
 
     /** Returns an instance of the default {@link InputMethodManagerWrapper} */
@@ -325,7 +330,7 @@ public class ImeAdapterImpl
         mNativeImeAdapterAndroid = ImeAdapterImplJni.get().init(ImeAdapterImpl.this, mWebContents);
         WindowEventObserverManager.from(mWebContents).addObserver(this);
         if (ContentFeatureMap.isEnabled(ContentFeatures.ANDROID_PK_AUTOCORRECT_UNDERLINE)) {
-            mAutocorrectManager = new AutocorrectManager();
+            mAutocorrectManager = new AutocorrectManager(this);
         }
     }
 
@@ -563,12 +568,10 @@ public class ImeAdapterImpl
         mInputConnectionFactory = factory;
     }
 
-    @VisibleForTesting
     void setAutocorrectManagerForTesting(AutocorrectManager autocorrectManager) {
         mAutocorrectManager = autocorrectManager;
     }
 
-    @VisibleForTesting
     @Nullable AutocorrectManager getAutocorrectManagerForTesting() {
         return mAutocorrectManager;
     }
@@ -768,6 +771,17 @@ public class ImeAdapterImpl
                     SpannableString spannable = new SpannableString(text);
                     for (ImeTextSpan info : imeTextSpans) {
                         int flags = 0;
+
+                        // Autocorrect spans are intentionally omitted here. They are used
+                        // internally for rendering the underline but are not reported to the IME
+                        // to prevent unexpected behavior in the IME.
+                        if (mAutocorrectManager != null
+                                && ContentFeatureMap.isEnabled(
+                                        ContentFeatures.ANDROID_PK_AUTOCORRECT_UNDERLINE)
+                                && info.getType() == ImeTextSpanType.AUTOCORRECT) {
+                            continue;
+                        }
+
                         if (info.getType() == ImeTextSpanType.MISSPELLING_SUGGESTION) {
                             flags = SuggestionSpan.FLAG_MISSPELLED;
                         } else if (info.getType() == ImeTextSpanType.GRAMMAR_SUGGESTION) {
@@ -1205,6 +1219,10 @@ public class ImeAdapterImpl
                                 lastKeyDownEvent.getScanCode(),
                                 false,
                                 lastKeyDownEvent.getUnicodeChar());
+
+                if (mAutocorrectManager != null) {
+                    mAutocorrectManager.onCommitText();
+                }
                 return true;
             }
         }
@@ -1229,6 +1247,14 @@ public class ImeAdapterImpl
                             text,
                             text.toString(),
                             newCursorPosition);
+            // Gboard signals autocorrect by calling commitCorrection() after a deletion,
+            // followed by commitText(). We append the underline here because the text
+            // must be committed before the span can be applied to it.
+            if (mAutocorrectManager != null) {
+                mAutocorrectManager.maybeAppendAutocorrectUnderlineSpan();
+                mAutocorrectManager.onCommitText();
+            }
+
         } else {
             ImeAdapterImplJni.get()
                     .setComposingText(
@@ -1559,8 +1585,25 @@ public class ImeAdapterImpl
      */
     boolean commitContent(String dataUrl) {
         onImeEvent();
-        if (!isValid()) return false;
-        return ImeAdapterImplJni.get().insertMediaFromURL(mNativeImeAdapterAndroid, dataUrl);
+        if (isValid()
+                && ImeAdapterImplJni.get().insertMediaFromURL(mNativeImeAdapterAndroid, dataUrl)) {
+            return true;
+        } else {
+            try {
+                // If the rich content commit fails, display the failure message.
+                Toast.makeText(
+                                getContainerView().getContext(),
+                                R.string.rich_content_commit_failure_message,
+                                Toast.LENGTH_SHORT)
+                        .show();
+            } catch (WindowManager.BadTokenException e) {
+                Log.w(
+                        TAG,
+                        "Failed to display message toast to notify the rich content commit"
+                                + " failure.");
+            }
+            return false;
+        }
     }
 
     /** Lazily creates/returns a StylusWritingImeCallback object. */
@@ -1899,9 +1942,27 @@ public class ImeAdapterImpl
 
     void commitCorrection(CorrectionInfo correctionInfo) {
         if (!isValid()) return;
-        if (mAutocorrectManager != null) {
-            mAutocorrectManager.handlePendingCorrection(correctionInfo);
+        if (mAutocorrectManager == null) return;
+        mAutocorrectManager.handlePendingCorrection(correctionInfo);
+    }
+
+    @Override
+    public void appendAutocorrectUnderlineSpan(int start, int end) {
+        if (!isValid()) return;
+        if (mAutocorrectManager == null) return;
+        if (DEBUG_LOGS) {
+            Log.i(TAG, "appendAutocorrectUnderlineSpan: start=[%d], end=[%d]", start, end);
         }
+        ImeAdapterImplJni.get()
+                .appendAutocorrectUnderlineSpan(mNativeImeAdapterAndroid, start, end);
+    }
+
+    @Override
+    public void clearAllAutocorrectUnderlineSpans() {
+        if (!isValid()) return;
+        if (mAutocorrectManager == null) return;
+        if (DEBUG_LOGS) Log.i(TAG, "clearAllAutocorrectUnderlineSpans");
+        ImeAdapterImplJni.get().clearAllAutocorrectUnderlineSpans(mNativeImeAdapterAndroid);
     }
 
     @NativeMethods
@@ -1985,5 +2046,9 @@ public class ImeAdapterImpl
                 long nativeImeAdapterAndroid, int id, ByteBuffer gestureData);
 
         void performSpellCheck(long nativeImeAdapterAndroid);
+
+        void appendAutocorrectUnderlineSpan(long nativeImeAdapterAndroid, int start, int end);
+
+        void clearAllAutocorrectUnderlineSpans(long nativeImeAdapterAndroid);
     }
 }

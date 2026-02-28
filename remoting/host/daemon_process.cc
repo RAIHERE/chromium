@@ -19,10 +19,10 @@
 #include "base/task/thread_pool/thread_pool_instance.h"
 #include "mojo/public/cpp/bindings/pending_associated_receiver.h"
 #include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/base/branding.h"
 #include "remoting/base/constants.h"
 #include "remoting/host/base/host_exit_codes.h"
 #include "remoting/host/base/screen_resolution.h"
-#include "remoting/host/branding.h"
 #include "remoting/host/config_file_watcher.h"
 #include "remoting/host/desktop_session.h"
 #include "remoting/host/host_event_logger.h"
@@ -182,9 +182,9 @@ DaemonProcess::DaemonProcess(
   }
 }
 
-void DaemonProcess::CreateDesktopSession(int terminal_id,
-                                         const ScreenResolution& resolution,
-                                         bool is_curtained) {
+void DaemonProcess::CreateDesktopSession(
+    int terminal_id,
+    mojom::DesktopSessionOptionsPtr options) {
   DCHECK(caller_task_runner()->BelongsToCurrentThread());
 
   // Validate the supplied terminal ID. An attempt to create a desktop session
@@ -201,7 +201,7 @@ void DaemonProcess::CreateDesktopSession(int terminal_id,
 
   // Create the desktop session.
   std::unique_ptr<DesktopSession> session =
-      DoCreateDesktopSession(terminal_id, resolution, is_curtained);
+      DoCreateDesktopSession(terminal_id, *options);
   if (!session) {
     LOG(ERROR) << "Failed to create a desktop session.";
     SendTerminalDisconnected(terminal_id);

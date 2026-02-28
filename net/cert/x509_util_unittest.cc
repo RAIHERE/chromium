@@ -781,8 +781,8 @@ TEST(X509UtilTest, LastOidComponentFromBase) {
   }
   {
     // Last component is too big.
-    const uint8_t oid[] = {0x1, 0x2, 0x3, 0x82, 0x0, 0x0, 0x0,
-                           0x0, 0x0, 0x0, 0x0,  0x0, 0x0};
+    const uint8_t oid[] = {0x1,  0x2,  0x3,  0x82, 0x80, 0x80, 0x80,
+                           0x80, 0x80, 0x80, 0x80, 0x80, 0x0};
     auto last = LastOidComponentFromBase(oid, base);
     EXPECT_EQ(last, std::nullopt);
   }
@@ -895,6 +895,17 @@ TEST(X509UtilTest, ParseTlsTrustAnchorIDs) {
         ParseTlsTrustAnchorIDs(wire_ids);
     EXPECT_TRUE(parsed_ids.empty());
   }
+}
+
+TEST(X509UtilTest, TrustAnchorIDsToString) {
+  std::vector<std::vector<uint8_t>> trust_anchor_ids = {
+      // 44363.48.7 encoded as a relative OID
+      {0x82, 0xda, 0x4b, 0x30, 0x07},
+      // 44363.48.7.127 encoded as a relative OID
+      {0x82, 0xda, 0x4b, 0x30, 0x07, 0x7f},
+  };
+  EXPECT_EQ("44363.48.7, 44363.48.7.127",
+            TrustAnchorIDsToString(trust_anchor_ids));
 }
 
 }  // namespace net::x509_util

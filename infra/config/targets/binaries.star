@@ -661,7 +661,6 @@ targets.binaries.script(
     resultdb = targets.resultdb(
         enable = True,
     ),
-    module_scheme = "pyunit",
 )
 
 targets.binaries.script(
@@ -679,7 +678,6 @@ targets.binaries.script(
     resultdb = targets.resultdb(
         enable = True,
     ),
-    module_scheme = "pyunit",
 )
 
 targets.binaries.windowed_test_launcher(
@@ -896,6 +894,14 @@ targets.binaries.generated_script(
         result_file = "${ISOLATED_OUTDIR}/sizes/test_results.json",
     ),
     module_scheme = "single",
+)
+
+targets.binaries.generated_script(
+    name = "cronet_python_unittests",
+    label = "//components/cronet/testing:cronet_python_unittests",
+    # All references have been moved to starlark
+    skip_usage_check = True,
+    module_scheme = "pyunit",
 )
 
 targets.binaries.console_test_launcher(
@@ -1774,6 +1780,12 @@ targets.binaries.generated_script(
 targets.binaries.generated_script(
     name = "ondevice_model_benchmark_tests",
     label = "//components/optimization_guide/internal/testing:ondevice_model_benchmark_tests",
+    module_scheme = "flat",
+)
+
+targets.binaries.generated_script(
+    name = "litert_e2e_tests",
+    label = "//components/optimization_guide/internal/testing:litert_e2e_tests",
     module_scheme = "flat",
 )
 

@@ -28,7 +28,6 @@
 #include "base/functional/callback.h"
 #include "base/functional/function_ref.h"
 #include "base/gtest_prod_util.h"
-#include "base/i18n/rtl.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/memory/raw_ptr.h"
 #include "base/memory/raw_ref.h"
@@ -50,6 +49,7 @@
 #include "content/browser/browser_interface_broker_impl.h"
 #include "content/browser/buckets/bucket_context.h"
 #include "content/browser/can_commit_status.h"
+#include "content/browser/locks/lock_manager.h"
 #include "content/browser/renderer_host/back_forward_cache_impl.h"
 #include "content/browser/renderer_host/back_forward_cache_metrics.h"
 #include "content/browser/renderer_host/browsing_context_state.h"
@@ -332,6 +332,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
       public network::mojom::TrustTokenAccessObserver,
       public network::mojom::SharedDictionaryAccessObserver,
       public network::mojom::DeviceBoundSessionAccessObserver,
+      public LockManager<storage::BucketId>::Observer,
       public BucketContext,
       public base::MemoryPressureListener {
  public:
@@ -770,6 +771,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // SiteInstanceGroup::Observer
   void RenderProcessGone(SiteInstanceGroup* site_instance_group,
                          const ChildProcessTerminationInfo& info) override;
+
+  // LockObserver
+  void OnLockContention() override;
 
   // ui::AXActionHandlerBase:
   void PerformAction(const ui::AXActionData& data) override;
@@ -2508,10 +2512,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
       base::TimeTicks actual_navigation_start,
       std::optional<blink::scheduler::TaskAttributionId> task_id) override;
   void NavigateEventHandlerPresenceChanged(bool present) override;
-  void UpdateTitle(const std::optional<::std::u16string>& title,
-                   base::i18n::TextDirection title_direction) override;
-  void UpdateApplicationTitle(
-      const ::std::u16string& application_title) override;
+  void UpdateTitle(const std::optional<std::u16string>& title) override;
+  void UpdateApplicationTitle(const std::u16string& application_title) override;
   void UpdateUserActivationState(
       blink::mojom::UserActivationUpdateType update_type,
       blink::mojom::UserActivationNotificationType notification_type) override;
@@ -2671,11 +2673,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
                        blink::mojom::LocalMainFrameHost::UpdateTargetURLCallback
                            callback) override;
   void RequestClose() override;
-  void ShowCreatedWindow(const blink::LocalFrameToken& opener_frame_token,
-                         WindowOpenDisposition disposition,
-                         blink::mojom::WindowFeaturesPtr window_features,
-                         bool user_gesture,
-                         ShowCreatedWindowCallback callback) override;
   void SetWindowRect(const gfx::Rect& bounds,
                      SetWindowRectCallback callback) override;
   void DidFirstVisuallyNonEmptyPaint() override;
@@ -2692,6 +2689,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void OnFirstContentfulPaint(base::TimeDelta duration) override;
   void NotifyFirstContentfulPaint();
   void SetStorageAccessApiStatus(net::StorageAccessApiStatus status) override;
+  std::unique_ptr<download::DownloadUrlParameters> CreateDownloadUrlParameters(
+      const GURL& url,
+      const net::NetworkTrafficAnnotationTag& traffic_annotation)
+      const override;
 
   void ReportNoBinderForInterface(const std::string& error);
 
@@ -3371,7 +3372,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
           keep_alive_loader_factory,
       mojo::PendingAssociatedRemote<blink::mojom::FetchLaterLoaderFactory>
           fetch_later_loader_factory,
-      const std::optional<network::ParsedPermissionsPolicy>& permissions_policy,
       blink::mojom::PolicyContainerPtr policy_container,
       const blink::DocumentToken& document_token,
       const base::UnguessableToken& devtools_navigation_token);
@@ -3408,8 +3408,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // in a NavigationController. See https://crbug.com/365039 for more details.
   virtual void SendBeforeUnload(bool is_reload,
                                 base::WeakPtr<RenderFrameHostImpl> impl,
-                                bool for_legacy,
-                                const bool is_renderer_initiated_navigation);
+                                bool for_legacy);
 
  private:
   friend class CommitNavigationPauser;
@@ -3431,6 +3430,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
   FRIEND_TEST_ALL_PREFIXES(RenderFrameHostImplBrowserTest,
                            CheckIsCurrentBeforeAndAfterUnload);
   FRIEND_TEST_ALL_PREFIXES(RenderFrameHostImplTest, NavigationStateKeepAlive);
+  FRIEND_TEST_ALL_PREFIXES(RenderFrameHostImplTest,
+                           CreateNewWindowInvalidDisposition);
   FRIEND_TEST_ALL_PREFIXES(RenderFrameHostImplBrowserTest,
                            FindImmediateLocalRoots);
   FRIEND_TEST_ALL_PREFIXES(RenderFrameHostImplBrowserTest,
@@ -3663,7 +3664,10 @@ class CONTENT_EXPORT RenderFrameHostImpl
       mojo::PendingRemote<blink::mojom::NavigationStateKeepAliveHandle>
           initiator_navigation_state_keep_alive_handle,
       mojo::PendingReceiver<mojom::NavigationRendererCancellationListener>
-          renderer_cancellation_listener) override;
+          renderer_cancellation_listener,
+      mojo::PendingReceiver<
+          blink::mojom::NavigationResumeDeferredCommitListener>
+          deferred_commit_resume_listener) override;
   void SubresourceResponseStarted(const url::SchemeHostPort& final_response_url,
                                   net::CertStatus cert_status) override;
   void ResourceLoadComplete(
@@ -3929,9 +3933,6 @@ class CONTENT_EXPORT RenderFrameHostImpl
 
   // Stores a snapshot of the inherited base URL from the initiator's
   // FrameLoadRequest, if this document inherited one (e.g., about:srcdoc).
-  // TODO(crbug.com/40060678): about:blank frames will also need to inherit base
-  // URLs, from the initiator rather than the parent. See
-  // https://crbug.com/1356658#c7.
   void SetInheritedBaseUrl(const GURL& inherited_base_url);
 
   // Called when a navigation commits successfully to |url_info->url|. This
@@ -4254,8 +4255,8 @@ class CONTENT_EXPORT RenderFrameHostImpl
   void SetPolicyContainerHost(
       scoped_refptr<PolicyContainerHost> policy_container_host);
 
-  // Initializes |private_network_request_policy_|. Constructor helper.
-  void InitializePrivateNetworkRequestPolicy();
+  // Initializes |local_network_access_request_policy_|. Constructor helper.
+  void InitializeLocalNetworkAccessRequestPolicy();
 
   // Returns true if this frame requires a proxy to talk to its parent.
   // Note: Using a proxy to talk to a parent does not imply that the parent
@@ -4621,7 +4622,7 @@ class CONTENT_EXPORT RenderFrameHostImpl
   // The policy to apply to private network requests for subresources issued by
   // the last committed document. Set to a default value until a document
   // commits for the first time. The default value depends on whether certain
-  // feature flags are enabled, see |DerivePrivateNetworkRequestPolicy()|.
+  // feature flags are enabled, see |DeriveLocalNetworkAccessRequestPolicy()|.
   //
   // This property normally depends on the last committed origin and the state
   // of |ContentBrowserClient| at the time the navigation committed. Due to the
@@ -4631,8 +4632,9 @@ class CONTENT_EXPORT RenderFrameHostImpl
   //
   // TODO(crbug.com/40092527): Simplify the above comment when the
   // behavior it explains is fixed.
-  network::mojom::PrivateNetworkRequestPolicy private_network_request_policy_ =
-      network::mojom::PrivateNetworkRequestPolicy::kBlock;
+  network::mojom::LocalNetworkAccessRequestPolicy
+      local_network_access_request_policy_ =
+          network::mojom::LocalNetworkAccessRequestPolicy::kBlock;
 
   // Track the SiteInfo of the last site we committed successfully, as obtained
   // from SiteInfo::CreateInternal() called on the last committed UrlInfo.

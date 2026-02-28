@@ -111,7 +111,9 @@ final class SigninPromoMediator
                         /* shouldHideDismissButton= */ false,
                         /* shouldShowAccountPicker= */ true,
                         /* shouldShowHeaderWithAvatar= */ false,
-                        /* shouldShowLoadingState= */ false);
+                        /* shouldShowLoadingState= */ false,
+                        /* accountPickerBackground= */ mPromoDelegate
+                                .getAccountPickerBackgroundColor());
         mMaxImpressionReached = mPromoDelegate.isMaxImpressionsReached();
         mPromoDelegate.refreshPromoState(visibleAccount);
         mShouldShowPromo = canShowPromo();
@@ -193,9 +195,10 @@ final class SigninPromoMediator
 
     /** Implements {@link ProfileDataCache.Observer}. */
     @Override
-    public void onProfileDataUpdated(String accountEmail) {
+    public void onProfileDataUpdated(DisplayableProfileData profileData) {
         @Nullable CoreAccountInfo visibleAccount = getVisibleAccount();
-        if (visibleAccount != null && !visibleAccount.getEmail().equals(accountEmail)) {
+        if (visibleAccount != null
+                && !visibleAccount.getEmail().equals(profileData.getAccountEmail())) {
             return;
         }
         refreshPromoContent(/* wasVisibleAccountUpdated= */ true);
@@ -296,6 +299,9 @@ final class SigninPromoMediator
             mModel.set(
                     SigninPromoProperties.SHOULD_SHOW_LOADING_STATE,
                     mPromoDelegate.shouldDisplayLoadingState());
+            mModel.set(
+                    SigninPromoProperties.SELECTED_ACCOUNT_VIEW_BACKGROUND,
+                    mPromoDelegate.getAccountPickerBackgroundColor());
         }
     }
 
@@ -315,6 +321,10 @@ final class SigninPromoMediator
         mModel.set(
                 SigninPromoProperties.PRIMARY_BUTTON_TEXT,
                 mPromoDelegate.getTextForPrimaryButton(profileData));
+        mModel.set(
+                SigninPromoProperties.SHOULD_HIDE_DISMISS_BUTTON,
+                !mPromoDelegate.canBeDismissedPermanently()
+                        || mPromoDelegate.shouldDisplayLoadingState());
     }
 
     private void updateVisibility() {

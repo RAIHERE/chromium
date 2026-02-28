@@ -2459,9 +2459,12 @@ protocol::Response InspectorCSSAgent::resolveValues(
     }
   }
 
-  if (property_name && CSSProperty::Get(property_name->Id()).IsShorthand()) {
-    return protocol::Response::ServerError(
-        "Property name should not be a shorthand.");
+  if (property_name) {
+    const CSSProperty& property = CSSProperty::Get(property_name->Id());
+    if (!property.IsProperty() || property.IsShorthand()) {
+      return protocol::Response::ServerError(
+          "Property name must be a longhand property.");
+    }
   }
 
   CSSParserLocalContext local_context =
@@ -2578,8 +2581,8 @@ protocol::Response InspectorCSSAgent::getLonghandProperties(
       MakeGarbageCollected<CSSParserContext>(kHTMLStandardMode,
                                              SecureContextMode::kSecureContext);
   auto local_context =
-      CSSParserLocalContext::CreateWithoutPropertyForInspector()
-          .WithCurrentShorthand(property.PropertyID());
+      CSSParserLocalContext::CreateWithoutPropertyForInspector();
+  local_context.SetCurrentShorthand(property.PropertyID());
 
   HeapVector<CSSPropertyValue, 64> css_longhand_properties;
   const auto* shorthand = DynamicTo<Shorthand>(property);
@@ -4537,7 +4540,7 @@ protocol::Response InspectorCSSAgent::setEffectivePropertyValueForNode(
   if (!source_data)
     return protocol::Response::ServerError("Can't find a source to edit");
 
-  Vector<StylePropertyShorthand, 4> shorthands;
+  MatchingShorthandsVector shorthands;
   getMatchingShorthandsForLonghand(css_property_name->Id(), &shorthands);
 
   String shorthand =
@@ -4574,8 +4577,9 @@ protocol::Response InspectorCSSAgent::setEffectivePropertyValueForNode(
     String new_property_text =
         StrCat({"\n", longhand, ": ", value,
                 (force_important ? " !important" : ""), ";"});
-    if (!style_text.empty() && !style_text.StripWhiteSpace().EndsWith(';'))
+    if (!style_text.empty() && !style_text.StripWhiteSpace().ends_with(';')) {
       new_property_text = StrCat({";", new_property_text});
+    }
     style_text = StrCat({style_text, new_property_text});
     change_range.start = body_range.end;
     change_range.end = body_range.end + new_property_text.length();

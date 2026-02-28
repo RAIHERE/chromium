@@ -18,6 +18,7 @@
 #include "ash/constants/ash_constants.h"
 #include "ash/constants/ash_pref_names.h"
 #include "ash/constants/ash_switches.h"
+#include "ash/constants/url_constants.h"
 #include "ash/public/cpp/accelerators.h"
 #include "ash/public/cpp/accessibility_controller_enums.h"
 #include "ash/public/cpp/accessibility_focus_ring_controller.h"
@@ -58,7 +59,6 @@
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/extensions/api/braille_display_private/stub_braille_controller.h"
 #include "chrome/browser/extensions/component_loader.h"
-#include "chrome/browser/lifetime/termination_notification.h"
 #include "chrome/browser/profiles/profile_manager.h"
 #include "chrome/browser/ui/ash/keyboard/chrome_keyboard_controller_client.h"
 #include "chrome/browser/ui/ash/multi_user/multi_user_util.h"
@@ -67,7 +67,6 @@
 #include "chrome/common/extensions/api/accessibility_private.h"
 #include "chrome/common/extensions/extension_constants.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/url_constants.h"
 #include "chrome/grit/browser_resources.h"
 #include "chrome/grit/generated_resources.h"
 #include "chromeos/ash/components/audio/public/cpp/sounds/sounds_manager.h"
@@ -475,7 +474,7 @@ void AccessibilityManager::ShowAccessibilityHelp() {
   ShowSingletonTab(
       Profile::FromBrowserContext(
           BrowserContextHelper::Get()->GetBrowserContextByUser(user)),
-      GURL(chrome::kChromeAccessibilityHelpURL));
+      GURL(ash::external_urls::kAccessibilityHelpURL));
 }
 
 AccessibilityManager::AccessibilityManager(
@@ -485,9 +484,8 @@ AccessibilityManager::AccessibilityManager(
       application_locale_storage_(CHECK_DEREF(application_locale_storage)) {
   session_observation_.Observe(session_manager::SessionManager::Get());
 
-  on_app_terminating_subscription_ =
-      browser_shutdown::AddAppTerminatingCallback(base::BindOnce(
-          &AccessibilityManager::OnAppTerminating, base::Unretained(this)));
+  session_termination_observation_.Observe(
+      ash::SessionTerminationManager::Get());
 
   focus_changed_subscription_ =
       content::BrowserAccessibilityState::GetInstance()
@@ -558,24 +556,13 @@ AccessibilityManager::AccessibilityManager(
       base::CommandLine::ForCurrentProcess()->HasSwitch(
           ::switches::kEnableExperimentalAccessibilityManifestV3);
 
-  const bool enable_accessibility_common_v3_manifest =
-      ::features::IsAccessibilityManifestV3EnabledForAccessibilityCommon();
-  const base::FilePath::CharType* accessibility_common_manifest_filename =
-      enable_v3_manifest || enable_accessibility_common_v3_manifest
-          ? extension_misc::kAccessibilityCommonManifestV3Filename
-          : extension_misc::kAccessibilityCommonManifestFilename;
-  const base::FilePath::CharType* accessibility_common_guest_manifest_filename =
-      enable_v3_manifest || enable_accessibility_common_v3_manifest
-          ? extension_misc::kAccessibilityCommonGuestManifestV3Filename
-          : extension_misc::kAccessibilityCommonGuestManifestFilename;
-
   accessibility_common_extension_loader_ =
       base::WrapUnique(new AccessibilityExtensionLoader(
           extension_misc::kAccessibilityCommonExtensionId,
           resources_path.Append(
               extension_misc::kAccessibilityCommonExtensionPath),
-          accessibility_common_manifest_filename,
-          accessibility_common_guest_manifest_filename,
+          extension_misc::kAccessibilityCommonManifestFilename,
+          extension_misc::kAccessibilityCommonGuestManifestFilename,
           base::BindRepeating(
               &AccessibilityManager::PostUnloadAccessibilityCommon,
               weak_ptr_factory_.GetWeakPtr())));
@@ -606,21 +593,11 @@ AccessibilityManager::AccessibilityManager(
       base::BindRepeating(&AccessibilityManager::PostUnloadSelectToSpeak,
                           weak_ptr_factory_.GetWeakPtr())));
 
-  const bool enable_switch_access_v3_manifest =
-      ::features::IsAccessibilityManifestV3EnabledForSwitchAccess();
-  const base::FilePath::CharType* switch_access_manifest_filename =
-      enable_v3_manifest || enable_switch_access_v3_manifest
-          ? extension_misc::kSwitchAccessManifestV3Filename
-          : extension_misc::kSwitchAccessManifestFilename;
-  const base::FilePath::CharType* switch_access_guest_manifest_filename =
-      enable_v3_manifest || enable_switch_access_v3_manifest
-          ? extension_misc::kSwitchAccessGuestManifestV3Filename
-          : extension_misc::kSwitchAccessGuestManifestFilename;
-
   switch_access_loader_ = base::WrapUnique(new AccessibilityExtensionLoader(
       extension_misc::kSwitchAccessExtensionId,
       resources_path.Append(extension_misc::kSwitchAccessExtensionPath),
-      switch_access_manifest_filename, switch_access_guest_manifest_filename,
+      extension_misc::kSwitchAccessManifestV3Filename,
+      extension_misc::kSwitchAccessGuestManifestV3Filename,
       base::BindRepeating(&AccessibilityManager::PostUnloadSwitchAccess,
                           weak_ptr_factory_.GetWeakPtr())));
 
@@ -661,7 +638,7 @@ bool AccessibilityManager::ShouldShowAccessibilityMenu() {
   // enforced to always show the menu - we return true to show the menu.
   // NOTE: This includes the login screen profile, so if a feature is turned on
   // at the login screen the menu will show even if the user has no features
-  // enabled inside the session. http://crbug.com/755631
+  // enabled inside the session. http://crbug.com/41339453
 
   if (IsAnyAccessibilityFeatureEnabled(CHECK_DEREF(user_prefs::UserPrefs::Get(
           BrowserContextHelper::Get()->GetSigninBrowserContext())))) {
@@ -1605,7 +1582,7 @@ void AccessibilityManager::UpdateBrailleImeState() {
     return;
   PrefService* pref_service = profile_->GetPrefs();
   std::string preload_engines_str =
-      pref_service->GetString(::prefs::kLanguagePreloadEngines);
+      pref_service->GetString(ash::prefs::kLanguagePreloadEngines);
   std::vector<std::string_view> preload_engines = base::SplitStringPiece(
       preload_engines_str, ",", base::TRIM_WHITESPACE, base::SPLIT_WANT_ALL);
   std::vector<std::string_view>::iterator it = std::ranges::find(
@@ -1619,7 +1596,7 @@ void AccessibilityManager::UpdateBrailleImeState() {
     preload_engines.push_back(extension_ime_util::kBrailleImeEngineId);
   else
     preload_engines.erase(it);
-  pref_service->SetString(::prefs::kLanguagePreloadEngines,
+  pref_service->SetString(ash::prefs::kLanguagePreloadEngines,
                           base::JoinString(preload_engines, ","));
   braille_ime_current_ = false;
 }
@@ -2022,6 +1999,7 @@ void AccessibilityManager::PlayVolumeAdjustSound() {
 }
 
 void AccessibilityManager::OnAppTerminating() {
+  session_termination_observation_.Reset();
   app_terminating_ = true;
 }
 
@@ -2136,7 +2114,7 @@ void AccessibilityManager::OnShutdown(extensions::ExtensionRegistry* registry) {
 
 void AccessibilityManager::PostLoadChromeVox() {
   // In browser_tests loading the ChromeVox extension can race with shutdown.
-  // http://crbug.com/801700
+  // http://crbug.com/41364580
   if (app_terminating_)
     return;
 

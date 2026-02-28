@@ -6,8 +6,8 @@
 
 #import "base/test/metrics/histogram_tester.h"
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
-#import "ios/chrome/browser/intelligence/bwg/ui/bwg_consent_mutator.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/ui/gemini_consent_mutator.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "testing/gtest/include/gtest/gtest.h"
 #import "testing/gtest_mac.h"
@@ -60,7 +60,7 @@ class BWGConsentViewControllerTest : public PlatformTest {
   BWGConsentViewController* CreateViewController(BOOL is_account_managed) {
     BWGConsentViewController* controller = [[BWGConsentViewController alloc]
         initWithIsAccountManaged:is_account_managed];
-    mock_mutator_ = OCMProtocolMock(@protocol(BWGConsentMutator));
+    mock_mutator_ = OCMProtocolMock(@protocol(GeminiConsentMutator));
     controller.mutator = mock_mutator_;
     // Force view initialization since this view controller is never added into
     // the hierarchy in this unit test.
@@ -113,7 +113,7 @@ TEST_F(BWGConsentViewControllerTest, TestPrimaryButtonAction) {
 
   UIButton* primaryButton =
       static_cast<UIButton*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgPrimaryButtonAccessibilityIdentifier));
+          view_controller.view, kGeminiPrimaryButtonAccessibilityIdentifier));
   ASSERT_NE(nil, primaryButton);
 
   [primaryButton sendActionsForControlEvents:UIControlEventTouchUpInside];
@@ -128,7 +128,7 @@ TEST_F(BWGConsentViewControllerTest, TestSecondaryButtonAction) {
 
   UIButton* secondaryButton =
       static_cast<UIButton*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgSecondaryButtonAccessibilityIdentifier));
+          view_controller.view, kGeminiSecondaryButtonAccessibilityIdentifier));
   ASSERT_NE(nil, secondaryButton);
 
   [secondaryButton sendActionsForControlEvents:UIControlEventTouchUpInside];
@@ -142,7 +142,7 @@ TEST_F(BWGConsentViewControllerTest, PrimaryButtonRecordsMetrics) {
 
   UIButton* primaryButton =
       static_cast<UIButton*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgPrimaryButtonAccessibilityIdentifier));
+          view_controller.view, kGeminiPrimaryButtonAccessibilityIdentifier));
   ASSERT_NE(nil, primaryButton);
 
   [primaryButton sendActionsForControlEvents:UIControlEventTouchUpInside];
@@ -158,7 +158,7 @@ TEST_F(BWGConsentViewControllerTest, SecondaryButtonRecordsMetrics) {
 
   UIButton* secondaryButton =
       static_cast<UIButton*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgSecondaryButtonAccessibilityIdentifier));
+          view_controller.view, kGeminiSecondaryButtonAccessibilityIdentifier));
   ASSERT_NE(nil, secondaryButton);
 
   [secondaryButton sendActionsForControlEvents:UIControlEventTouchUpInside];
@@ -174,11 +174,12 @@ TEST_F(BWGConsentViewControllerTest, TestFootnoteLinksForNonManagedAccount) {
 
   UITextView* footnoteView =
       static_cast<UITextView*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgFootNoteTextViewAccessibilityIdentifier));
+          view_controller.view,
+          kGeminiFootNoteTextViewAccessibilityIdentifier));
   ASSERT_NE(nil, footnoteView);
 
-  EXPECT_TRUE(HasLinkWithURL(footnoteView, kBwgFirstFootnoteLinkAction));
-  EXPECT_TRUE(HasLinkWithURL(footnoteView, kBwgSecondFootnoteLinkAction));
+  EXPECT_TRUE(HasLinkWithURL(footnoteView, kGeminiFirstFootnoteLinkAction));
+  EXPECT_TRUE(HasLinkWithURL(footnoteView, kGeminiSecondFootnoteLinkAction));
 }
 
 // Tests footnote links for managed accounts.
@@ -187,9 +188,10 @@ TEST_F(BWGConsentViewControllerTest, TestFootnoteLinksForManagedAccount) {
 
   UITextView* footnoteView =
       static_cast<UITextView*>(GetViewWithAccessibilityIdentifier(
-          view_controller.view, kBwgFootNoteTextViewAccessibilityIdentifier));
+          view_controller.view,
+          kGeminiFootNoteTextViewAccessibilityIdentifier));
   ASSERT_NE(nil, footnoteView);
 
   EXPECT_TRUE(
-      HasLinkWithURL(footnoteView, kBwgFootnoteLinkActionManagedAccount));
+      HasLinkWithURL(footnoteView, kGeminiFootnoteLinkActionManagedAccount));
 }

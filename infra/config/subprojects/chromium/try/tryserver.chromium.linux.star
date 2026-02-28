@@ -466,22 +466,6 @@ try_.compilator_builder(
 )
 
 try_.builder(
-    name = "linux-rel-test-selection",
-    description_html = "Experimental " + linkify_builder("try", "linux-rel", "chromium") + " builder with smart tests selection. go/chrome-sts",
-    mirrors = builder_config.copy_from("linux-rel"),
-    gn_args = "try/linux-rel",
-    builderless = False,
-    contact_team_email = "chrome-sts@google.com",
-    experiments = {
-        "chromium_rts.rts": 100,
-    },
-    tryjob = try_.job(
-        experiment_percentage = 10,
-    ),
-    use_clang_coverage = True,
-)
-
-try_.builder(
     name = "linux-wayland-weston-rel",
     branch_selector = branches.selector.LINUX_BRANCHES,
     mirrors = [
@@ -997,6 +981,21 @@ try_.builder(
 )
 
 try_.builder(
+    name = "linux-webium-product-rel",
+    mirrors = [
+        "ci/linux-webium-product-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Linux Builder",
+            "release_try_builder",
+        ],
+    ),
+    contact_team_email = "chrome-webium-product-eng@google.com",
+    siso_remote_jobs = siso.remote_jobs.LOW_JOBS_FOR_CQ,
+)
+
+try_.builder(
     name = "network_service_linux",
     mirrors = [
         "ci/Network Service Linux",
@@ -1031,6 +1030,15 @@ try_.builder(
             cq.location_filter(path_regexp = r".*\.(c|cc|cpp|h)"),
         ],
     ),
+)
+
+try_.builder(
+    name = "linux-treesinviz-disabled-rel",
+    mirrors = [
+        "ci/linux-treesinviz-disabled-rel",
+    ],
+    gn_args = "ci/linux-treesinviz-disabled-rel",
+    contact_team_email = "chrome-gpu-team@google.com",
 )
 
 gpu.try_.optional_tests_builder(

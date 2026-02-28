@@ -17,6 +17,7 @@
 #include "chrome/browser/ui/find_bar/find_bar_controller.h"
 #include "chrome/browser/ui/tabs/tab_enums.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
+#include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/view_ids.h"
 #include "chrome/browser/ui/views/bookmarks/bookmark_bubble_view.h"
 #include "chrome/browser/ui/views/find_bar_host.h"
@@ -30,6 +31,7 @@
 #include "chrome/test/interaction/interactive_browser_test.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/bookmarks/test/bookmark_test_helpers.h"
+#include "components/enterprise/data_controls/content/browser/last_replaced_clipboard_data.h"
 #include "components/enterprise/data_controls/core/browser/test_utils.h"
 #include "components/find_in_page/find_notification_details.h"
 #include "components/find_in_page/find_tab_helper.h"
@@ -84,6 +86,8 @@ DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(ui::test::PollingStateObserver<bool>,
                                     kTextCopiedState);
 DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(ui::test::PollingStateObserver<bool>,
                                     kTextSelectedState);
+DEFINE_LOCAL_STATE_IDENTIFIER_VALUE(ui::test::PollingStateObserver<bool>,
+                                    kReplacedDataUpdatedState);
 const ui::Accelerator ctrl_c_accelerator(ui::VKEY_C, ui::EF_CONTROL_DOWN);
 const ui::Accelerator ctrl_v_accelerator(ui::VKEY_V, ui::EF_CONTROL_DOWN);
 }  // namespace
@@ -764,8 +768,20 @@ IN_PROC_BROWSER_TEST_F(FindBarViewsUiTest, PasteWithoutTextChange) {
       CheckViewProperty(FindBarView::kElementId, &FindBarView::GetFindText,
                         kSearchA),
       // Reload the page to clear the matching result.
-      MoveMouseTo(kReloadButtonElementId), ClickMouse(),
-      WaitForWebContentsNavigation(kTabId),
+      // TODO(crbug.com/479732140): improve the test method to simplify the call.
+      MoveMouseTo(kReloadButtonElementId,
+#if !BUILDFLAG(IS_ANDROID)
+                  features::IsWebUIReloadButtonEnabled()
+                      ? RelativePositionSpecifier(
+                            base::BindOnce([](ui::TrackedElement* el) {
+                              return el->GetScreenBounds().CenterPoint();
+                            }))
+                      : CenterPoint()
+#else
+                  CenterPoint()
+#endif  // !BUILDFLAG(IS_ANDROID)
+                      ),
+      ClickMouse(), WaitForWebContentsNavigation(kTabId),
       WaitForState(views::test::kCurrentFocusedViewId,
                    ContentsWebView::kContentsWebViewElementId),
       // Focus the Find bar again to make sure the text is selected.
@@ -1143,7 +1159,7 @@ IN_PROC_BROWSER_TEST_F(FindBarViewsUiTest, FindBarWidgetIsNotActivatable) {
 //
 // Disabled on Linux Wayland: Linux Wayland doesn't support window activation.
 // See crbug.com/40863331.
-#if BUILDFLAG(IS_LINUX) && BUILDFLAG(IS_OZONE_WAYLAND)
+#if BUILDFLAG(IS_LINUX) && BUILDFLAG(SUPPORTS_OZONE_WAYLAND)
 #define MAYBE_FindBarTextfieldActivatesBrowserOnClick \
   DISABLED_FindBarTextfieldActivatesBrowserOnClick
 #else
@@ -1258,4 +1274,69 @@ IN_PROC_BROWSER_TEST_F(FindBarViewsUiTest, BookmarkShortcutWithFindBarFocus) {
       // without the fix, Cmd+D would be consumed by the text field and the
       // bubble would never appear.
       WaitForShow(kBookmarkNameFieldId));
+}
+
+IN_PROC_BROWSER_TEST_P(FindBarViewsUiTest, CopyBlockedByPolicy) {
+  const bool clipboard_restricted_by_policy = GetParam();
+  if (clipboard_restricted_by_policy) {
+    data_controls::SetDataControls(browser()->profile()->GetPrefs(), {R"({
+                                   "name": "rule_name",
+                                   "rule_id": "rule_id",
+                                   "destinations": {
+                                     "os_clipboard": true
+                                   },
+                                   "restrictions": [
+                                     {"class": "CLIPBOARD", "level": "BLOCK"}
+                                   ]
+                                 })"});
+  }
+  const std::string kExpectedText =
+      clipboard_restricted_by_policy
+          ? l10n_util::GetStringUTF8(
+                IDS_ENTERPRISE_DATA_CONTROLS_COPY_PREVENTION_WARNING_MESSAGE)
+          : "text";
+
+  RunTestSequence(
+      Init(embedded_test_server()->GetURL("/a.html")),
+      WaitForWebContentsReady(kTabId), ShowFindBar(),
+      WaitForShow(FindBarView::kTextField),
+      EnterText(FindBarView::kTextField, u"some text"),
+      WithView(FindBarView::kTextField,
+               [](views::Textfield* textfield) {
+                 textfield->SelectWord();
+                 EXPECT_EQ(textfield->GetSelectedText(), u"text");
+                 textfield->ExecuteCommand(
+                     std::to_underlying(ui::TouchEditable::MenuCommands::kCopy),
+                     0);
+               }),
+      PollState(
+          kTextCopiedState,
+          [&]() {
+            ui::Clipboard* clipboard = ui::Clipboard::GetForCurrentThread();
+            std::u16string clipboard_text;
+            clipboard->ReadText(ui::ClipboardBuffer::kCopyPaste,
+                                /* data_dst = */ nullptr, &clipboard_text);
+            return base::EqualsASCII(clipboard_text, kExpectedText);
+          }),
+      WaitForState(kTextCopiedState, true),
+      // When copying to the clipboard is restricted, we have to wait for the
+      // internal data tracking to identify the sequence number that will need
+      // to be replaced before pasting.
+      PollState(
+          kReplacedDataUpdatedState,
+          [&]() {
+            return !clipboard_restricted_by_policy ||
+                   ui::Clipboard::GetForCurrentThread()->GetSequenceNumber(
+                       ui::ClipboardBuffer::kCopyPaste) ==
+                       data_controls::GetLastReplacedClipboardData().seqno;
+          }),
+      WaitForState(kReplacedDataUpdatedState, true),
+      // Regardless of whether the copied data made it to the clipboard, pasting
+      // it back into the FindBar will result in getting the original text back
+      // as the current policy doesn't block it.
+      WithView(FindBarView::kTextField, [&](views::Textfield* textfield) {
+        textfield->ExecuteCommand(
+            std::to_underlying(ui::TouchEditable::MenuCommands::kPaste), 0);
+        ASSERT_EQ(textfield->GetText(), u"some text");
+      }));
 }

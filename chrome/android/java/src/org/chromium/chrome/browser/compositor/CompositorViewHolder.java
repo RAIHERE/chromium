@@ -153,6 +153,9 @@ public class CompositorViewHolder extends FrameLayout
         void onFrameRequested();
     }
 
+    // Number of observers in `mTouchEventObservers` that return true in
+    // `mayInterceptTouchSequenceInWebContents()`.
+    private int mActiveTouchInterceptors;
     private final ObserverList<TouchEventObserver> mTouchEventObservers = new ObserverList<>();
     private final ObserverList<FrameRequestObserver> mFrameRequestObservers = new ObserverList<>();
 
@@ -262,23 +265,36 @@ public class CompositorViewHolder extends FrameLayout
                         private final RectF mCacheViewport = new RectF();
 
                         @Override
+                        public float getLeft() {
+                            updateCacheViewport();
+                            return mCacheViewport.left;
+                        }
+
+                        @Override
                         public float getTop() {
-                            if (mLayoutManager != null) {
-                                mLayoutManager.getViewportPixel(mCacheViewport);
-                            }
+                            updateCacheViewport();
                             return mCacheViewport.top;
                         }
 
                         @Override
-                        public void setCurrentTouchEventOffsets(float top) {
+                        public void setCurrentTouchEventOffsets(float left, float top) {
                             EventForwarder forwarder = getEventForwarder();
-                            if (forwarder != null) forwarder.setCurrentTouchOffsetY(top);
+                            if (forwarder != null) {
+                                forwarder.setCurrentTouchOffsetX(left);
+                                forwarder.setCurrentTouchOffsetY(top);
+                            }
                         }
 
                         @Override
                         public void setCurrentDragEventOffsets(float dx, float dy) {
                             EventForwarder forwarder = getEventForwarder();
                             if (forwarder != null) forwarder.setDragDispatchingOffset(dx, dy);
+                        }
+
+                        private void updateCacheViewport() {
+                            if (mLayoutManager != null) {
+                                mLayoutManager.getViewportPixel(mCacheViewport);
+                            }
                         }
 
                         private @Nullable EventForwarder getEventForwarder() {
@@ -655,7 +671,9 @@ public class CompositorViewHolder extends FrameLayout
         mApplicationBottomInsetSupplier = supplier;
         mApplicationBottomInsetSupplier.setVirtualKeyboardMode(mVirtualKeyboardMode);
         mOnViewportInsetsChanged = (unused) -> handleWindowInsetChanged();
-        mApplicationBottomInsetSupplier.getSupplier().addObserver(mOnViewportInsetsChanged);
+        mApplicationBottomInsetSupplier
+                .getSupplier()
+                .addSyncObserverAndPostIfNonNull(mOnViewportInsetsChanged);
     }
 
     // This method is called when any viewport insets change but is needed to watch for keyboard
@@ -751,11 +769,23 @@ public class CompositorViewHolder extends FrameLayout
     @Override
     public void addTouchEventObserver(TouchEventObserver o) {
         mTouchEventObservers.addObserver(o);
+        if (o.mayInterceptTouchSequenceInWebContents()) {
+            mActiveTouchInterceptors += 1;
+            if (mActiveTouchInterceptors == 1) {
+                mCompositorView.setHasActiveTouchInterceptors(true);
+            }
+        }
     }
 
     @Override
     public void removeTouchEventObserver(TouchEventObserver o) {
         mTouchEventObservers.removeObserver(o);
+        if (o.mayInterceptTouchSequenceInWebContents()) {
+            mActiveTouchInterceptors -= 1;
+            if (mActiveTouchInterceptors == 0) {
+                mCompositorView.setHasActiveTouchInterceptors(false);
+            }
+        }
     }
 
     @Override
@@ -1527,16 +1557,13 @@ public class CompositorViewHolder extends FrameLayout
             // CompositorView always has index of 0.
             // TODO(crbug.com/40770763): Look into enforcing the z-order of the views.
             addView(mView, 1);
-
-            setFocusable(false);
-            setFocusableInTouchMode(false);
+            updateFocusability(false, /* blockDescendants= */ false);
 
             // Claim focus for the new view unless the user is currently using the URL bar.
             if (mUrlBar == null || !mUrlBar.hasFocus()) mView.requestFocus();
         } else {
             if (mView.getParent() == this) {
-                setFocusable(mCanBeFocusable);
-                setFocusableInTouchMode(mCanBeFocusable);
+                updateFocusability(mCanBeFocusable, /* blockDescendants= */ false);
 
                 if (webContents != null && !webContents.isDestroyed()) {
                     assumeNonNull(getContentView()).setVisibility(View.INVISIBLE);
@@ -1745,11 +1772,29 @@ public class CompositorViewHolder extends FrameLayout
         }
     }
 
+    private void updateFocusability(boolean focusable, boolean blockDescendants) {
+        // Prevent nothing is focusable when the view is obscured.
+        boolean shouldBeFocusable = focusable || blockDescendants;
+        setFocusable(shouldBeFocusable);
+        setFocusableInTouchMode(shouldBeFocusable);
+
+        if (!focusable && blockDescendants) {
+            setDescendantFocusability(FOCUS_BLOCK_DESCENDANTS);
+        } else {
+            setDescendantFocusability(FOCUS_BEFORE_DESCENDANTS);
+        }
+
+    }
+
     // TabObscuringHandler.Observer
 
     @Override
     public void updateObscured(boolean obscureTabContent, boolean obscureToolbar) {
-        setFocusable(!obscureTabContent);
+        if (ChromeFeatureList.sCompositorViewHolderObscuring.isEnabled()) {
+            updateFocusability(!obscureTabContent, /* blockDescendants= */ true);
+        } else {
+            updateFocusability(!obscureTabContent, /* blockDescendants= */ false);
+        }
     }
 
     // KeyListener and VirtualView management.

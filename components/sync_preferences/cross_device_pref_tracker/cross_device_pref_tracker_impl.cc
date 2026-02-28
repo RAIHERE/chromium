@@ -378,8 +378,16 @@ void ApplyPrefChangeToCrossDevice(
   // the corresponding entry in the cross-device dictionary should be cleared to
   // signal that this device no longer has a value set by the user.
   if (tracked_pref->IsDefaultValue()) {
-    ScopedDictPrefUpdate update(profile_pref_service, cross_device_pref_name);
-    update->Remove(cache_guid.value());
+    const base::DictValue& cross_device_dict =
+        profile_pref_service->GetDict(cross_device_pref_name);
+
+    // Only instantiate `ScopedDictPrefUpdate` (which triggers a Sync server
+    // notification) if there is actually an entry to remove.
+    if (cross_device_dict.contains(cache_guid.value())) {
+      ScopedDictPrefUpdate update(profile_pref_service, cross_device_pref_name);
+      update->Remove(cache_guid.value());
+    }
+
     return;
   }
 
@@ -733,7 +741,7 @@ void CrossDevicePrefTrackerImpl::StartTrackingPrefs(
   CHECK(tracked_pref_service);
 
   for (std::string_view pref_name : pref_names) {
-    registrar.Add(std::string(pref_name), callback);
+    registrar.Add(pref_name, callback);
   }
 
   // Perform the initial sync of the pref's current value.
@@ -1156,6 +1164,10 @@ ScopedJavaLocalRef<jobject> CrossDevicePrefTrackerImpl::GetJavaObject() {
 }
 
 // Java versions of query methods.
+int CrossDevicePrefTrackerImpl::GetServiceStatus(JNIEnv* env) const {
+  return static_cast<int>(GetServiceStatus());
+}
+
 ScopedJavaLocalRef<jobjectArray> CrossDevicePrefTrackerImpl::GetValues(
     JNIEnv* env,
     const base::android::JavaRef<jstring>& pref_name,

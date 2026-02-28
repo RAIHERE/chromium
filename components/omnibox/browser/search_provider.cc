@@ -106,8 +106,9 @@ bool ShouldOnlyShowVerbatimMatches(const AutocompleteInput& input) {
       input.lens_overlay_suggest_inputs().has_value() &&
       !base::FeatureList::IsEnabled(omnibox::kComposeboxAttachmentsTypedState);
   const bool is_image_gen_mode =
-      input.aim_tool_mode() == omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_UPLOAD ||
-      input.aim_tool_mode() == omnibox::ToolMode::TOOL_MODE_IMAGE_GEN;
+      input.input_state().active_tool ==
+          omnibox::ToolMode::TOOL_MODE_IMAGE_GEN_UPLOAD ||
+      input.input_state().active_tool == omnibox::ToolMode::TOOL_MODE_IMAGE_GEN;
 
   // When contextual typed state suggestions are disabled for composebox, or
   // when in image generation mode, do not query suggest and only show
@@ -116,7 +117,11 @@ bool ShouldOnlyShowVerbatimMatches(const AutocompleteInput& input) {
     return true;
   }
 #endif
-  return false;
+  // Nano banana and deep search typed suggestions should be disabled.
+  const bool in_tool_mode = input.input_state().active_tool !=
+                            omnibox::ToolMode::TOOL_MODE_UNSPECIFIED;
+  return in_tool_mode &&
+         omnibox::IsComposebox(input.current_page_classification());
 }
 
 }  // namespace
@@ -924,7 +929,7 @@ std::unique_ptr<network::SimpleURLLoader> SearchProvider::CreateSuggestLoader(
   }
   search_term_args.lens_overlay_suggest_inputs =
       input.lens_overlay_suggest_inputs();
-  search_term_args.aim_tool_mode = input.aim_tool_mode();
+  search_term_args.input_state = input.input_state();
 
   const SearchTermsData& search_terms_data =
       client()->GetTemplateURLService()->search_terms_data();
@@ -1037,7 +1042,7 @@ void SearchProvider::ConvertResultsToAutocompleteMatches() {
     if (keyword_url &&
         (keyword_url->type() != TemplateURL::OMNIBOX_API_EXTENSION) &&
         (keyword_url->starter_pack_id() !=
-         template_url_starter_pack_data::kTabs)) {
+         template_url_starter_pack_data::StarterPackId::kTabs)) {
       bool keyword_relevance_from_server;
       const int keyword_verbatim_relevance =
           GetKeywordVerbatimRelevance(&keyword_relevance_from_server);

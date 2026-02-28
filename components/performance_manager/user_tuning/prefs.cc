@@ -38,6 +38,7 @@ void RegisterLocalStatePrefs(PrefRegistrySimple* registry) {
   registry->RegisterTimePref(kPerformanceInterventionNotificationLastShown,
                              base::Time());
   registry->RegisterListPref(kPerformanceInterventionNotificationAcceptHistory);
+  registry->RegisterBooleanPref(kForceForegroundPriorityForAllTabs, false);
 }
 
 void RegisterProfilePrefs(user_prefs::PrefRegistrySyncable* registry) {

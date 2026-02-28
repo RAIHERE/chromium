@@ -37,6 +37,7 @@
 #include "chrome/browser/devtools/process_sharing_infobar_delegate.h"
 #include "chrome/browser/file_select_helper.h"
 #include "chrome/browser/infobars/confirm_infobar_creator.h"
+#include "chrome/browser/policy/chrome_policy_blocklist_service_factory.h"
 #include "chrome/browser/policy/developer_tools_policy_checker.h"
 #include "chrome/browser/policy/developer_tools_policy_checker_factory.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
@@ -540,7 +541,7 @@ DevToolsWindow::~DevToolsWindow() {
   }
   // Defer deletion of the main web contents, since we could get here
   // via RenderFrameHostImpl method that expects WebContents to live
-  // for some time. See http://crbug.com/997299 for details.
+  // for some time. See http://crbug.com/41477969 for details.
   if (owned_main_web_contents_) {
     base::SequencedTaskRunner::GetCurrentDefault()->DeleteSoon(
         FROM_HERE, std::move(owned_main_web_contents_));
@@ -1327,10 +1328,20 @@ void DevToolsWindow::OnPolicyUpdated(const policy::PolicyNamespace& ns,
 bool DevToolsWindow::AllowDevToolsFor(Profile* profile,
                                       content::WebContents* web_contents) {
   // Don't allow DevTools UI in kiosk mode, because the DevTools UI would be
-  // broken there. See https://crbug.com/514551 for context.
+  // broken there. See https://crbug.com/41191065 for context.
   if (base::CommandLine::ForCurrentProcess()->HasSwitch(switches::kKioskMode)) {
     return false;
   }
+
+  PolicyBlocklistService* blocklist_service =
+      ChromePolicyBlocklistServiceFactory::GetForProfile(profile);
+  if (blocklist_service &&
+      blocklist_service->GetURLBlocklistState(
+          GURL(chrome::kChromeUIDevToolsURL)) ==
+          policy::URLBlocklist::URLBlocklistState::URL_IN_BLOCKLIST) {
+    return false;
+  }
+
   return IsInspectionAllowed(profile, web_contents);
 }
 
@@ -1597,7 +1608,8 @@ void DevToolsWindow::WebContentsCreated(WebContents* source_contents,
     // placeholder is resized, a frame is requested. The inspected WebContents
     // is resized when the frame is rendered. Force rendering of the toolbox at
     // all times, to make sure that a frame can be rendered even when the
-    // inspected WebContents fully covers the toolbox. https://crbug.com/828307
+    // inspected WebContents fully covers the toolbox.
+    // https://crbug.com/41380417
     capture_handle_ = toolbox_web_contents_->IncrementCapturerCount(
         gfx::Size(),
         /*stay_hidden=*/false,
@@ -1892,7 +1904,7 @@ infobars::ContentInfoBarManager* DevToolsWindow::GetInfoBarManager() {
 void DevToolsWindow::RenderProcessGone(bool crashed) {
   // Docked DevToolsWindow owns its main_web_contents_ and must delete it.
   // Undocked main_web_contents_ are owned and handled by browser.
-  // see crbug.com/369932
+  // see crbug.com/40363970
   if (is_docked_) {
     CloseContents(main_web_contents_);
   } else {
@@ -2198,11 +2210,9 @@ void DevToolsWindow::OnInfoBarRemoved(infobars::InfoBar* infobar,
 void DevToolsWindow::DidFinishNavigation(
     content::NavigationHandle* navigation_handle) {
   if (!navigation_handle->HasCommitted() ||
-      navigation_handle->IsSameDocument() ||
-      !navigation_handle->IsInPrimaryMainFrame()) {
+      navigation_handle->IsSameDocument()) {
     return;
   }
-
   if (!AllowDevToolsFor(profile_, web_contents())) {
     main_web_contents_->ClosePage();
   }

@@ -9,12 +9,13 @@
 #include "base/memory/weak_ptr.h"
 #include "base/notimplemented.h"
 #include "base/time/time.h"
+#include "chrome/browser/glic/common/application_hotkey_delegate.h"
+#include "chrome/browser/glic/common/glic_panel_hotkey_delegate.h"
 #include "chrome/browser/glic/glic_profile_manager.h"
+#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/glic/service/glic_instance_helper.h"
 #include "chrome/browser/glic/service/metrics/glic_instance_metrics.h"
-#include "chrome/browser/glic/widget/application_hotkey_delegate.h"
 #include "chrome/browser/glic/widget/glic_inactive_floating_ui.h"
-#include "chrome/browser/glic/widget/glic_panel_hotkey_delegate.h"
 #include "chrome/browser/glic/widget/glic_view.h"
 #include "chrome/browser/glic/widget/glic_widget.h"
 #include "chrome/browser/glic/widget/glic_window_animator.h"
@@ -58,10 +59,12 @@ GlicFloatingUi::GlicFloatingUi(Profile* profile,
       delegate_(delegate),
       instance_metrics_(instance_metrics),
       source_tab_(source_tab) {
-  if (auto* helper = GlicInstanceHelper::From(source_tab_.Get())) {
-    source_tab_destruction_subscription_ =
-        helper->SubscribeToDestruction(base::BindRepeating(
-            &GlicFloatingUi::OnSourceTabDestroyed, base::Unretained(this)));
+  if (!base::FeatureList::IsEnabled(features::kGlicOrphanedReattachment)) {
+    if (auto* helper = GlicInstanceHelper::From(source_tab_.Get())) {
+      source_tab_destruction_subscription_ =
+          helper->SubscribeToDestruction(base::BindRepeating(
+              &GlicFloatingUi::OnSourceTabDestroyed, base::Unretained(this)));
+    }
   }
   application_hotkey_manager_ =
       MakeApplicationHotkeyManager(weak_ptr_factory_.GetWeakPtr());
@@ -187,6 +190,10 @@ bool GlicFloatingUi::ActivateBrowser() {
   return false;
 }
 
+void GlicFloatingUi::Zoom(mojom::ZoomAction zoom_action) {
+  delegate_->host().Zoom(zoom_action);
+}
+
 void GlicFloatingUi::ShowTitleBarContextMenuAt(gfx::Point event_loc) {
 #if BUILDFLAG(IS_WIN)
   views::View::ConvertPointToScreen(GetGlicView(), &event_loc);
@@ -266,11 +273,9 @@ void GlicFloatingUi::Attach() {
   if (!base::FeatureList::IsEnabled(kGlicFloatingUiReattachment)) {
     return;
   }
-  if (!source_tab_.Get()) {
-    return;
-  }
+
   // NOTE: `this` will be destroyed after this call.
-  delegate_->Attach(*source_tab_.Get());
+  delegate_->Attach(source_tab_);
 }
 
 void GlicFloatingUi::Detach() {
@@ -341,6 +346,16 @@ void GlicFloatingUi::OnReload() {
   }
 }
 
+void GlicFloatingUi::MaybeNotifyActivationChanged(bool window_active) {
+  bool active = window_active || (delegate_->host().microphone_status() ==
+                                  mojom::MicrophoneStatus::kListening);
+  delegate_->OnEmbedderWindowActivationChanged(active);
+}
+
+void GlicFloatingUi::OnMicrophoneStatusChanged(mojom::MicrophoneStatus status) {
+  MaybeNotifyActivationChanged(HasFocus());
+}
+
 void GlicFloatingUi::Focus() {
   if (!IsShowing()) {
     return;
@@ -353,7 +368,7 @@ void GlicFloatingUi::Focus() {
 
 void GlicFloatingUi::OnWidgetActivationChanged(views::Widget* widget,
                                                bool active) {
-  delegate_->OnEmbedderWindowActivationChanged(active);
+  MaybeNotifyActivationChanged(active);
 }
 
 void GlicFloatingUi::OnWidgetDestroyed(views::Widget* widget) {
@@ -440,12 +455,14 @@ std::unique_ptr<GlicUiEmbedder> GlicFloatingUi::CreateInactiveEmbedder() const {
   return GlicInactiveFloatingUi::From(*this);
 }
 
+#if !BUILDFLAG(IS_ANDROID)
 base::WeakPtr<views::View> GlicFloatingUi::GetView() {
   if (auto* glic_view = GetGlicView()) {
     return glic_view->GetWeakPtr();
   }
   return nullptr;
 }
+#endif
 
 void GlicFloatingUi::SwitchConversation(
     glic::mojom::ConversationInfoPtr info,

@@ -52,7 +52,6 @@ extern const char kAppRunOnOsLoginMode[];
 extern const char kAppShim[];
 extern const char kAppsGalleryDownloadURL[];
 extern const char kAppsGalleryUpdateURL[];
-extern const char kAppsGalleryURL[];
 extern const char kAuthServerAllowlist[];
 extern const char kAutoOpenDevToolsForTabs[];
 extern const char kAutoSelectDesktopCaptureSource[];
@@ -287,6 +286,8 @@ extern const char kSourceShortcut[];
 extern const char kStartupForegroundLaunch[];
 extern const char kUninstall[];
 extern const char kUninstallAppId[];
+extern const char kIsolated[];
+extern const char kLaunchIsolated[];
 #endif  // BUILDFLAG(IS_WIN)
 
 #if BUILDFLAG(ENABLE_PRINT_PREVIEW) && !defined(OFFICIAL_BUILD)
@@ -315,6 +316,7 @@ extern const char kGlicAlwaysShowWebActuationToggle[];
 extern const char kGlicResetMultiInstanceEnabledByTier[];
 extern const char kGlicForceG1StatusForMultiInstance[];
 extern const char kGlicGuestUrlPresetAutopush[];
+extern const char kGlicGuestUrlPresetStaging[];
 extern const char kGlicGuestUrlPresetPreprod[];
 extern const char kGlicGuestUrlPresetProd[];
 #endif

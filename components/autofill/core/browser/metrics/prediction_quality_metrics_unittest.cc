@@ -13,6 +13,8 @@
 #include "components/autofill/core/browser/form_structure_test_api.h"
 #include "components/autofill/core/browser/heuristic_source.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics_test_base.h"
+#include "components/autofill/core/browser/test_utils/autofill_form_test_utils.h"
+#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "components/autofill/core/common/autofill_test_utils.h"
 #include "components/autofill/core/common/form_data_test_api.h"
@@ -33,13 +35,6 @@ using ::autofill::test::CreateTestFormField;
 using ::base::Bucket;
 using ::base::BucketsAre;
 using ::testing::WithParamInterface;
-
-constexpr FieldTypeSet kMLSupportedTypesForTesting = {
-    UNKNOWN_TYPE,       NAME_FIRST,
-    NAME_LAST,          NAME_FULL,
-    EMAIL_ADDRESS,      PHONE_HOME_NUMBER,
-    ADDRESS_HOME_LINE1, ADDRESS_HOME_STREET_ADDRESS,
-    ADDRESS_HOME_CITY};
 
 class PredictionQualityMetricsTest : public AutofillMetricsBaseTest,
                                      public testing::Test {
@@ -74,27 +69,20 @@ TEST_F(PredictionQualityMetricsTest, SaneMetricsWithCacheMismatch) {
                            FormControlType::kInputText),
        CreateTestFormField("Unknown", "unknown", "garbage",
                            FormControlType::kInputText)});
-  test_api(form).field(0).set_is_autofilled(true);
+  test_api(form).field(0).set_is_autofilled_according_to_renderer(true);
 
   std::vector<FieldType> heuristic_types = {NAME_FULL, PHONE_HOME_NUMBER,
                                             ADDRESS_HOME_CITY, UNKNOWN_TYPE};
   std::vector<FieldType> server_types = {NAME_FULL, PHONE_HOME_NUMBER,
                                          PHONE_HOME_NUMBER, UNKNOWN_TYPE};
-  std::vector<FieldType> ml_types = server_types;
 
   std::unique_ptr<FormStructure> form_structure =
       std::make_unique<FormStructure>(test::WithoutValues(form));
 
-  for (auto [field, heuristic_type, server_type, ml_type] : base::zip(
-           form_structure->fields(), heuristic_types, server_types, ml_types)) {
+  for (auto [field, heuristic_type, server_type] :
+       base::zip(form_structure->fields(), heuristic_types, server_types)) {
     field->set_heuristic_type(GetActiveHeuristicSource(), heuristic_type);
     field->set_server_predictions({test::CreateFieldPrediction(server_type)});
-    // ML predictions can be overridden when regexes predict a type that the ML
-    // model does not know - we need to set these so that the ML predction is
-    // used.
-    field->set_ml_supported_types(kMLSupportedTypesForTesting);
-    field->set_heuristic_type(HeuristicSource::kAutofillMachineLearning,
-                              ml_type);
   }
   test_api(autofill_manager()).AddSeenFormStructure(std::move(form_structure));
 
@@ -122,14 +110,6 @@ TEST_F(PredictionQualityMetricsTest, SaneMetricsWithCacheMismatch) {
   SubmitForm(form);
 
   std::vector<std::string> sources = {"Heuristic", "Server", "Overall"};
-#if BUILDFLAG(BUILD_WITH_TFLITE_LIB)
-  // Quality metrics for ".ML" are only recorded if the ML predictions are
-  // computed but not the active heuristic source.
-  if (base::FeatureList::IsEnabled(features::kAutofillModelPredictions) &&
-      GetActiveHeuristicSource() != HeuristicSource::kAutofillMachineLearning) {
-    sources.push_back("ML");
-  }
-#endif
 
   for (const std::string& source : sources) {
     SCOPED_TRACE(testing::Message() << source);
@@ -165,8 +145,6 @@ TEST_F(PredictionQualityMetricsTest, SaneMetricsWithCacheMismatch) {
         return server_types;
       } else if (source == "Overall") {
         return server_types;
-      } else if (source == "ML") {
-        return ml_types;
       }
       NOTREACHED();
     }();
@@ -476,6 +454,118 @@ TEST_F(PredictionQualityMetricsTest,
       "Autofill.FieldPredictionOverlap.AutocompleteAttributeAbsent."
       "NoPredictionExists.NAME_FIRST",
       1);
+}
+
+TEST_F(PredictionQualityMetricsTest,
+       PhoneNumberExperimentMetrics_AugmentedPhoneCountryCode) {
+  FormData form_without_options = test::GetFormData(
+      {.fields = {{.role = NAME_FULL, .autocomplete_attribute = "name"},
+                  // No role so that regexes don't match.
+                  {.autocomplete_attribute = "tel-country-code",
+                   .form_control_type = FormControlType::kSelectOne},
+                  {.role = PHONE_HOME_CITY_AND_NUMBER,
+                   .autocomplete_attribute = "tel-national"}}});
+  SeeForm(form_without_options);
+
+  FormData form_with_options = test::GetFormData(
+      {.fields = {{.role = NAME_FULL, .autocomplete_attribute = "name"},
+                  // No role so that regexes don't match.
+                  {.autocomplete_attribute = "tel-country-code",
+                   .form_control_type = FormControlType::kSelectOne,
+                   .select_options =
+                       {
+                           {.value = u"US", .text = u"United States (+1)"},
+                           {.value = u"CA", .text = u"Canada (+1)"},
+                           {.value = u"FR", .text = u"France (+33)"},
+                           {.value = u"DE", .text = u"Germany (+49)"},
+                           {.value = u"LB", .text = u"Lebanon (+961)"},
+                       }},
+                  {.role = PHONE_HOME_CITY_AND_NUMBER,
+                   .autocomplete_attribute = "tel-national"}}});
+  SeeForm(form_with_options);
+
+  {
+    base::HistogramTester histogram_tester;
+    SubmitForm(form_without_options);
+    histogram_tester.ExpectTotalCount(
+        "Autofill.FieldPrediction.AugmentedPhoneCountryCode.Heuristics", 0);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.AugmentedPhoneCountryCode.Overall", 0, 1);
+  }
+
+  {
+    base::HistogramTester histogram_tester;
+    SubmitForm(form_with_options);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.AugmentedPhoneCountryCode.Heuristics", 1, 1);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.AugmentedPhoneCountryCode.Overall", 1, 1);
+  }
+}
+
+TEST_F(PredictionQualityMetricsTest,
+       PhoneNumberExperimentMetrics_PhoneCountryRationalizedToUnknownType) {
+  // Form where the country code field is relevant.
+  FormData relevant_form = test::GetFormData(
+      {.fields = {{.role = PHONE_HOME_COUNTRY_CODE,
+                   .autocomplete_attribute = "tel-country-code",
+                   .form_control_type = FormControlType::kSelectOne},
+                  {.role = PHONE_HOME_CITY_AND_NUMBER,
+                   .autocomplete_attribute = "tel-national"}}});
+  SeeForm(relevant_form);
+
+  // Form where the country code field is irrelevant.
+  FormData irrelevant_form = test::GetFormData(
+      {.fields = {{.role = NAME_FULL, .autocomplete_attribute = "name"},
+                  {.role = PHONE_HOME_COUNTRY_CODE,
+                   .autocomplete_attribute = "tel-country-code",
+                   .form_control_type = FormControlType::kSelectOne}}});
+  SeeForm(irrelevant_form);
+
+  {
+    base::HistogramTester histogram_tester;
+    SubmitForm(relevant_form);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.PhoneCountryCodeRationalizedToUnknown", 0, 1);
+  }
+
+  {
+    base::HistogramTester histogram_tester;
+    SubmitForm(irrelevant_form);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.PhoneCountryCodeRationalizedToUnknown", 1, 1);
+  }
+}
+
+TEST_F(PredictionQualityMetricsTest,
+       PhoneNumberExperimentMetrics_CorrectPredictionSource) {
+  // Country code field classified by heuristics.
+  AutofillField heuristics_field(test::GetFormFieldData({.value = u"+1"}));
+  heuristics_field.set_heuristic_type(HeuristicSource::kRegexes,
+                                      PHONE_HOME_COUNTRY_CODE);
+  heuristics_field.set_possible_types({PHONE_HOME_COUNTRY_CODE});
+
+  // Country code field classified by the autocomplete attribute.
+  AutofillField html_field(test::GetFormFieldData({.value = u"+1"}));
+  html_field.SetHtmlType(HtmlFieldType::kTelCountryCode,
+                         HtmlFieldMode::kShipping);
+  html_field.set_possible_types({PHONE_HOME_COUNTRY_CODE});
+
+  {
+    base::HistogramTester histogram_tester;
+    LogPhoneNumberDetectionExperimentMetrics(heuristics_field);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.PhoneCountryCode.CorrectPredictionSource",
+        AutofillPredictionSource::kHeuristics, 1);
+  }
+
+  {
+    base::HistogramTester histogram_tester;
+    LogPhoneNumberDetectionExperimentMetrics(html_field);
+    histogram_tester.ExpectUniqueSample(
+        "Autofill.FieldPrediction.PhoneCountryCode.CorrectPredictionSource",
+        AutofillPredictionSource::kAutocomplete, 1);
+  }
 }
 
 }  // namespace

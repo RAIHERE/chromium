@@ -428,6 +428,7 @@ base::expected<void, std::string> UpdatePropertyTreeNode(
   node.may_have_backdrop_effect = wire.may_have_backdrop_effect;
   node.needs_effect_for_2d_scale_transform =
       wire.needs_effect_for_2d_scale_transform;
+  node.only_draws_visible_content = wire.only_draws_visible_content;
 
   return base::ok();
 }
@@ -995,6 +996,7 @@ base::expected<void, std::string> CreateOrUpdateLayers(
     base::flat_map<int, size_t> layer_indices(base::sorted_unique,
                                               std::move(layer_indices_vector));
 
+    layers.ReserveLayers(layer_order->size());
     for (auto id : *layer_order) {
       auto it = layer_indices.find(id);
       if (it == layer_indices.end()) {
@@ -1614,9 +1616,7 @@ void LayerContextImpl::SetNeedsPrepareTilesOnImplThread() {
   NOTREACHED();
 }
 
-void LayerContextImpl::SetNeedsCommitOnImplThread(bool urgent) {
-  NOTIMPLEMENTED();
-}
+void LayerContextImpl::SetNeedsCommitOnImplThread(bool urgent) {}
 
 void LayerContextImpl::SetVideoNeedsBeginFrames(bool needs_begin_frames) {}
 void LayerContextImpl::DidChangeBeginFrameSourcePaused(bool paused) {}
@@ -1765,8 +1765,6 @@ void LayerContextImpl::UpdateDisplayTree(mojom::LayerTreeUpdatePtr update) {
   const BeginFrameArgs begin_frame_args = update->begin_frame_args;
   auto start_update_display_tree = base::TimeTicks::Now();
   const bool frame_has_damage = update->frame_has_damage;
-  host_impl_->AddDamageDataCrashKeys(update->damage_reasons_bit_mask,
-                                     /*is_viz=*/false);
   auto result = DoUpdateDisplayTree(std::move(update));
   if (!result.has_value()) {
     HandleBadMojoMessage("UpdateDisplayTree", result.error());
@@ -2005,6 +2003,7 @@ base::expected<void, std::string> LayerContextImpl::DoUpdateDisplayTree(
       update->top_controls_shown_ratio, update->bottom_controls_shown_ratio);
 
   host_impl_->SetViewportDamage(update->viewport_damage_rect);
+  host_impl_->SetRootLayerDamageRect(update->root_layer_damage_rect);
   host_impl_->SetDebugState(update->debug_state);
 
   for (auto& ui_resource_request : update->ui_resource_requests) {

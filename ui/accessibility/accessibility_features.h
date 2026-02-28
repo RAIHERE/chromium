@@ -147,12 +147,6 @@ AX_BASE_EXPORT bool IsUseAXPositionForDocumentMarkersEnabled();
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAXRandomizedStressTests);
 AX_BASE_EXPORT bool IsAXRandomizedStressTestsEnabled();
 
-// When enabled, allows the content of <address> tags to be used in
-// calculating their ancestors' accessible names.
-// TODO(crbug.com/443765360): Remove killswitch after stability period.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAXObjectSupportsNameFromAddressContent);
-AX_BASE_EXPORT bool IsAXObjectSupportsNameFromAddressContentEnabled();
-
 // Enable the experimental on-screen AXMode .
 // TODO(accessibility): Only turn on the experimental On-Screen mode for when
 // screen readers are not running. This is an experimental mode for now, so this
@@ -253,10 +247,6 @@ AX_BASE_EXPORT bool IsAccessibilityDisableTouchpadEnabled();
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityFlashScreenFeature);
 AX_BASE_EXPORT bool IsAccessibilityFlashScreenFeatureEnabled();
 
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(
-    kAccessibilityManifestV3AccessibilityCommon);
-AX_BASE_EXPORT bool IsAccessibilityManifestV3EnabledForAccessibilityCommon();
-
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityManifestV3ChromeVox);
 AX_BASE_EXPORT bool IsAccessibilityManifestV3EnabledForChromeVox();
 
@@ -265,9 +255,6 @@ AX_BASE_EXPORT bool IsAccessibilityManifestV3EnabledForEspeakNGTts();
 
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityManifestV3GoogleTts);
 AX_BASE_EXPORT bool IsAccessibilityManifestV3EnabledForGoogleTts();
-
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kAccessibilityManifestV3SwitchAccess);
-AX_BASE_EXPORT bool IsAccessibilityManifestV3EnabledForSwitchAccess();
 
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -335,10 +322,6 @@ GetReadAnythingMenuShuffleExperimentGroup();
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingMenuShuffleExperiment);
 AX_BASE_EXPORT bool IsReadAnythingMenuShuffleExperimentEnabled();
 
-// Show the Read Aloud feature in Read Anything.
-AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingReadAloud);
-AX_BASE_EXPORT bool IsReadAnythingReadAloudEnabled();
-
 // Enable phrase highlighting in Read Anything Read Aloud.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingReadAloudPhraseHighlighting);
 AX_BASE_EXPORT bool IsReadAnythingReadAloudPhraseHighlightingEnabled();
@@ -372,6 +355,11 @@ AX_BASE_EXPORT bool IsReadAnythingDocsLoadMoreButtonEnabled();
 // Enable ReadabilityJS as the distillation source for Reading Mode.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingWithReadability);
 AX_BASE_EXPORT bool IsReadAnythingWithReadabilityEnabled();
+
+// Enable links when the Readability distillation source for Reading Mode.
+// Intended for safer rolling out of the Readability flag.
+AX_BASE_EXPORT BASE_DECLARE_FEATURE(kReadAnythingWithReadabilityAllowLinks);
+AX_BASE_EXPORT bool IsReadAnythingWithReadabilityAllowLinksEnabled();
 
 // Write some ScreenAI library debug data in /tmp.
 AX_BASE_EXPORT BASE_DECLARE_FEATURE(kScreenAIDebugMode);

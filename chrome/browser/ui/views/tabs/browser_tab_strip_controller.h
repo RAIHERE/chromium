@@ -14,7 +14,7 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/frame/immersive_mode_controller.h"
-#include "chrome/browser/ui/views/tabs/tab_context_menu_controller.h"
+#include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_types.h"
 #include "components/prefs/pref_change_registrar.h"
@@ -92,7 +92,7 @@ class BrowserTabStripController : public TabStripController,
   void CreateNewTab(NewTabTypes context) override;
   void OnStartedDragging() override;
   void OnStoppedDragging() override;
-  void OnKeyboardFocusedTabChanged(std::optional<int> index) override;
+  void TabKeyboardFocusChangedTo(const tabs::TabInterface* tab) override;
   std::u16string GetGroupTitle(
       const tab_groups::TabGroupId& group_id) const override;
   std::u16string GetGroupContentString(
@@ -114,9 +114,6 @@ class BrowserTabStripController : public TabStripController,
       const tab_groups::TabGroupId& group_id) const override;
   std::u16string GetAccessibleTabName(const Tab* tab) const override;
   BrowserWindowInterface* GetBrowserWindowInterface() override;
-#if BUILDFLAG(IS_CHROMEOS)
-  bool IsLockedForOnTask() override;
-#endif
 
   // Test-specific methods.
   void CloseContextMenuForTesting();
@@ -135,8 +132,6 @@ class BrowserTabStripController : public TabStripController,
                       TabChangeType change_type) override;
   void OnTabPinnedStateChanged(tabs::TabInterface* tab,
                                int model_index) override;
-  void OnTabBlockedStateChanged(tabs::TabInterface* tab,
-                                int model_index) override;
   void TabGroupedStateChanged(TabStripModel* tab_strip_model,
                               std::optional<tab_groups::TabGroupId> old_group,
                               std::optional<tab_groups::TabGroupId> new_group,

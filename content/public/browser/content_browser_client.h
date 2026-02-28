@@ -1873,6 +1873,10 @@ class CONTENT_EXPORT ContentBrowserClient {
   // processes are scheduled on the same CPU core as the renderer process.
   virtual bool ShouldRestrictCoreSharingOnRenderer();
 
+  // Obtains the name of the security attribute in the browser process token, to
+  // be used in child process tokens, or nullopt if there is no security
+  // attribute.
+  virtual std::optional<std::wstring> GetWindowsSecurityAttributeName() const;
 #endif
 
   // Binds a new media remoter service to |receiver|, if supported by the
@@ -3298,6 +3302,7 @@ class CONTENT_EXPORT ContentBrowserClient {
   MaybeCreateKeepAliveRequestTracker(
       const network::ResourceRequest& request,
       std::optional<ukm::SourceId> ukm_source_id,
+      content::BrowserContext* browser_context,
       KeepAliveRequestTracker::IsContextDetachedCallback
           is_context_detached_callback);
 
@@ -3312,19 +3317,6 @@ class CONTENT_EXPORT ContentBrowserClient {
   // Returns true if PrefetchPrerenderIntegration should be allowed, this
   // allows a prerender fall back to prefetch if available.
   virtual bool UsePrefetchPrerenderIntegration();
-
-  // Returns true if `PreloadServingMetrics` should be enabled, which record
-  // serving metrics of preloads.
-  //
-  // Some //content features enable the feature even if it's false. For
-  // details, see `PreloadServingMetricsCapsule::IsFeatureEnabled()`.
-  //
-  // We use `ContentBrowserClient` rather than //content public feature because
-  // we have mulitple preload triggers in //chrome that want to enable the
-  // feature, and we have a limitation: a feature cannot be used in mulitple
-  // experiments. For more details, see
-  // https://docs.google.com/document/d/1bBhfhO7BotUB7Myy_8mtFF_4lI5N8hUyNayV_gI019Y/edit?tab=t.0#heading=h.9osmajzfan4b
-  virtual bool UsePreloadServingMetrics();
 
 #if !BUILDFLAG(IS_ANDROID)
   // Gives the content embedder a chance to disallow a credential request,
@@ -3372,6 +3364,54 @@ class CONTENT_EXPORT ContentBrowserClient {
   // returned data must be JSON in the the format described here:
   // https://developers.google.com/speed/public-dns/docs/doh/json
   virtual std::string GetDnsTxtResolverUrlPrefix();
+
+  // Returns true if the given redirected destination url `url` of the given
+  // `browser_context` should be allowed for prefetch redirect.
+  // `embedder_histogram_suffix` is used to determine whether this is a trigger
+  // of interest.
+  // TODO(crbug.com/479250358): Figure out a better way for identifying the
+  // trigger. The parameter `embedder_histogram_suffix` corresponds to
+  // `PrefetchBrowserInitiatorInfo::embedder_histogram_suffix_`.
+  virtual bool ShouldAllowPrefetchRedirection(
+      content::BrowserContext& browser_context,
+      const GURL& url,
+      const std::string& embedder_histogram_suffix);
+
+  // Allows the embedder to modify the request headers for a prefetch request
+  // initiated by `content::PrefetchContainer` (not by other prefetches).
+  //
+  // This performs a part of the operations that would be done by
+  // `URLLoaderThrottle`s of `CreateURLLoaderThrottles()`. Currently,
+  // `CreateURLLoaderThrottles()` is not applied to
+  // `content::PrefetchContainer`. As a workaround, this function applies some
+  // necessary operations until the prefetch supports
+  // `CreateURLLoaderThrottles()`.
+  //
+  // The embedder implementation is expected to add:
+  // - headers that should be removed when the request is redirection to
+  //   `removed_headers` (For non-redirect prefetch requests, the caller ignores
+  //   this vector),
+  // - headers that should be present on the request to `modified_headers`, and
+  // - cors-exempt headers that should be present on the request to
+  //   `modified_cors_exempt_headers`.
+  virtual void ModifyRequestHeadersForPrefetch(
+      const GURL& url,
+      std::vector<std::string>& removed_headers,
+      net::HttpRequestHeaders& modified_headers,
+      net::HttpRequestHeaders& modified_cors_exempt_headers);
+
+  // Allows the embedder to update the cors exempt header list for a new
+  // NetworkContext created for a cross-site prefetch request initiated by
+  // `content::PrefetchContainer` (not by other prefetches).
+  virtual void UpdateCorsExemptHeaderForPrefetch(
+      network::mojom::NetworkContextParams* params);
+
+  // Returns whether to enable concrete cross-origin isolation, which gives
+  // access to cross-origin isolated APIs. If this return false, logical
+  // cross-origin isolation will be applied instead, which applies web-visible
+  // restrictions but does not give access to cross-origin isolated APIs.
+  virtual bool OriginSupportsConcreteCrossOriginIsolation(
+      const url::Origin& origin);
 };
 
 }  // namespace content

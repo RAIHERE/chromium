@@ -177,13 +177,6 @@ CORE_EXPORT CSSPrimitiveValue* ConsumeAngle(
     const CSSParserContext&,
     CSSParserLocalContext&,
     std::optional<WebFeature> unitless_zero_feature);
-CORE_EXPORT CSSPrimitiveValue* ConsumeAngle(
-    CSSParserTokenStream&,
-    const CSSParserContext&,
-    CSSParserLocalContext&,
-    std::optional<WebFeature> unitless_zero_feature,
-    double minimum_value,
-    double maximum_value);
 CSSPrimitiveValue* ConsumeTime(CSSParserTokenStream&,
                                const CSSParserContext&,
                                CSSParserLocalContext&,
@@ -213,8 +206,7 @@ cssvalue::CSSScopedKeywordValue* ConsumeScopedKeywordValue(
 
 // https://drafts.csswg.org/css-values-5/#ident
 CSSFunctionValue* ConsumeIdentFunction(CSSParserTokenStream&,
-                                       const CSSParserContext&,
-                                       CSSParserLocalContext&);
+                                       const CSSParserContext&);
 CSSCustomIdentValue* ConsumeCustomIdent(CSSParserTokenStream&,
                                         const CSSParserContext&,
                                         CSSParserLocalContext&);
@@ -226,8 +218,8 @@ cssvalue::CSSScopedKeywordValue* ConsumeScopedKeywordValue(
 CSSStringValue* ConsumeString(CSSParserTokenStream&);
 cssvalue::CSSURIValue* ConsumeUrl(CSSParserTokenStream&,
                                   const CSSParserContext&);
-CSSURLPatternValue* ConsumeUrlPattern(CSSParserTokenStream&,
-                                      const CSSParserContext&);
+CORE_EXPORT CSSURLPatternValue* ConsumeUrlPattern(CSSParserTokenStream&,
+                                                  const CSSParserContext&);
 
 // Some properties accept non-standard colors, like rgb values without a
 // preceding hash, in quirks mode.
@@ -338,8 +330,8 @@ void WarnInvalidKeywordPropertyUsage(CSSPropertyID,
                                      CSSValueID);
 
 const CSSValue* ParseLonghand(CSSPropertyID unresolved_property,
-                              CSSPropertyID current_shorthand,
                               const CSSParserContext&,
+                              CSSParserLocalContext&,
                               CSSParserTokenStream&);
 
 bool ConsumeShorthandVia2Longhands(
@@ -392,7 +384,8 @@ inline bool IsDashedFunctionName(const CSSParserToken& token) {
          token.Value()[0] == '-' && token.Value()[1] == '-';
 }
 
-CSSValue* ConsumeCSSWideKeyword(CSSParserTokenStream&);
+CORE_EXPORT CSSValue* ConsumeCSSWideKeyword(CSSParserTokenStream&,
+                                            const CSSParserContext& context);
 
 // This function returns false for CSS-wide keywords, 'default', and any
 // template parameters provided.
@@ -543,7 +536,8 @@ CSSValue* ParseBorderWidthSide(CSSParserTokenStream&,
                                const CSSParserContext&,
                                CSSParserLocalContext&);
 const CSSValue* ParseBorderStyleSide(CSSParserTokenStream&,
-                                     const CSSParserContext&);
+                                     const CSSParserContext&,
+                                     CSSParserLocalContext&);
 
 CSSValue* ConsumeCornerShape(CSSParserTokenStream&,
                              const CSSParserContext&,
@@ -677,10 +671,18 @@ bool ConsumeGridTemplateShorthand(bool important,
                                   const CSSValue*& template_columns,
                                   const CSSValue*& template_areas);
 
+bool ConsumeGridLanesShorthand(bool important,
+                               CSSParserTokenStream&,
+                               const CSSParserContext&,
+                               CSSParserLocalContext&,
+                               const CSSValue*& grid_lanes_direction,
+                               const CSSValue*& template_columns,
+                               const CSSValue*& template_rows,
+                               const CSSValue*& template_areas);
+
 CSSValue* ParseGridLanesTemplateAreasValue(
     const String& grid_lanes_template_areas,
-    bool is_template_columns);
-
+    bool is_for_columns);
 CSSValue* ParseGridLanesDirection(CSSParserTokenStream&);
 
 CSSValue* ConsumeFlowTolerance(CSSParserTokenStream&,
@@ -694,6 +696,13 @@ bool ConsumeGapDecorationsRuleEdgeInteriorInsetShorthand(
     CSSParserTokenStream& stream,
     CSSValue*& rule_edge_inset,
     CSSValue*& rule_interior_inset);
+
+bool ConsumeGapDecorationsRuleInsetStartEndShorthand(
+    bool important,
+    const CSSParserContext& context,
+    CSSParserLocalContext& local_context,
+    CSSParserTokenStream& stream,
+    CSSValue*& rule_inset_value);
 
 bool ConsumeGapDecorationsRuleInsetShorthand(
     bool important,
@@ -770,6 +779,7 @@ bool ConsumeRadii(std::array<CSSValue*, 4>& horizontal_radii,
                   CSSParserLocalContext& local_context);
 
 CSSValue* ConsumeTextDecorationLine(CSSParserTokenStream&);
+CSSValue* ConsumeTextTransform(CSSParserTokenStream&);
 CSSValue* ConsumeTextBoxEdge(CSSParserTokenStream&);
 CSSValue* ConsumeTextBoxTrim(CSSParserTokenStream&);
 
@@ -994,7 +1004,7 @@ CSSValue* ConsumeBackgroundPositionLonghand(
 
 inline bool AtIdent(const CSSParserToken& token, const char* ident) {
   return token.GetType() == kIdentToken &&
-         EqualIgnoringASCIICase(token.Value(), ident);
+         EqualIgnoringAsciiCase(token.Value(), ident);
 }
 
 inline bool ConsumeIfIdent(CSSParserTokenStream& stream, const char* ident) {

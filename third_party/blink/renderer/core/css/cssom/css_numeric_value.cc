@@ -323,10 +323,10 @@ CSSPrimitiveValue::UnitType CSSNumericValue::UnitFromName(const String& name) {
   if (name.empty()) {
     return CSSPrimitiveValue::UnitType::kUnknown;
   }
-  if (EqualIgnoringASCIICase(name, "number")) {
+  if (EqualIgnoringAsciiCase(name, "number")) {
     return CSSPrimitiveValue::UnitType::kNumber;
   }
-  if (EqualIgnoringASCIICase(name, "percent") || name == "%") {
+  if (EqualIgnoringAsciiCase(name, "percent") || name == "%") {
     return CSSPrimitiveValue::UnitType::kPercentage;
   }
   return CSSPrimitiveValue::StringToUnitType(name);
@@ -594,7 +594,7 @@ CSSNumericValue* CSSNumericValue::mul(
   if (CSSUnitValue* unit_value = MaybeMultiplyAsUnitValue(values)) {
     return unit_value;
   }
-  return CSSMathProduct::Create(std::move(values));
+  return CSSMathProduct::Create(std::move(values), exception_state);
 }
 
 CSSNumericValue* CSSNumericValue::div(
@@ -615,7 +615,7 @@ CSSNumericValue* CSSNumericValue::div(
   if (CSSUnitValue* unit_value = MaybeMultiplyAsUnitValue(values)) {
     return unit_value;
   }
-  return CSSMathProduct::Create(std::move(values));
+  return CSSMathProduct::Create(std::move(values), exception_state);
 }
 
 CSSNumericValue* CSSNumericValue::min(
@@ -628,7 +628,7 @@ CSSNumericValue* CSSNumericValue::min(
           values, [](double a, double b) { return std::min(a, b); })) {
     return unit_value;
   }
-  return CSSMathMin::Create(std::move(values));
+  return CSSMathMin::Create(std::move(values), exception_state);
 }
 
 CSSNumericValue* CSSNumericValue::max(
@@ -641,7 +641,8 @@ CSSNumericValue* CSSNumericValue::max(
           values, [](double a, double b) { return std::max(a, b); })) {
     return unit_value;
   }
-  return CSSMathMax::Create(std::move(values));
+
+  return CSSMathMax::Create(std::move(values), exception_state);
 }
 
 bool CSSNumericValue::equals(

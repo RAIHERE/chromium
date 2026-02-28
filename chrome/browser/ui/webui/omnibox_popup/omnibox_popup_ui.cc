@@ -20,6 +20,7 @@
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_aim_handler.h"
+#include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_handler.h"
 #include "chrome/browser/ui/webui/omnibox_popup/omnibox_popup_web_contents_helper.h"
 #include "chrome/browser/ui/webui/sanitized_image_source.h"
 #include "chrome/browser/ui/webui/searchbox/omnibox_composebox_handler.h"
@@ -41,11 +42,9 @@ namespace {
 
 using AddContextButtonVariant = omnibox::AddContextButtonVariant;
 
-std::string AddContextButtonVariantToSearchboxLayoutMode(
+std::string_view AddContextButtonVariantToSearchboxLayoutMode(
     AddContextButtonVariant variant) {
   switch (variant) {
-    case AddContextButtonVariant::kNone:
-      return "";
     case AddContextButtonVariant::kBelowResults:
       return "TallBottomContext";
     case AddContextButtonVariant::kAboveResults:
@@ -66,9 +65,15 @@ bool OmniboxPopupUIConfig::IsWebUIEnabled(
          base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxPopup);
 }
 
+bool OmniboxPopupUIConfig::ShouldCrashOnJavascriptErrorInDevelopmentBuild()
+    const {
+  return true;
+}
+
 OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
     : TopChromeWebUIController(web_ui,
-                               true /* Needed for webui browser tests */),
+                               /*enable_chrome_send=*/true,
+                               /*enable_chrome_histograms=*/true),
       profile_(Profile::FromWebUI(web_ui)) {
   content::WebUIDataSource* source = content::WebUIDataSource::CreateAndAdd(
       Profile::FromWebUI(web_ui), chrome::kChromeUIOmniboxPopupHost);
@@ -81,6 +86,9 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
   source->AddBoolean(
       "omniboxPopupDebugEnabled",
       base::FeatureList::IsEnabled(omnibox::kWebUIOmniboxPopupDebug));
+  source->AddBoolean("webuiOmniboxPopupSelectionControlEnabled",
+                     base::FeatureList::IsEnabled(
+                         omnibox::kWebUIOmniboxPopupSelectionControl));
 
   source->AddBoolean("reportMetrics", true);
   source->AddString("charTypedToPaintMetricName",
@@ -122,8 +130,13 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
                      omnibox::kCloseComposeboxByEscape.Get());
   source->AddBoolean("composeboxContextMenuEnableMultiTabSelection",
                      omnibox::kContextMenuEnableMultiTabSelection.Get());
+  auto* session_handle = GetOrCreateContextualSessionHandle();
+  bool allow_drag_and_drop =
+      session_handle &&
+      session_handle->CheckSearchContentSharingSettings(profile_->GetPrefs()) &&
+      omnibox::kEnableContextDragAndDrop.Get();
   source->AddBoolean("composeboxContextDragAndDropEnabled",
-                     omnibox::kEnableContextDragAndDrop.Get());
+                     allow_drag_and_drop);
   source->AddBoolean("composeboxNoFlickerSuggestionsFix", false);
   source->AddBoolean("composeboxShowContextMenu",
                      omnibox::kShowContextMenu.Get());
@@ -158,10 +171,8 @@ OmniboxPopupUI::OmniboxPopupUI(content::WebUI* web_ui)
                      omnibox::kShowVoiceSearchInExpandedComposebox.Get());
   source->AddBoolean("steadyComposeboxShowVoiceSearch",
                      omnibox::kShowVoiceSearchInSteadyComposebox.Get());
-  source->AddBoolean("expandedSearchboxShowVoiceSearch", false);
-  const std::string searchbox_layout_mode =
-      AddContextButtonVariantToSearchboxLayoutMode(
-          omnibox::kWebUIOmniboxAimPopupAddContextButtonVariantParam.Get());
+  auto searchbox_layout_mode = AddContextButtonVariantToSearchboxLayoutMode(
+      omnibox::kWebUIOmniboxAimPopupAddContextButtonVariantParam.Get());
   source->AddString("searchboxLayoutMode", searchbox_layout_mode);
   source->AddBoolean("steadyComposeboxShowVoiceSearch",
                      omnibox::kShowVoiceSearchInSteadyComposebox.Get());
@@ -215,6 +226,19 @@ void OmniboxPopupUI::BindInterface(
       base::BindRepeating(&OmniboxPopupUI::GetOrCreateContextualSessionHandle,
                           base::Unretained(this)));
   omnibox_handler_->SetEmbedder(embedder());
+}
+
+void OmniboxPopupUI::BindInterface(
+    mojo::PendingReceiver<omnibox_popup::mojom::PageHandlerFactory> receiver) {
+  popup_page_factory_receiver_.reset();
+  popup_page_factory_receiver_.Bind(std::move(receiver));
+}
+
+void OmniboxPopupUI::CreatePageHandler(
+    mojo::PendingRemote<omnibox_popup::mojom::Page> page,
+    mojo::PendingReceiver<omnibox_popup::mojom::PageHandler> receiver) {
+  popup_handler_ = std::make_unique<OmniboxPopupHandler>(std::move(receiver),
+                                                         std::move(page));
 }
 
 void OmniboxPopupUI::BindInterface(

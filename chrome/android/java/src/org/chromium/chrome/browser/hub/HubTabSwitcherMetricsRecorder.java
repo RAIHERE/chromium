@@ -55,7 +55,7 @@ public class HubTabSwitcherMetricsRecorder {
         mTabModelSelector = tabModelSelector;
 
         mHubVisibilitySupplier = hubVisibilitySupplier;
-        hubVisibilitySupplier.addObserver(mOnHubVisiblityChanged);
+        hubVisibilitySupplier.addSyncObserverAndPostIfNonNull(mOnHubVisiblityChanged);
 
         mFocusedPaneSupplier = focusedPaneSupplier;
     }
@@ -134,7 +134,9 @@ public class HubTabSwitcherMetricsRecorder {
         mTabModelWhenShown = tabModel;
         mTabIdWhenShown = TabModelUtils.getCurrentTabId(tabModel);
 
-        mTabModelSelector.getCurrentTabModelSupplier().addObserver(mOnTabModelChanged);
+        mTabModelSelector
+                .getCurrentTabModelSupplier()
+                .addSyncObserverAndPostIfNonNull(mOnTabModelChanged);
         mTabModelSelector.getModel(true).addObserver(mTabModelObserver);
         mTabModelSelector.getModel(false).addObserver(mTabModelObserver);
     }

@@ -6,7 +6,9 @@
 
 #include <jni.h>
 
+#include <cstddef>
 #include <memory>
+#include <optional>
 #include <utility>
 #include <vector>
 
@@ -39,7 +41,7 @@
 
 TestTabModel::TestTabModel(Profile* profile,
                            chrome::android::ActivityType activity_type)
-    : TabModel(profile, activity_type) {}
+    : TabModel(profile, activity_type, TabModel::TabModelType::kStandard) {}
 
 TestTabModel::~TestTabModel() = default;
 
@@ -167,8 +169,18 @@ tabs::TabInterface* TestTabModel::GetOpenerForTab(tabs::TabHandle target) {
   return nullptr;
 }
 
-void TestTabModel::DiscardTab(tabs::TabHandle tab) {
+tabs::TabInterface* TestTabModel::InsertWebContentsAt(
+    int index,
+    std::unique_ptr<content::WebContents> web_contents,
+    bool should_pin,
+    std::optional<tab_groups::TabGroupId> group) {
   NOTIMPLEMENTED();
+  return nullptr;
+}
+
+content::WebContents* TestTabModel::DiscardTab(tabs::TabHandle tab) {
+  NOTIMPLEMENTED();
+  return nullptr;
 }
 
 tabs::TabInterface* TestTabModel::DuplicateTab(tabs::TabHandle tab) {
@@ -273,10 +285,20 @@ void TestTabModel::MoveTabGroupToWindow(tab_groups::TabGroupId group_id,
   NOTIMPLEMENTED();
 }
 
+bool TestTabModel::IsThisTabListEditable() {
+  NOTIMPLEMENTED();
+  return true;
+}
+
+bool TestTabModel::IsClosingAllTabs() {
+  NOTIMPLEMENTED();
+  return false;
+}
+
 #if BUILDFLAG(IS_DESKTOP_ANDROID)
 void TestTabModel::AssociateWithBrowserWindow(BrowserWindowInterface* browser) {
   scoped_unowned_user_data_ =
-      std::make_unique<ui::ScopedUnownedUserData<TabModel>>(
+      std::make_unique<ui::ScopedUnownedUserData<TabListInterface>>(
           browser->GetUnownedUserDataHost(), *this);
 }
 #endif
@@ -284,7 +306,7 @@ void TestTabModel::AssociateWithBrowserWindow(BrowserWindowInterface* browser) {
 OwningTestTabModel::OwningTestTabModel(
     Profile* profile,
     chrome::android::ActivityType activity_type)
-    : TabModel(profile, activity_type) {
+    : TabModel(profile, activity_type, TabModel::TabModelType::kStandard) {
   TabModelList::AddTabModel(this);
 }
 
@@ -469,8 +491,18 @@ tabs::TabInterface* OwningTestTabModel::GetOpenerForTab(
   return nullptr;
 }
 
-void OwningTestTabModel::DiscardTab(tabs::TabHandle tab) {
+tabs::TabInterface* OwningTestTabModel::InsertWebContentsAt(
+    int index,
+    std::unique_ptr<content::WebContents> web_contents,
+    bool should_pin,
+    std::optional<tab_groups::TabGroupId> group) {
   NOTIMPLEMENTED();
+  return nullptr;
+}
+
+content::WebContents* OwningTestTabModel::DiscardTab(tabs::TabHandle tab) {
+  NOTIMPLEMENTED();
+  return nullptr;
 }
 
 tabs::TabInterface* OwningTestTabModel::DuplicateTab(tabs::TabHandle tab) {
@@ -574,6 +606,16 @@ void OwningTestTabModel::MoveTabGroupToWindow(tab_groups::TabGroupId group_id,
                                               SessionID destination_window_id,
                                               int destination_index) {
   NOTIMPLEMENTED();
+}
+
+bool OwningTestTabModel::IsThisTabListEditable() {
+  NOTIMPLEMENTED();
+  return true;
+}
+
+bool OwningTestTabModel::IsClosingAllTabs() {
+  NOTIMPLEMENTED();
+  return false;
 }
 
 TabAndroid* OwningTestTabModel::AddEmptyTab(

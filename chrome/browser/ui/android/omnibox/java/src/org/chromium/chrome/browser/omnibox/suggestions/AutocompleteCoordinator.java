@@ -26,24 +26,24 @@ import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.omnibox.DeferredIMEWindowInsetApplicationCallback;
+import org.chromium.chrome.browser.omnibox.FuseboxSessionState;
 import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.R;
 import org.chromium.chrome.browser.omnibox.UrlBarEditingTextStateProvider;
 import org.chromium.chrome.browser.omnibox.fusebox.FuseboxCoordinator;
 import org.chromium.chrome.browser.omnibox.suggestions.AutocompleteController.OnSuggestionsReceivedListener;
 import org.chromium.chrome.browser.omnibox.suggestions.SuggestionListViewBinder.SuggestionListViewHolder;
+import org.chromium.chrome.browser.omnibox.suggestions.action.OmniboxActionDelegateImpl;
 import org.chromium.chrome.browser.omnibox.suggestions.base.BaseSuggestionViewBinder;
 import org.chromium.chrome.browser.omnibox.suggestions.basic.BasicSuggestionProcessor.BookmarkState;
 import org.chromium.chrome.browser.omnibox.voice.VoiceRecognitionHandler;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.share.ShareDelegate;
 import org.chromium.chrome.browser.tab.Tab;
-import org.chromium.chrome.browser.ui.edge_to_edge.TopInsetProvider;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
 import org.chromium.components.omnibox.AutocompleteInput;
 import org.chromium.components.omnibox.AutocompleteMatch;
 import org.chromium.components.omnibox.OmniboxFeatures;
-import org.chromium.components.omnibox.action.OmniboxActionDelegate;
 import org.chromium.ui.AsyncViewProvider;
 import org.chromium.ui.AsyncViewStub;
 import org.chromium.ui.ViewProvider;
@@ -63,11 +63,7 @@ import java.util.function.Supplier;
 @NullMarked
 public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
     private final ViewGroup mParent;
-    private final AutocompleteDelegate mDelegate;
     private final MonotonicObservableSupplier<Profile> mProfileSupplier;
-    private final MonotonicObservableSupplier<TopInsetProvider> mTopInsetProviderSupplier;
-    private final Callback<TopInsetProvider> mTopInsetProviderAvailableCallback;
-    private final TopInsetProvider.Observer mTopInsetProviderObserver;
     private final Callback<Profile> mProfileChangeCallback;
     private final AutocompleteMediator mMediator;
     private final Supplier<@Nullable ModalDialogManager> mModalDialogManagerSupplier;
@@ -97,10 +93,9 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
             @Nullable Supplier<ShareDelegate> shareDelegateSupplier,
             LocationBarDataProvider locationBarDataProvider,
             MonotonicObservableSupplier<Profile> profileObservableSupplier,
-            MonotonicObservableSupplier<TopInsetProvider> topInsetProviderSupplier,
             Callback<String> bringTabGroupToForegroundCallback,
             BookmarkState bookmarkState,
-            OmniboxActionDelegate omniboxActionDelegate,
+            OmniboxActionDelegateImpl omniboxActionDelegate,
             @Nullable OmniboxSuggestionsDropdownScrollListener scrollListener,
             ActivityLifecycleDispatcher lifecycleDispatcher,
             boolean forcePhoneStyleOmnibox,
@@ -108,9 +103,7 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
             DeferredIMEWindowInsetApplicationCallback deferredIMEWindowInsetApplicationCallback,
             FuseboxCoordinator fuseboxCoordinator) {
         mParent = parent;
-        mDelegate = delegate;
         mModalDialogManagerSupplier = modalDialogManagerSupplier;
-        mTopInsetProviderSupplier = topInsetProviderSupplier;
         Context context = parent.getContext();
 
         ModelList listItems = new ModelList();
@@ -177,7 +170,7 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
 
         mProfileSupplier = profileObservableSupplier;
         mProfileChangeCallback = this::setAutocompleteProfile;
-        mProfileSupplier.addObserver(mProfileChangeCallback);
+        mProfileSupplier.addSyncObserverAndPostIfNonNull(mProfileChangeCallback);
         mAdapter = new OmniboxSuggestionsDropdownAdapter(listItems);
 
         if (!OmniboxFeatures.sAsyncViewInflation.isEnabled()) {
@@ -185,12 +178,6 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
         } else {
             mRecycledViewPool = null;
         }
-
-        // Set up TopInsetProvider observer to handle edge-to-edge changes.
-        mTopInsetProviderObserver = this::onToEdgeChange;
-        mTopInsetProviderAvailableCallback = this::onTopInsetProviderAvailable;
-        mTopInsetProviderSupplier.addSyncObserverAndCallIfNonNull(
-                mTopInsetProviderAvailableCallback);
 
         // https://crbug.com/966227 Set initial layout direction ahead of inflating the suggestions.
         updateSuggestionListLayoutDirection();
@@ -202,11 +189,6 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
             mRecycledViewPool.destroy();
         }
         mProfileSupplier.removeObserver(mProfileChangeCallback);
-        var topInsetProvider = mTopInsetProviderSupplier.get();
-        if (topInsetProvider != null) {
-            topInsetProvider.removeObserver(mTopInsetProviderObserver);
-        }
-        mTopInsetProviderSupplier.removeObserver(mTopInsetProviderAvailableCallback);
         mMediator.destroy();
         if (mContainer != null) {
             mContainer.destroy();
@@ -272,12 +254,13 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
     }
 
     /**
-     * Starts a new omnibox session.
+     * Starts a new / resumes existing omnibox session.
      *
-     * @param input The initial state of the omnibox.
+     * @param session The session state for this session. A new session may be applied without going
+     *     through the endInput() (valid -> valid). This is the case for tab switching.
      */
-    public void beginInput(AutocompleteInput input) {
-        mMediator.beginInput(input);
+    public void beginInput(FuseboxSessionState session) {
+        mMediator.beginInput(session);
     }
 
     /** Ends the current omnibox session. */
@@ -285,8 +268,17 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
         mMediator.endInput();
     }
 
-    public void onUrlAnimationFinished(boolean hasFocus) {
-        mMediator.onUrlAnimationFinished(hasFocus);
+    /**
+     * Serve Java-cached ZPS before session can be started with Autocomplete support.
+     *
+     * @param input The input to serve ZPS for.
+     */
+    public void serveCachedZeroSuggest(AutocompleteInput input) {
+        mMediator.serveCachedZeroSuggest(input);
+    }
+
+    public void onUrlAnimationFinished() {
+        mMediator.onUrlAnimationFinished();
     }
 
     /**
@@ -538,28 +530,5 @@ public class AutocompleteCoordinator implements OmniboxSuggestionsVisualState {
     public void removeOmniboxSuggestionsDropdownScrollListener(
             OmniboxSuggestionsDropdownScrollListener listener) {
         mScrollListenerList.removeObserver(listener);
-    }
-
-    private void onTopInsetProviderAvailable(TopInsetProvider topInsetProvider) {
-        topInsetProvider.addObserver(mTopInsetProviderObserver);
-        mTopInsetProviderSupplier.removeObserver(mTopInsetProviderAvailableCallback);
-    }
-
-    /**
-     * Called when the edge-to-edge state changes to update the suggestions container padding.
-     *
-     * @param systemTopInset The top inset from the system in pixels.
-     * @param consumeTopInset Whether the top inset should be consumed.
-     */
-    private void onToEdgeChange(int systemTopInset, boolean consumeTopInset) {
-        if (mContainer == null) {
-            return;
-        }
-        boolean isToolbarBottomAnchored = mDelegate.isToolbarBottomAnchored();
-        // When the toolbar is at the bottom, the omnibox suggestions container displays above the
-        // toolbar, starting from the top of the screen. In edge-to-edge mode, we need to add top
-        // padding to prevent content from entering the status bar area.
-        int topPadding = (consumeTopInset && isToolbarBottomAnchored) ? systemTopInset : 0;
-        mContainer.onToEdgeChange(topPadding);
     }
 }

@@ -32,6 +32,7 @@
 #include "base/strings/string_util.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/values.h"
+#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
@@ -45,7 +46,6 @@
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/common/chrome_constants.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_isolated_world_ids.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/grit/generated_resources.h"
@@ -337,7 +337,7 @@ base::FilePath GetWebAppsTempDirectory(
   return web_apps_root_directory.Append(kTempDirectoryName);
 }
 
-std::string GetProfileCategoryForLogging(Profile* profile) {
+std::string_view GetProfileCategoryForLogging(Profile* profile) {
 #if BUILDFLAG(IS_CHROMEOS)
   if (!ash::ProfileHelper::IsUserProfile(profile)) {
     return "SigninOrLockScreen";
@@ -492,7 +492,7 @@ apps::LaunchContainer ConvertDisplayModeToAppLaunchContainer(
     case DisplayMode::kFullscreen:
     case DisplayMode::kWindowControlsOverlay:
     case DisplayMode::kTabbed:
-    case DisplayMode::kBorderless:
+    case DisplayMode::kUnframed:
     case DisplayMode::kPictureInPicture:
       return apps::LaunchContainer::kLaunchContainerWindow;
   }

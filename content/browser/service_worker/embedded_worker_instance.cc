@@ -44,6 +44,7 @@
 #include "content/public/browser/hid_delegate.h"
 #include "content/public/browser/usb_delegate.h"
 #include "content/public/browser/web_ui_url_loader_factory.h"
+#include "content/public/common/child_process_id_util.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_features.h"
 #include "content/public/common/content_switches.h"
@@ -879,15 +880,18 @@ EmbeddedWorkerInstance::CreateFactoryBundle(
          factory_type == ContentBrowserClient::URLLoaderFactoryType::
                              kServiceWorkerSubResource);
 
+  // TODO(crbug.com/447954811): Pass network_restrictions_id so script fetch
+  // can be restricted based on connection allowlist.
   network::mojom::URLLoaderFactoryParamsPtr factory_params =
       URLLoaderFactoryParamsHelper::CreateForWorker(
           rph, origin, isolation_info, std::move(coep_reporter),
           std::move(dip_reporter),
           static_cast<StoragePartitionImpl*>(rph->GetStoragePartition())
               ->CreateURLLoaderNetworkObserverForServiceOrSharedWorker(
-                  rph->GetDeprecatedID(), origin),
+                  ToOriginatingProcessId(rph->GetID()), origin),
           NetworkServiceDevToolsObserver::MakeSelfOwned(devtools_worker_token),
           std::move(client_security_state),
+          /*network_restrictions_id=*/std::nullopt,
           "EmbeddedWorkerInstance::CreateFactoryBundle",
           /*require_cross_site_request_for_cookies=*/false,
           /*is_for_service_worker=*/true);

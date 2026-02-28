@@ -389,9 +389,9 @@ bool PermissionUtil::IsLowPriorityPermissionRequest(
 
 bool PermissionUtil::ShouldCurrentRequestUsePermissionElementSecondaryUI(
     PermissionPrompt::Delegate* delegate) {
-  if (!base::FeatureList::IsEnabled(blink::features::kPermissionElement) &&
-      !base::FeatureList::IsEnabled(blink::features::kGeolocationElement) &&
-      !base::FeatureList::IsEnabled(blink::features::kUserMediaElement)) {
+  if (!base::FeatureList::IsEnabled(blink::features::kGeolocationElement) &&
+      !base::FeatureList::IsEnabled(blink::features::kUserMediaElement) &&
+      !base::FeatureList::IsEnabled(blink::features::kWebAppInstallation)) {
     return false;
   }
 
@@ -665,8 +665,8 @@ GURL PermissionUtil::GetCanonicalOrigin(ContentSettingsType permission,
                                         const GURL& requesting_origin,
                                         const GURL& embedding_origin) {
   std::optional<GURL> override_origin =
-      PermissionsClient::Get()->OverrideCanonicalOrigin(requesting_origin,
-                                                        embedding_origin);
+      PermissionsClient::Get()->GetCanonicalOriginOverride(requesting_origin,
+                                                           embedding_origin);
   if (override_origin) {
     return override_origin.value();
   }

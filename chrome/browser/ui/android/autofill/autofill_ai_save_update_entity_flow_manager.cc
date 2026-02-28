@@ -52,7 +52,6 @@ std::u16string GetMessageDescription(content::WebContents* web_contents,
 
 int GetMessageIconResourceId(const EntityInstance& entity) {
   if (entity.record_type() == EntityInstance::RecordType::kServerWallet) {
-    // TODO: crbug.com/460410690 - Use colorful icon for branded builds.
     return IDR_ANDROID_AUTOFILL_WALLET;
   }
   switch (entity.type().name()) {
@@ -69,6 +68,8 @@ int GetMessageIconResourceId(const EntityInstance& entity) {
     case EntityTypeName::kVehicle:
       return IDR_ANDROID_AUTOFILL_VEHICLE;
     case EntityTypeName::kFlightReservation:
+      NOTREACHED() << "Entity is read only and doesn't support save prompts.";
+    case EntityTypeName::kOrder:
       NOTREACHED() << "Entity is read only and doesn't support save prompts.";
   }
   NOTREACHED();
@@ -118,6 +119,8 @@ AutofillAiSaveUpdateEntityFlowManager::CreateMessageModel(
   message->SetPrimaryButtonTextMaxLines(1);
   message->SetIconResourceId(
       ResourceMapper::MapToJavaDrawableId(GetMessageIconResourceId(entity)));
+  // TODO: crbug.com/460410690 - Fix the tinting issue for unbranded icons.
+  message->DisableIconTint();
 
   return std::make_unique<AutofillMessageModel>(
       std::move(message), AutofillMessageModel::Type::kEntitySaveUpdateFlow,

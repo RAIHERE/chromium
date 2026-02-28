@@ -172,6 +172,21 @@ enum class EcnPermutations {
   kMaxValue = kNotEctEct1Ect0Ce,
 };
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+//
+// LINT.IfChange(MTCResult)
+enum class MTCResult {
+  kValidMTC = 0,
+  kInvalidMTC = 1,
+  kClassicalCertExpectedMTC = 2,
+  kClassicalCertOldClient = 3,
+  kClassicalCertUnknownLandmarkDelta = 4,
+  kResumption = 5,
+  kMaxValue = kResumption,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/net/enums.xml:MTCResult)
+
 class NET_EXPORT_PRIVATE QuicChromiumClientSession
     : public quic::QuicSpdyClientSessionBase,
       public MultiplexedSession,
@@ -278,10 +293,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
     // Copies the local udp address into |address| and returns a net error
     // code.
     int GetSelfAddress(IPEndPoint* address) const;
-
-    // CHECKs that the cert is valid for `url`. Used as a safety check against
-    // aliasing/request merging logic.
-    void AssertIsValidFor(const GURL& url) const;
 
     // Returns the session's server ID.
     quic::QuicServerId server_id() const { return server_id_; }
@@ -983,9 +994,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
     migration_info_ = migration_info;
   }
 
-  // Makes AssertIsValidFor() do nothing, once set.
-  void set_allow_any_url_for_testing() { allow_any_url_for_testing_ = true; }
-
   quic::QuicTagVector& received_connection_options() {
     return received_connection_options_;
   }
@@ -1111,10 +1119,6 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
   void OnCryptoHandshakeComplete();
 
   void LogZeroRttStats();
-
-  // CHECKs that the cert is valid for `url`. Used as a safety check against
-  // aliasing/request merging logic. Applies subset of logic in CanPool().
-  void AssertIsValidFor(const GURL& url) const;
 
 #if BUILDFLAG(ENABLE_WEBSOCKETS)
   std::unique_ptr<WebSocketQuicStreamAdapter>
@@ -1280,13 +1284,14 @@ class NET_EXPORT_PRIVATE QuicChromiumClientSession
 
   bool crypto_handshake_complete_ = false;
 
-  // Makes AssertIsValidFor() do nothing.
-  bool allow_any_url_for_testing_ = false;
-
-  // If the server supports MTCs (as determined by whether it advertised a trust
-  // anchor ID corresponding to a known Merkle Tree Certificate CA), this is set
-  // to true in OnProofVerifyDetailsAvailable. This is only used for metrics.
-  bool server_advertised_mtc_tai_ = false;
+  // If the server supports MTCs, this is set to true in
+  // OnProofVerifyDetailsAvailable. A server is considered to support MTCs if
+  // either it sends an MTC in its Certificate message or if its trust_anchors
+  // extension (in EncryptedExtensions) contains a trust anchor ID corresponding
+  // to a known Merkle Tree Certificate CA.
+  //
+  // This is only used for metrics.
+  bool server_supports_mtc_tai_ = false;
 
   base::WeakPtrFactory<QuicChromiumClientSession> weak_factory_{this};
 };

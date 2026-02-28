@@ -48,6 +48,18 @@ void TestUpdateMaps(DomStorageDatabase& database,
                     const DomStorageDatabase::MapLocator& map1_locator,
                     const DomStorageDatabase::MapLocator& map2_locator);
 
+// Inserts `entries` into the map identified by `map_locator` using
+// `DomStorageDatabase::UpdateMaps()`. Optionally includes `usage_metadata` in
+// the batch update. After inserting, reads back the map's key/value pairs
+// using `DomStorageDatabase::ReadMapKeyValues()` and verifies they match
+// `entries`. Asserts on any database errors.
+void InsertMapEntries(
+    DomStorageDatabase& database,
+    const DomStorageDatabase::MapLocator& map_locator,
+    const std::map<DomStorageDatabase::Key, DomStorageDatabase::Value>& entries,
+    std::optional<DomStorageDatabase::MapBatchUpdate::Usage> usage_metadata =
+        std::nullopt);
+
 // A synchronous wrapper for
 // `AsyncDomStorageDatabase::OpenInMemory()`.  Asserts success.
 void OpenAsyncDomStorageDatabaseInMemorySync(

@@ -281,7 +281,7 @@ class CONTENT_EXPORT BackingStore : public indexed_db::BackingStore,
     base::WeakPtr<BackingStore> backing_store_;
     base::WeakPtr<Database> database_;
 
-    scoped_refptr<TransactionalLevelDBTransaction> transaction_;
+    std::unique_ptr<TransactionalLevelDBTransaction> transaction_;
 
     std::map<std::string, std::unique_ptr<IndexedDBExternalObjectChangeRecord>>
         external_object_change_map_;
@@ -473,10 +473,13 @@ class CONTENT_EXPORT BackingStore : public indexed_db::BackingStore,
 
   // BackingStore:
   bool CanOpportunisticallyClose() const override;
-  void TearDown(base::WaitableEvent* signal_on_destruction) override;
-  void InvalidateBlobReferences() override;
+  void SignalWhenDestructionComplete(
+      base::WaitableEvent* signal_on_destruction) &&
+      override;
+  void OnForceClosing() override;
   void StartPreCloseTasks(base::OnceClosure on_done) override;
   void StopPreCloseTasks() override;
+  void RunIdleTasks() override { /*Not used by LevelDB*/ }
   StatusOr<std::unique_ptr<indexed_db::BackingStore::Database>>
   CreateOrOpenDatabase(const std::u16string& name) override;
   uintptr_t GetIdentifierForMemoryDump() override;

@@ -17,9 +17,9 @@
 #include "base/task/sequenced_task_runner.h"
 #include "base/threading/sequence_bound.h"
 #include "base/trace_event/memory_allocator_dump_guid.h"
+#include "components/services/storage/dom_storage/db_status.h"
 #include "components/services/storage/dom_storage/dom_storage_database.h"
 #include "components/services/storage/dom_storage/session_storage_metadata.h"
-#include "storage/common/database/db_status.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 
 namespace storage {
@@ -134,11 +134,14 @@ class AsyncDomStorageDatabase {
   void InitiateCommit();
 
  private:
+  AsyncDomStorageDatabase(StorageType storage_type, bool in_memory);
+
   void OnDatabaseOpened(
       StatusCallback callback,
       StatusOr<base::SequenceBound<DomStorageDatabase>> database);
 
-  explicit AsyncDomStorageDatabase();
+  std::string_view StorageTypeForHistograms() const;
+  std::string GetHistogram(std::string_view operation) const;
 
   base::SequenceBound<DomStorageDatabase> database_;
 
@@ -146,6 +149,9 @@ class AsyncDomStorageDatabase {
   std::vector<BoundDatabaseTask> tasks_to_run_on_open_;
 
   std::set<raw_ptr<Committer>> committers_;
+
+  const StorageType storage_type_;
+  const bool in_memory_;
 
   base::WeakPtrFactory<AsyncDomStorageDatabase> weak_ptr_factory_{this};
 };

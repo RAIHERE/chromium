@@ -23,7 +23,6 @@ ProjectsPanelControlsView::ProjectsPanelControlsView(
     actions::ActionItem* root_action_item,
     views::ActionViewController* action_view_controller) {
   SetLayoutManager(std::make_unique<views::DelegatingLayoutManager>(this));
-  SetBackground(views::CreateSolidBackground(ui::kColorFrameActive));
 
   std::unique_ptr<TopContainerButton> container_button =
       std::make_unique<TopContainerButton>();
@@ -36,6 +35,8 @@ ProjectsPanelControlsView::ProjectsPanelControlsView(
 
   projects_button_ = AddChildView(std::move(container_button));
   projects_button_->SetHorizontalAlignment(gfx::ALIGN_RIGHT);
+  projects_button_->SetProperty(views::kElementIdentifierKey,
+                                kProjectsPanelButtonElementId);
   SetProperty(views::kElementIdentifierKey,
               kProjectsPanelControlsViewElementId);
 }

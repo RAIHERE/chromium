@@ -32,9 +32,6 @@ VIZ_COMMON_EXPORT extern const char kDrawQuadSplit[];
 
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kDrawQuadSplitLimit);
 
-VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
-    kEnableRenderPassDrawQuadCullingOptimization);
-
 enum class DelegatedCompositingMode {
   // Enable delegated compositing.
   kFull,
@@ -52,6 +49,7 @@ extern const VIZ_COMMON_EXPORT base::FeatureParam<DelegatedCompositingMode>
 #if BUILDFLAG(IS_WIN)
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kDCompSurfacesForDelegatedInk);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kRemoveRedirectionBitmap);
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kBufferQueue);
 #endif
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kUseDrmBlackFullscreenOptimization);
 #if BUILDFLAG(IS_ANDROID)
@@ -89,6 +87,8 @@ VIZ_COMMON_EXPORT extern const char kTargetForVSyncInteraction[];
 
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kAckCopyOutputRequestEarlyForViewTransition);
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kThrottleFrameSinksOnInteraction);
+VIZ_COMMON_EXPORT bool ShouldThrottleWhenInteractiveFrameSinks();
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kAllowUndamagedNonrootRenderPassToSkip);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(
     kAllowForceMergeRenderPassWithRequireOverlayQuads);
@@ -117,6 +117,8 @@ VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFScrollNoRendererMain);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFBoostRateLimit);
 extern const VIZ_COMMON_EXPORT base::FeatureParam<base::TimeDelta>
     kAdpfBoostRateLimitMinWait;
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFAsyncSetThreads);
+VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kEnableADPFIgnoreThrottledTime);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kSelectFutureFrameDeadline);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kUseDisplaySDRMaxLuminanceNits);
 VIZ_COMMON_EXPORT BASE_DECLARE_FEATURE(kHideDelegatedFrameHostMac);

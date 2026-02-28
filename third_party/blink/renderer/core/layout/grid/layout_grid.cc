@@ -13,14 +13,6 @@ LayoutGrid::LayoutGrid(Element* element) : LayoutBlock(element) {}
 void LayoutGrid::MarkGridDirty() {
   NOT_DESTROYED();
   SetGridPlacementDirty(true);
-  if (RuntimeEnabledFeatures::CSSGapDecorationEnabled() &&
-      StyleRef().HasGapRule()) {
-    // TODO(samomekarajr): Look towards scoping this "hammer" even more. For
-    // example, invalidate paint if a new track is added or maybe storing
-    // something on `GapGeometry` that can tell us if we actually need to
-    // invalidate paint.
-    SetShouldDoFullPaintInvalidation();
-  }
 }
 
 void LayoutGrid::AddChild(LayoutObject* new_child, LayoutObject* before_child) {
@@ -102,7 +94,7 @@ void LayoutGrid::StyleDidChange(
       NamedGridLinesDefinitionDidChange(new_style, *old_style) ||
       !base::ValuesEquivalent(new_style.GridTemplateAreas(),
                               old_style->GridTemplateAreas()) ||
-      (diff.NeedsLayout() &&
+      (diff.NeedsFullLayout() &&
        (new_grid_columns_track_list.AutoRepeatTrackCount() ||
         new_grid_rows_track_list.AutoRepeatTrackCount()))) {
     SetGridPlacementDirty(true);

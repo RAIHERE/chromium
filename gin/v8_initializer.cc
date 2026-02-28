@@ -404,6 +404,10 @@ void SetFeatureFlags() {
     SetV8FlagsFormatted("--preconfigured-old-space-size=%i",
                         features::kV8PreconfigureOldGenSize.Get());
   }
+  if (base::FeatureList::IsEnabled(features::kV8MemoryReducerDelay)) {
+    SetV8FlagsFormatted("--memory-reducer-delay-ms=%i",
+                        features::kV8MemoryReducerDelayInSeconds.Get() * 1000);
+  }
   if (base::FeatureList::IsEnabled(features::kV8HighEndAndroid)) {
     SetV8FlagsFormatted("--high-end-android-physical-memory-threshold=%i",
                         features::kV8HighEndAndroidMemoryThreshold.Get());
@@ -414,7 +418,6 @@ void SetFeatureFlags() {
   SetV8FlagsIfOverridden(features::kV8MemoryPoolReleaseOnMallocFailures,
                          "--memory-pool-release-on-malloc-failures",
                          "--no-memory-pool-release-on-malloc-failures");
-  SetV8FlagsIfOverridden(features::kV8MinorMS, "--minor-ms", "--no-minor-ms");
   if (base::FeatureList::IsEnabled(features::kV8ScavengerHigherCapacity)) {
     SetV8FlagsFormatted("--scavenger-max-new-space-capacity-mb=%i",
                         features::kV8ScavengerMaxCapacity.Get());

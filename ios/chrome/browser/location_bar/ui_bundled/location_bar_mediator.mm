@@ -239,7 +239,7 @@ const CGFloat kIconPointSize = 16.0;
     if (webState) {
       ProfileIOS* profile =
           ProfileIOS::FromBrowserState(webState->GetBrowserState());
-      return IsLensOverlayAvailable(profile->GetPrefs());
+      return IsLensOverlayAllowedByPolicy(profile->GetPrefs());
     }
   }
   return NO;
@@ -261,7 +261,7 @@ const CGFloat kIconPointSize = 16.0;
           return BWGService->IsBwgAvailableForWebState(webState);
         }
 
-        return BWGService->IsProfileEligibleForBwg();
+        return BWGService->IsProfileEligibleForGemini();
       }
     }
   }

@@ -13,6 +13,7 @@ source_set("media") {
   ]
   deps = [
     "//base",
+    "//chrome/browser/glic",
     "//chrome/browser/profiles:profile",
     "//content/public/browser",
     "//url",
@@ -56,12 +57,14 @@ if (!is_android) {
     deps = [
       ":media",
       "//base/test:test_support",
+      "//chrome/browser/glic",
       "//chrome/browser/glic/test_support",
       "//chrome/browser/prefs",
       "//chrome/test:test_support",
       "//components/live_caption",
       "//components/live_caption:constants",
       "//components/optimization_guide/content/browser",
+      "//components/optimization_guide/content/browser:test_support",
       "//testing/gmock",
       "//testing/gtest",
     ]

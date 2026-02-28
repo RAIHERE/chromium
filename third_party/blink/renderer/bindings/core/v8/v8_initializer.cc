@@ -255,9 +255,6 @@ void V8Initializer::MessageHandlerInMainThread(v8::Local<v8::Message> message,
 
   UseCounter::Count(context, WebFeature::kUnhandledExceptionCountInMainThread);
   base::UmaHistogramBoolean("V8.UnhandledExceptionCountInMainThread", true);
-  // TODO(b/338241225): Reenable the
-  // ThirdPartyCookies.BreakageIndicator.UncaughtJSError event with logic that
-  // caps the number of times the event can be sent per client.
 
   SourceLocation* location = CaptureSourceLocation(isolate, message, context);
 
@@ -411,9 +408,9 @@ void V8Initializer::ExceptionPropagationCallback(
   String class_name = ToCoreString(isolate, v8_message.GetInterfaceName());
   String property_name = ToCoreString(isolate, v8_message.GetPropertyName());
   if ((context_type == v8::ExceptionContext::kAttributeGet &&
-       property_name.StartsWith("get ")) ||
+       property_name.starts_with("get ")) ||
       (context_type == v8::ExceptionContext::kAttributeSet &&
-       property_name.StartsWith("set "))) {
+       property_name.starts_with("set "))) {
     property_name = property_name.Substring(4);
   }
   if (property_name == "[Symbol.toPrimitive]") {

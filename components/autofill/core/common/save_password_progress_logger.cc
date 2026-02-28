@@ -128,13 +128,12 @@ std::string SavePasswordProgressLogger::GetFormFieldDataLogString(
              ScrubElementID(field.autocomplete_attribute()));
   return base::StringPrintf(
       "%s: signature=%s, type=%s, renderer_id=%s, %s, %s%s",
-      ScrubElementID(field.name()).c_str(),
-      base::NumberToString(*CalculateFieldSignatureForField(field)).c_str(),
+      ScrubElementID(field.name()),
+      base::NumberToString(*CalculateFieldSignatureForField(field)),
       ScrubElementID(
-          std::string(FormControlTypeToString(field.form_control_type())))
-          .c_str(),
-      base::NumberToString(*field.renderer_id()).c_str(), is_visible, is_empty,
-      autocomplete.c_str());
+          std::string(FormControlTypeToString(field.form_control_type()))),
+      base::NumberToString(*field.renderer_id()), is_visible, is_empty,
+      autocomplete);
 }
 
 // static
@@ -156,7 +155,7 @@ void SavePasswordProgressLogger::LogValue(StringID label,
 
 // static
 std::string SavePasswordProgressLogger::ScrubElementID(
-    const std::u16string& element_id) {
+    std::u16string_view element_id) {
   return ScrubElementID(base::UTF16ToUTF8(element_id));
 }
 
@@ -520,6 +519,9 @@ std::string SavePasswordProgressLogger::GetStringFromID(
       return "Automated password change: state changed";
     case STRING_AUTOMATED_PASSWORD_CHANGE_SUBMISSION_VERIFIED:
       return "Automated password change: submission verified";
+    case STRING_AUTOMATED_PASSWORD_CHANGE_USER_INTERVENTION_AFTER_SUBMISSION:
+      return "Automated password change: user intervention needed after "
+             "submission";
     case STRING_AUTOMATED_PASSWORD_CHANGE_CROSS_ORIGIN_NAVIGATION:
       return "Automated password change: cross-origin navigation detected";
     case STRING_AUTOMATED_PASSWORD_CHANGE_PAGE_CONTENT_RECEIVED:
@@ -544,8 +546,6 @@ std::string SavePasswordProgressLogger::GetStringFromID(
       return "Automated password change: Saving disabled";
     case STRING_PASSWORD_CHANGE_DISABLED_BY_POLICY:
       return "Automated password change: Disabled by policy";
-    case STRING_PASSWORD_CHANGE_FEATURE_ENABLED:
-      return "Automated password change: Feature enabled";
     case STRING_PASSWORD_CHANGE_UNSUPPORTED_LANGUAGE:
       return "Automated password change: Unsupported language";
     case STRING_PASSWORD_CHANGE_UNSUPPORTED_COUNTRY:
@@ -554,6 +554,8 @@ std::string SavePasswordProgressLogger::GetStringFromID(
       return "Automated password change: URL available";
     case STRING_PASSWORD_CHANGE_USER_IS_NOT_ACTIVE:
       return "Automated password change: User is not active";
+    case STRING_PASSWORD_CHANGE_SIGNUP_FORM:
+      return "Automated password change: Signup form";
     case STRING_LOGIN_STATE_CHECK_STARTED:
       return "Login state check: has started";
     case STRING_LOGIN_STATE_CHECK_REQUEST_SENT:

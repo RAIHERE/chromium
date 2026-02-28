@@ -45,6 +45,8 @@
 #include "third_party/blink/renderer/core/layout/length_utils.h"
 #include "third_party/blink/renderer/core/layout/natural_sizing_info.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
+#include "third_party/blink/renderer/core/paint/border_shape_painter.h"
+#include "third_party/blink/renderer/core/paint/border_shape_utils.h"
 #include "third_party/blink/renderer/core/paint/contoured_border_geometry.h"
 #include "third_party/blink/renderer/core/paint/paint_info.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
@@ -65,11 +67,7 @@ namespace blink {
 const int LayoutReplaced::kDefaultWidth = 300;
 const int LayoutReplaced::kDefaultHeight = 150;
 
-LayoutReplaced::LayoutReplaced(Element* element) : LayoutBox(element) {
-  // TODO(jchaffraix): We should not set this boolean for block-level
-  // replaced elements (crbug.com/567964).
-  SetIsAtomicInlineLevel(true);
-}
+LayoutReplaced::LayoutReplaced(Element* element) : LayoutBox(element) {}
 
 LayoutReplaced::~LayoutReplaced() = default;
 
@@ -82,7 +80,7 @@ void LayoutReplaced::StyleDidChange(
 
   // Replaced elements can have border-radius clips without clipping overflow;
   // the overflow clipping case is already covered in LayoutBox::StyleDidChange
-  if (old_style && diff.BorderRadiusChanged()) {
+  if (old_style && diff.border_radius_changed) {
     SetNeedsPaintPropertyUpdate();
   }
 
@@ -114,6 +112,23 @@ void LayoutReplaced::NaturalSizeChanged() {
       layout_invalidation_reason::kSizeChanged);
 }
 
+namespace {
+
+bool HitTestClippedOutByBorderShape(const LayoutBox& box,
+                                    const HitTestLocation& hit_test_location,
+                                    const PhysicalOffset& border_box_location) {
+  PhysicalRect border_rect = box.PhysicalBorderBoxRect();
+  border_rect.Move(border_box_location);
+  if (box.ShouldApplyOverflowClipMargin()) {
+    border_rect.Expand(box.BorderOutsetsForClipping());
+  }
+  Path hit_shape =
+      ComputeBorderShapeOuterPath(box.StyleRef(), border_rect, &box);
+  return !hit_test_location.Intersects(hit_shape);
+}
+
+}  // namespace
+
 bool LayoutReplaced::NodeAtPoint(HitTestResult& result,
                                  const HitTestLocation& hit_test_location,
                                  const PhysicalOffset& accumulated_offset,
@@ -139,7 +154,10 @@ bool LayoutReplaced::NodeAtPoint(HitTestResult& result,
             accumulated_offset, kExcludeOverlayScrollbarSizeForHitTesting))) {
       skip_children = true;
     }
-    if (!skip_children && StyleRef().HasBorderRadius()) {
+    if (!skip_children && StyleRef().HasBorderShape()) {
+      skip_children = HitTestClippedOutByBorderShape(*this, hit_test_location,
+                                                     accumulated_offset);
+    } else if (!skip_children && StyleRef().HasBorderRadius()) {
       PhysicalRect bounds_rect(accumulated_offset, StitchedSize());
       skip_children = !hit_test_location.Intersects(
           ContouredBorderGeometry::PixelSnappedContouredInnerBorder(
@@ -504,9 +522,7 @@ PositionWithAffinity LayoutReplaced::PositionForPoint(
     return PositionBeforeThis();  // coordinates are above
 
   if (block_direction_position >= bottom) {
-    return RuntimeEnabledFeatures::ReplacedElementCursorPositioningFixEnabled()
-               ? PositionAfterThis()
-               : PositionBeforeThis();  // coordinates are below
+    return PositionAfterThis();  // coordinates are below
   }
 
   if (GetNode()) {

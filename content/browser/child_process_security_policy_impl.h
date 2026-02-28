@@ -96,8 +96,15 @@ class CONTENT_EXPORT ChildProcessSecurityPolicyImpl
     // the capability to upload the requested file.
     bool CanReadFile(const base::FilePath& file);
 
-    // Explicit read permissions check for FileSystemURL specified files.
+    // Explicit permissions checks for FileSystemURL specified files.
     bool CanReadFileSystemFile(const storage::FileSystemURL& url);
+    bool CanWriteFileSystemFile(const storage::FileSystemURL& url);
+    bool CanCreateFileSystemFile(const storage::FileSystemURL& url);
+    bool CanDeleteFileSystemFile(const storage::FileSystemURL& url);
+    bool CanMoveFileSystemFile(const storage::FileSystemURL& src_url,
+                               const storage::FileSystemURL& dest_url);
+    bool CanCopyFileSystemFile(const storage::FileSystemURL& src_url,
+                               const storage::FileSystemURL& dest_url);
 
     // Returns true if the process is permitted to read and modify the data for
     // the given `origin`. For more details, see
@@ -1004,6 +1011,11 @@ class CONTENT_EXPORT ChildProcessSecurityPolicyImpl
   // Creates the value to place in the "killed_process_origin_lock" crash key
   // based on the contents of |security_state|.
   static std::string GetKilledProcessOriginLock(
+      const SecurityState* security_state);
+
+  // Creates the value to place in the "committed_origins" crash key
+  // based on the contents of |security_state|.
+  static std::string GetCommittedOriginsForCrashKey(
       const SecurityState* security_state);
 
   // Helper for CanAccessMaybeOpaqueOrigin, to perform two security checks:

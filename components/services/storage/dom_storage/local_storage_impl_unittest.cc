@@ -7,7 +7,6 @@
 #include <string_view>
 #include <tuple>
 
-#include "base/containers/span.h"
 #include "base/files/file_enumerator.h"
 #include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
@@ -15,9 +14,7 @@
 #include "base/functional/callback_helpers.h"
 #include "base/run_loop.h"
 #include "base/strings/stringprintf.h"
-#include "base/strings/utf_string_conversions.h"
 #include "base/task/sequenced_task_runner.h"
-#include "base/task/single_thread_task_runner.h"
 #include "base/test/bind.h"
 #include "base/test/gmock_expected_support.h"
 #include "base/test/metrics/histogram_tester.h"
@@ -26,15 +23,15 @@
 #include "base/test/task_environment.h"
 #include "base/test/test_future.h"
 #include "build/build_config.h"
+#include "components/services/storage/dom_storage/db_status.h"
+#include "components/services/storage/dom_storage/features.h"
 #include "components/services/storage/dom_storage/test_support/dom_storage_database_testing.h"
 #include "components/services/storage/dom_storage/test_support/storage_area_test_util.h"
 #include "components/services/storage/public/cpp/constants.h"
-#include "components/services/storage/public/cpp/filesystem/filesystem_proxy.h"
 #include "components/services/storage/public/mojom/storage_service.mojom.h"
 #include "components/services/storage/public/mojom/storage_usage_info.mojom.h"
 #include "mojo/public/cpp/bindings/remote.h"
 #include "net/base/features.h"
-#include "storage/common/database/db_status.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 #include "third_party/leveldatabase/env_chromium.h"
@@ -116,14 +113,22 @@ class TestStorageAreaObserver : public blink::mojom::StorageAreaObserver {
 
 }  // namespace
 
-class LocalStorageImplTest : public testing::Test {
+// Base test fixture for `LocalStorageImpl` tests. Provides common setup
+// including database initialization, storage area binding, and helper methods
+// for reading/writing map entries and metadata. Subclasses can parameterize
+// tests to run on SQLite or LevelDB using `is_sqlite_enabled` when constructing
+// `LocalStorageImplTestBase`.
+class LocalStorageImplTestBase : public testing::Test {
  public:
-  LocalStorageImplTest() { EXPECT_TRUE(temp_path_.CreateUniqueTempDir()); }
+  explicit LocalStorageImplTestBase(bool is_sqlite_enabled) {
+    feature_list_.InitWithFeatureState(kDomStorageSqlite, is_sqlite_enabled);
+    EXPECT_TRUE(temp_path_.CreateUniqueTempDir());
+  }
 
-  LocalStorageImplTest(const LocalStorageImplTest&) = delete;
-  LocalStorageImplTest& operator=(const LocalStorageImplTest&) = delete;
+  LocalStorageImplTestBase(const LocalStorageImplTestBase&) = delete;
+  LocalStorageImplTestBase& operator=(const LocalStorageImplTestBase&) = delete;
 
-  ~LocalStorageImplTest() override {
+  ~LocalStorageImplTestBase() override {
     ShutDownStorage();
     EXPECT_TRUE(temp_path_.Delete());
   }
@@ -183,9 +188,8 @@ class LocalStorageImplTest : public testing::Test {
   void PutMapKeyValue(const blink::StorageKey& storage_key,
                       DomStorageDatabase::Key key,
                       DomStorageDatabase::Key value) {
-    FakeCommitter committer(
-        context()->GetDatabaseForTesting(),
-        /*map_locator=*/{kLocalStorageSessionId, storage_key});
+    FakeCommitter committer(context()->GetDatabaseForTesting(),
+                            DomStorageDatabase::MapLocator(storage_key));
     committer.PutMapKeyValueSync(std::move(key), std::move(value));
   }
 
@@ -211,8 +215,8 @@ class LocalStorageImplTest : public testing::Test {
 
     // Delete all of the storage keys and maps.
     ASSERT_NO_FATAL_FAILURE(DeleteStorageKeysFromSessionSync(
-        database, kLocalStorageSessionId, std::move(storage_keys_to_delete),
-        std::move(maps_to_delete)));
+        database, /*session_id=*/std::string(),
+        std::move(storage_keys_to_delete), std::move(maps_to_delete)));
 
     // Verify that no maps key/values or metadata exists in the database.
     DomStorageDatabase::Metadata empty_metadata;
@@ -248,9 +252,7 @@ class LocalStorageImplTest : public testing::Test {
     context()->BindStorageArea(storage_key, area.BindNewPipeAndPassReceiver());
     context()->BindStorageArea(storage_key,
                                dummy_area.BindNewPipeAndPassReceiver());
-    std::vector<uint8_t> result;
-    bool success = test::GetSync(area.get(), key, &result);
-    return success ? std::optional<std::vector<uint8_t>>(result) : std::nullopt;
+    return test::GetSync(area.get(), key);
   }
 
   // Pumps both the main-thread sequence and the background database sequence
@@ -294,19 +296,11 @@ class LocalStorageImplTest : public testing::Test {
     return false;
   }
 
-  base::FilePath FirstEntryInDir() {
-    base::FileEnumerator enumerator(
-        storage_path(), false /* recursive */,
-        base::FileEnumerator::FILES | base::FileEnumerator::DIRECTORIES);
-    return enumerator.Next();
-  }
-
   // Verifies a storage key's map in the database contains `expected_entries`.
   void ExpectMapEquals(blink::StorageKey storage_key,
                        std::map<DomStorageDatabase::Key,
                                 DomStorageDatabase::Value> expected_entries) {
-    DomStorageDatabase::MapLocator map_locator{kLocalStorageSessionId,
-                                               storage_key};
+    DomStorageDatabase::MapLocator map_locator{storage_key};
     std::map<DomStorageDatabase::Key, DomStorageDatabase::Value> actual_entries;
 
     ASSERT_NO_FATAL_FAILURE(
@@ -319,8 +313,7 @@ class LocalStorageImplTest : public testing::Test {
   void WaitForMapEntries(blink::StorageKey storage_key,
                          std::map<DomStorageDatabase::Key,
                                   DomStorageDatabase::Value> expected_entries) {
-    DomStorageDatabase::MapLocator map_locator{kLocalStorageSessionId,
-                                               storage_key};
+    DomStorageDatabase::MapLocator map_locator{storage_key};
     std::map<DomStorageDatabase::Key, DomStorageDatabase::Value> actual_entries;
 
     EXPECT_TRUE(base::test::RunUntil([&]() {
@@ -385,13 +378,36 @@ class LocalStorageImplTest : public testing::Test {
     RunUntilIdle();
   }
 
+  // Enables or disables SQLite.
+  base::test::ScopedFeatureList feature_list_;
+
   base::test::TaskEnvironment task_environment_;
   base::ScopedTempDir temp_path_;
 
   std::unique_ptr<LocalStorageImpl> storage_;
 };
 
-TEST_F(LocalStorageImplTest, Basic) {
+class LocalStorageImplTest
+    : public testing::WithParamInterface</*is_sqlite_enabled=*/bool>,
+      public LocalStorageImplTestBase {
+ public:
+  LocalStorageImplTest()
+      : LocalStorageImplTestBase(/*is_sqlite_enabled=*/GetParam()) {}
+  ~LocalStorageImplTest() override = default;
+
+  bool IsSqliteEnabled() const { return GetParam(); }
+};
+
+INSTANTIATE_TEST_SUITE_P(
+    /*no prefix*/,
+    LocalStorageImplTest,
+    testing::Bool(),
+    /*name_generator=*/
+    [](const testing::TestParamInfo<LocalStorageImplTest::ParamType>& info) {
+      return info.param ? "SQLite" : "LevelDB";
+    });
+
+TEST_P(LocalStorageImplTest, Basic) {
   blink::StorageKey storage_key =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   auto key = StdStringToUint8Vector("key");
@@ -399,6 +415,9 @@ TEST_F(LocalStorageImplTest, Basic) {
 
   mojo::Remote<blink::mojom::StorageArea> area;
   context()->BindStorageArea(storage_key, area.BindNewPipeAndPassReceiver());
+
+  // Start histogram recording after setup to isolate the Put commit.
+  base::HistogramTester histograms;
 
   base::test::TestFuture<bool> success_future;
   area->Put(key, value, std::nullopt, "source", success_future.GetCallback());
@@ -413,9 +432,15 @@ TEST_F(LocalStorageImplTest, Basic) {
       WaitForMapEntries(storage_key, /*expected_entries=*/{{key, value}}));
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataCount(1u));
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key));
+
+  // Verify the UpdateMaps histogram was recorded with success (sample 0 = kOk).
+  histograms.ExpectUniqueSample("Storage.LocalStorage.UpdateMaps.OnDisk", 0, 1);
+  // The Put and WaitForMapEntries each trigger a ReadMapKeyValues.
+  histograms.ExpectUniqueSample("Storage.LocalStorage.ReadMapKeyValues.OnDisk",
+                                0, 2);
 }
 
-TEST_F(LocalStorageImplTest, StorageKeysAreIndependent) {
+TEST_P(LocalStorageImplTest, StorageKeysAreIndependent) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com:123");
   blink::StorageKey storage_key2 =
@@ -446,7 +471,7 @@ TEST_F(LocalStorageImplTest, StorageKeysAreIndependent) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, WrapperOutlivesMojoConnection) {
+TEST_P(LocalStorageImplTest, WrapperOutlivesMojoConnection) {
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
 
@@ -486,7 +511,7 @@ TEST_F(LocalStorageImplTest, WrapperOutlivesMojoConnection) {
   EXPECT_EQ(std::nullopt, DoTestGet(key));
 }
 
-TEST_F(LocalStorageImplTest, OpeningWrappersPurgesInactiveWrappers) {
+TEST_P(LocalStorageImplTest, OpeningWrappersPurgesInactiveWrappers) {
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
   const blink::StorageKey storage_key(
@@ -523,7 +548,7 @@ TEST_F(LocalStorageImplTest, OpeningWrappersPurgesInactiveWrappers) {
   EXPECT_TRUE(base::test::RunUntil([&]() { return !DoTestGet(key); }));
 }
 
-TEST_F(LocalStorageImplTest, ValidVersion) {
+TEST_P(LocalStorageImplTest, ValidVersion) {
   DomStorageDatabase::Key key = StdStringToUint8Vector("key");
   DomStorageDatabase::Value value = StdStringToUint8Vector("value");
 
@@ -538,7 +563,7 @@ TEST_F(LocalStorageImplTest, ValidVersion) {
   EXPECT_EQ(value, DoTestGet(key));
 }
 
-TEST_F(LocalStorageImplTest, InvalidVersion) {
+TEST_P(LocalStorageImplTest, InvalidVersion) {
   DomStorageDatabase::Key key = StdStringToUint8Vector("key");
   DomStorageDatabase::Value value = StdStringToUint8Vector("value");
 
@@ -555,12 +580,12 @@ TEST_F(LocalStorageImplTest, InvalidVersion) {
   EXPECT_EQ(std::nullopt, DoTestGet(key));
 }
 
-TEST_F(LocalStorageImplTest, GetStorageUsage_NoData) {
+TEST_P(LocalStorageImplTest, GetStorageUsage_NoData) {
   std::vector<mojom::StorageUsageInfoPtr> info = GetStorageUsageSync();
   EXPECT_EQ(0u, info.size());
 }
 
-TEST_F(LocalStorageImplTest, GetStorageUsage_Data) {
+TEST_P(LocalStorageImplTest, GetStorageUsage_Data) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -596,10 +621,12 @@ TEST_F(LocalStorageImplTest, GetStorageUsage_Data) {
 
   base::Time after_write = base::Time::Now();
 
+  base::HistogramTester histograms;
   std::vector<mojom::StorageUsageInfoPtr> info = GetStorageUsageSync();
   ASSERT_EQ(2u, info.size());
-  if (info[0]->storage_key == storage_key2)
+  if (info[0]->storage_key == storage_key2) {
     std::swap(info[0], info[1]);
+  }
   EXPECT_EQ(storage_key1, info[0]->storage_key);
   EXPECT_EQ(storage_key2, info[1]->storage_key);
   EXPECT_LE(before_write, info[0]->last_modified);
@@ -607,9 +634,13 @@ TEST_F(LocalStorageImplTest, GetStorageUsage_Data) {
   EXPECT_GE(after_write, info[0]->last_modified);
   EXPECT_GE(after_write, info[1]->last_modified);
   EXPECT_GT(info[0]->total_size_bytes, info[1]->total_size_bytes);
+
+  // GetStorageUsageSync() results in a ReadAllMetadata call.
+  histograms.ExpectUniqueSample("Storage.LocalStorage.ReadAllMetadata.OnDisk",
+                                0, 1);
 }
 
-TEST_F(LocalStorageImplTest, CheckAccessMetaData) {
+TEST_P(LocalStorageImplTest, CheckAccessMetaData) {
   base::Time before_metadata = base::Time::Now();
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foo.com");
@@ -642,7 +673,13 @@ TEST_F(LocalStorageImplTest, CheckAccessMetaData) {
   context()->ApplyPolicyUpdates(std::move(updates));
 
   // After shutdown, we should just see data for storage_key2.
-  ResetStorage(storage_path());
+  {
+    base::HistogramTester purge_histograms;
+    ResetStorage(storage_path());
+    // Verify PurgeOrigins histogram is recorded during shutdown.
+    purge_histograms.ExpectUniqueSample(
+        "Storage.LocalStorage.PurgeOrigins.OnDisk", /*sample=*/0, 1);
+  }
   base::Time after_metadata = base::Time::Now();
 
   WaitForDatabaseOpen();
@@ -666,6 +703,8 @@ TEST_F(LocalStorageImplTest, CheckAccessMetaData) {
   area->GetAll(std::move(unused_observer), future.GetCallback());
   EXPECT_TRUE(future.Wait());
 
+  // Capture the PutMetadata histogram fired during ResetStorage() shutdown.
+  base::HistogramTester histograms;
   ResetStorage(storage_path());
   after_metadata = base::Time::Now();
 
@@ -677,9 +716,13 @@ TEST_F(LocalStorageImplTest, CheckAccessMetaData) {
 
   EXPECT_LE(before_metadata, usage_metadata->last_accessed.value());
   EXPECT_GE(after_metadata, usage_metadata->last_accessed.value());
+
+  // ResetStorage results in a PutMetadata call to update last_accessed.
+  histograms.ExpectUniqueSample("Storage.LocalStorage.PutMetadata.OnDisk",
+                                /*sample=*/0, 1);
 }
 
-TEST_F(LocalStorageImplTest, MetaDataClearedOnDelete) {
+TEST_P(LocalStorageImplTest, MetaDataClearedOnDelete) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -696,9 +739,9 @@ TEST_F(LocalStorageImplTest, MetaDataClearedOnDelete) {
   area->Put(key, value, std::nullopt, "source", base::DoNothing());
   area.reset();
   context()->BindStorageArea(storage_key1, area.BindNewPipeAndPassReceiver());
-  base::test::TestFuture<bool> success_future;
-  area->Delete(key, value, "source", success_future.GetCallback());
-  EXPECT_TRUE(success_future.Take());
+  base::test::TestFuture<void> delete_future;
+  area->Delete(key, value, "source", delete_future.GetCallback());
+  EXPECT_TRUE(delete_future.Wait());
   area.reset();
 
   // Data from `storage_key2` should exist, including meta-data, but nothing
@@ -712,7 +755,7 @@ TEST_F(LocalStorageImplTest, MetaDataClearedOnDelete) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, MetaDataClearedOnDeleteAll) {
+TEST_P(LocalStorageImplTest, MetaDataClearedOnDeleteAll) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -730,9 +773,10 @@ TEST_F(LocalStorageImplTest, MetaDataClearedOnDeleteAll) {
   area.reset();
 
   context()->BindStorageArea(storage_key1, area.BindNewPipeAndPassReceiver());
-  base::test::TestFuture<bool> success_future;
-  area->DeleteAll("source", mojo::NullRemote(), success_future.GetCallback());
-  EXPECT_TRUE(success_future.Take());
+  base::test::TestFuture<void> delete_all_future;
+  area->DeleteAll("source", mojo::NullRemote(),
+                  delete_all_future.GetCallback());
+  EXPECT_TRUE(delete_all_future.Wait());
   area.reset();
 
   // Data from `storage_key2` should exist, including meta-data, but nothing
@@ -746,7 +790,7 @@ TEST_F(LocalStorageImplTest, MetaDataClearedOnDeleteAll) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, DeleteStorage) {
+TEST_P(LocalStorageImplTest, DeleteStorage) {
   WaitForDatabaseOpen();
 
   PutVersionForTesting(*context()->GetDatabaseForTesting(), 1);
@@ -757,6 +801,7 @@ TEST_F(LocalStorageImplTest, DeleteStorage) {
   PutMapKeyValue(storage_key, StdStringToUint8Vector("key"),
                  StdStringToUint8Vector("value"));
 
+  base::HistogramTester histograms;
   ResetStorage(storage_path());
   base::RunLoop run_loop;
   context()->DeleteStorage(storage_key, run_loop.QuitClosure());
@@ -766,9 +811,12 @@ TEST_F(LocalStorageImplTest, DeleteStorage) {
   ASSERT_NO_FATAL_FAILURE(
       ExpectMapEquals(storage_key, /*expected_entries=*/{}));
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataCount(0u));
+
+  histograms.ExpectUniqueSample(
+      "Storage.LocalStorage.DeleteStorageKeysFromSession.OnDisk", 0, 1);
 }
 
-TEST_F(LocalStorageImplTest, DeleteStorageWithoutConnection) {
+TEST_P(LocalStorageImplTest, DeleteStorageWithoutConnection) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -813,7 +861,7 @@ TEST_F(LocalStorageImplTest, DeleteStorageWithoutConnection) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, DeleteStorageNotifiesWrapper) {
+TEST_P(LocalStorageImplTest, DeleteStorageNotifiesWrapper) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -868,7 +916,7 @@ TEST_F(LocalStorageImplTest, DeleteStorageNotifiesWrapper) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, DeleteStorageWithPendingWrites) {
+TEST_P(LocalStorageImplTest, DeleteStorageWithPendingWrites) {
   blink::StorageKey storage_key1 =
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com");
   blink::StorageKey storage_key2 =
@@ -928,7 +976,7 @@ TEST_F(LocalStorageImplTest, DeleteStorageWithPendingWrites) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, ShutdownClearsData) {
+TEST_P(LocalStorageImplTest, ShutdownClearsData) {
   base::test::ScopedFeatureList scoped_feature_list;
   scoped_feature_list.InitAndEnableFeature(
       net::features::kThirdPartyStoragePartitioning);
@@ -985,7 +1033,12 @@ TEST_F(LocalStorageImplTest, ShutdownClearsData) {
   // Data from storage_key1_third_party should also be erased, since it is
   // a third party storage key, and its top_level_site matches the origin
   // of storage_key1, which is set to purge on shutdown.
+  base::HistogramTester histograms;
   ResetStorage(storage_path());
+  // Verify PurgeOrigins histogram is recorded during shutdown.
+  histograms.ExpectUniqueSample("Storage.LocalStorage.PurgeOrigins.OnDisk",
+                                /*sample=*/0, 1);
+
   WaitForDatabaseOpen();
 
   ASSERT_NO_FATAL_FAILURE(
@@ -999,7 +1052,7 @@ TEST_F(LocalStorageImplTest, ShutdownClearsData) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key2));
 }
 
-TEST_F(LocalStorageImplTest, InMemory) {
+TEST_P(LocalStorageImplTest, InMemory) {
   ResetStorage(base::FilePath());
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
@@ -1015,14 +1068,16 @@ TEST_F(LocalStorageImplTest, InMemory) {
 
   // Should not have created any files.
   ShutDownStorage();
-  EXPECT_TRUE(FirstEntryInDir().empty());
+
+  base::FilePath database_path = GetLocalStorageDatabasePath(storage_path());
+  EXPECT_FALSE(base::PathExists(database_path));
 
   // Re-opening should get fresh data.
   InitializeStorage(base::FilePath());
   EXPECT_FALSE(DoTestGet(key, &result));
 }
 
-TEST_F(LocalStorageImplTest, InMemoryInvalidPath) {
+TEST_P(LocalStorageImplTest, InMemoryInvalidPath) {
   ResetStorage(base::FilePath(FILE_PATH_LITERAL("../../")));
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
@@ -1040,10 +1095,11 @@ TEST_F(LocalStorageImplTest, InMemoryInvalidPath) {
   ShutDownStorage();
 
   // Should not have created any files.
-  EXPECT_TRUE(FirstEntryInDir().empty());
+  base::FilePath database_path = GetLocalStorageDatabasePath(storage_path());
+  EXPECT_FALSE(base::PathExists(database_path));
 }
 
-TEST_F(LocalStorageImplTest, OnDisk) {
+TEST_P(LocalStorageImplTest, OnDisk) {
   base::HistogramTester histograms;
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
@@ -1055,20 +1111,20 @@ TEST_F(LocalStorageImplTest, OnDisk) {
 
   ShutDownStorage();
 
-  // Should have created files.
-  EXPECT_EQ(base::FilePath(FILE_PATH_LITERAL("Local Storage")),
-            FirstEntryInDir().BaseName());
+  // Writing map entries must create the database on disk.
+  base::FilePath database_path = GetLocalStorageDatabasePath(storage_path());
+  EXPECT_TRUE(base::PathExists(database_path));
 
   // Should be able to re-open.
   InitializeStorage(storage_path());
   EXPECT_TRUE(DoTestGet(key, &result));
   EXPECT_EQ(value, result);
-  histograms.ExpectUniqueSample(
-      "LocalStorage.DatabaseOpen",
-      leveldb_env::LevelDBStatusValue::LEVELDB_STATUS_OK, 2);
+  // Sample value of 0 denotes DbStatus::Type::kOk.
+  histograms.ExpectUniqueSample("Storage.LocalStorage.OpenDatabase.OnDisk",
+                                /*sample=*/0, 2);
 }
 
-TEST_F(LocalStorageImplTest, InvalidVersionOnDisk) {
+TEST_P(LocalStorageImplTest, InvalidVersionOnDisk) {
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
 
@@ -1098,7 +1154,7 @@ TEST_F(LocalStorageImplTest, InvalidVersionOnDisk) {
     ASSERT_TRUE(status.ok()) << status.ToString();
 
     // Mess up version number in database.
-    PutVersionForTesting(*database, 7987897897);
+    PutVersionForTesting(*database, 987897897);
   }
 
   // Make sure data is gone.
@@ -1114,7 +1170,7 @@ TEST_F(LocalStorageImplTest, InvalidVersionOnDisk) {
   EXPECT_EQ(value, result);
 }
 
-TEST_F(LocalStorageImplTest, CorruptionOnDisk) {
+TEST_P(LocalStorageImplTest, CorruptionOnDisk) {
   base::HistogramTester histograms;
   auto key = StdStringToUint8Vector("key");
   auto value = StdStringToUint8Vector("value");
@@ -1126,13 +1182,18 @@ TEST_F(LocalStorageImplTest, CorruptionOnDisk) {
 
   ShutDownStorage();
 
-  // Delete manifest files to mess up opening DB.
   base::FilePath db_path = GetLocalStorageDatabasePath(storage_path());
-  base::FileEnumerator file_enum(db_path, true, base::FileEnumerator::FILES,
-                                 FILE_PATH_LITERAL("MANIFEST*"));
-  for (base::FilePath name = file_enum.Next(); !name.empty();
-       name = file_enum.Next()) {
-    EXPECT_TRUE(base::DeleteFile(name));
+  if (IsSqliteEnabled()) {
+    // Replace the SQLite database file with plain text.
+    ASSERT_TRUE(base::WriteFile(db_path, "Corrupt database"));
+  } else {
+    // Delete manifest files to mess up opening DB.
+    base::FileEnumerator file_enum(db_path, true, base::FileEnumerator::FILES,
+                                   FILE_PATH_LITERAL("MANIFEST*"));
+    for (base::FilePath name = file_enum.Next(); !name.empty();
+         name = file_enum.Next()) {
+      base::DeleteFile(name);
+    }
   }
 
   // Make sure data is gone.
@@ -1146,12 +1207,17 @@ TEST_F(LocalStorageImplTest, CorruptionOnDisk) {
   ResetStorage(storage_path());
   EXPECT_TRUE(DoTestGet(key, &result));
   EXPECT_EQ(value, result);
-  histograms.ExpectBucketCount(
-      "LocalStorage.DatabaseOpen",
-      leveldb_env::LevelDBStatusValue::LEVELDB_STATUS_IO_ERROR, 1);
+
+  // LevelDB reports corruption as an IO error. The SQLiteResultCode maps to a
+  // DbStatus::Type::kCorruption error.
+  uint8_t sample = IsSqliteEnabled() ? /*kCorruption=*/2 : /*kIoError=*/5;
+  histograms.ExpectBucketCount("Storage.LocalStorage.OpenDatabase.OnDisk",
+                               sample, 1);
 }
 
-TEST_F(LocalStorageImplTest, RecreateOnCommitFailure) {
+TEST_P(LocalStorageImplTest, RecreateOnCommitFailure) {
+  base::HistogramTester histograms;
+
   std::optional<base::RunLoop> open_loop;
   std::optional<base::RunLoop> destruction_loop;
   size_t num_database_open_requests = 0;
@@ -1254,14 +1320,9 @@ TEST_F(LocalStorageImplTest, RecreateOnCommitFailure) {
       blink::StorageKey::CreateFromStringForTesting("http://foobar.com"),
       area1.BindNewPipeAndPassReceiver());
   base::RunLoop delete_loop;
-  bool success = true;
   TestStorageAreaObserver observer3;
   area1->AddObserver(observer3.Bind());
-  area1->Delete(key, std::nullopt, "source",
-                base::BindLambdaForTesting([&](bool success_in) {
-                  success = success_in;
-                  delete_loop.Quit();
-                }));
+  area1->Delete(key, std::nullopt, "source", delete_loop.QuitClosure());
 
   // The new database should be ready to go.
   open_loop->Run();
@@ -1286,9 +1347,14 @@ TEST_F(LocalStorageImplTest, RecreateOnCommitFailure) {
               observer2.observations()[i].type);
     EXPECT_EQ(Uint8VectorToStdString(key), observer2.observations()[i].key);
   }
+
+  // Verify that commit failures were recorded in the histogram.
+  // Sum > 0 means at least one non-zero (failure) sample was recorded.
+  EXPECT_GT(histograms.GetTotalSum("Storage.LocalStorage.UpdateMaps.OnDisk"),
+            0);
 }
 
-TEST_F(LocalStorageImplTest, DontRecreateOnRepeatedCommitFailure) {
+TEST_P(LocalStorageImplTest, DontRecreateOnRepeatedCommitFailure) {
   // Ensure that the opened database always fails on write.
   std::optional<base::RunLoop> open_loop;
   size_t num_database_open_requests = 0;
@@ -1384,13 +1450,18 @@ TEST_F(LocalStorageImplTest, DontRecreateOnRepeatedCommitFailure) {
   EXPECT_TRUE(area.is_connected());
 }
 
-class LocalStorageImplStaleDeletionTest : public LocalStorageImplTest {
+class LocalStorageImplStaleDeletionTest
+    : public testing::WithParamInterface</*is_sqlite_enabled=*/bool>,
+      public LocalStorageImplTestBase {
  public:
+  LocalStorageImplStaleDeletionTest() : LocalStorageImplTestBase(GetParam()) {}
+  ~LocalStorageImplStaleDeletionTest() override = default;
+
   void UpdateAccessMetaData(const blink::StorageKey& storage_key,
                             const base::Time& last_accessed) {
     DomStorageDatabase::Metadata access_metadata;
     access_metadata.map_metadata.push_back({
-        .map_locator{kLocalStorageSessionId, storage_key},
+        .map_locator{storage_key},
         .last_accessed{last_accessed},
     });
 
@@ -1403,7 +1474,7 @@ class LocalStorageImplStaleDeletionTest : public LocalStorageImplTest {
                            uint64_t size_bytes) {
     DomStorageDatabase::Metadata write_metadata;
     write_metadata.map_metadata.push_back({
-        .map_locator{kLocalStorageSessionId, storage_key},
+        .map_locator{storage_key},
         .last_modified{last_modified},
         .total_size{size_bytes},
     });
@@ -1413,7 +1484,17 @@ class LocalStorageImplStaleDeletionTest : public LocalStorageImplTest {
   }
 };
 
-TEST_F(LocalStorageImplStaleDeletionTest, StaleStorageAreaDeletion) {
+INSTANTIATE_TEST_SUITE_P(
+    /*no prefix*/,
+    LocalStorageImplStaleDeletionTest,
+    testing::Bool(),
+    /*name_generator=*/
+    [](const testing::TestParamInfo<
+        LocalStorageImplStaleDeletionTest::ParamType>& info) {
+      return info.param ? "SQLite" : "LevelDB";
+    });
+
+TEST_P(LocalStorageImplStaleDeletionTest, StaleStorageAreaDeletion) {
   DomStorageDatabase::Key key = StdStringToUint8Vector("key");
   DomStorageDatabase::Value value = StdStringToUint8Vector("value");
 
@@ -1503,7 +1584,7 @@ TEST_F(LocalStorageImplStaleDeletionTest, StaleStorageAreaDeletion) {
   ASSERT_NO_FATAL_FAILURE(ExpectUsageMetadataExists(storage_key5));
 }
 
-TEST_F(LocalStorageImplStaleDeletionTest, Orphan) {
+TEST_P(LocalStorageImplStaleDeletionTest, Orphan) {
   DomStorageDatabase::Key key = StdStringToUint8Vector("key");
   DomStorageDatabase::Value value = StdStringToUint8Vector("value");
 

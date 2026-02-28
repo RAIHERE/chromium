@@ -171,9 +171,9 @@ bool DoesNavigationChangeStoragePartition(SiteInstanceImpl* current_instance,
       current_instance
           ->DeriveSiteInfo(dest_url_info, /*is_related=*/false,
                            /*disregard_web_exposed_isolation_info=*/true)
-          .storage_partition_config();
+          .GetStoragePartitionConfig();
   StoragePartitionConfig current_partition_config =
-      current_instance->GetSiteInfo().storage_partition_config();
+      current_instance->GetSecurityPrincipal().GetStoragePartitionConfig();
   return current_partition_config != dest_partition_config;
 }
 
@@ -1946,9 +1946,8 @@ RenderFrameHostManager::GetFrameHostForNavigation(
       render_frame_host_->must_be_replaced_for_crash();
 
   bool from_ad_click =
-      (request->GetNavigationInitiatorActivationAndAdStatus() ==
-       blink::mojom::NavigationInitiatorActivationAndAdStatus::
-           kStartedWithTransientActivationFromAd);
+      request->StartedWithTransientActivation() && request->StartedByAd();
+
   // Record whether a speculative RFH previously created for this navigation
   // (if any) will be wasted because we change the RFH associated with this
   // navigation this time.
@@ -2970,9 +2969,11 @@ RenderFrameHostManager::ShouldProactivelySwapBrowsingInstance(
         ShouldSwapBrowsingInstance::kNo_SourceURLSchemeIsNotHTTPOrHTTPS);
   }
 
-  // WebView guests currently need to stay in the same SiteInstance and
-  // BrowsingInstance.
-  if (current_instance->IsGuest()) {
+  // Prior to site isolation in WebView guests, they needed to stay in the same
+  // SiteInstance and BrowsingInstance. This is no longer necessary. However,
+  // proceeding here would just lead to a NoSwap at the bfcache eligibility
+  // check below, so we keep this explicit check for guests here.
+  if (current_instance->GetSecurityPrincipal().IsGuest()) {
     return BrowsingContextGroupSwap::CreateNoSwap(
         ShouldSwapBrowsingInstance::kNo_Guest);
   }
@@ -3923,7 +3924,7 @@ scoped_refptr<SiteInstanceImpl> RenderFrameHostManager::ConvertToSiteInstance(
   UrlInfo dest_url_info = descriptor.dest_url_info;
   if (current_instance->IsFixedStoragePartition()) {
     dest_url_info.storage_partition_config =
-        current_instance->GetSiteInfo().storage_partition_config();
+        current_instance->GetSecurityPrincipal().GetStoragePartitionConfig();
   }
 
   // First check if the candidate SiteInstance matches.  For example, we get
@@ -3939,7 +3940,7 @@ scoped_refptr<SiteInstanceImpl> RenderFrameHostManager::ConvertToSiteInstance(
   // Otherwise return a new SiteInstance in a new BrowsingInstance.
   return SiteInstanceImpl::CreateForUrlInfo(
       GetNavigationController().GetBrowserContext(), dest_url_info,
-      current_instance->IsGuest(),
+      current_instance->GetSecurityPrincipal().IsGuest(),
       current_instance->GetIsolationContext().is_fenced(),
       current_instance->IsFixedStoragePartition());
 }
@@ -3977,7 +3978,7 @@ bool RenderFrameHostManager::CanUseSourceSiteInstance(
   // that isn't sandboxed. But if the `source_instance` is also sandboxed, then
   // it's possible (e.g. a sandboxed child frame in a sandboxed parent frame).
   auto& source_site_info = source_instance->GetSiteInfo();
-  if (dest_url_info.is_sandboxed != source_site_info.is_sandboxed()) {
+  if (dest_url_info.is_sandboxed != source_site_info.IsSandboxed()) {
     AppendReason(reason,
                  "CanUseSourceSiteInstance => false "
                  "(is-sandboxed-mismatched)");
@@ -4789,8 +4790,8 @@ RenderFrameHostManager::GetSiteInstanceForNavigationRequest(
   if (parent && request->common_params().url.IsAboutSrcdoc()) {
     const UrlInfo& url_info = request->GetUrlInfo();
     if (url_info.is_sandboxed &&
-        !parent->GetSiteInstance()->GetSiteInfo().is_sandboxed()) {
-      // TODO(wjmaclean); For now, SiteInfo::is_sandboxed() and
+        !parent->GetSiteInstance()->GetSecurityPrincipal().IsSandboxed()) {
+      // TODO(wjmaclean); For now, SiteInfo::IsSandboxed() and
       // UrlInfo::is_sandboxed both mean "origin-restricted sandbox", so this
       // simple comparison suffices. But when we extend sandbox isolation to
       // depend on other sandbox flags as well, we may want to do a more

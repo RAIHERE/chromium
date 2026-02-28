@@ -278,10 +278,11 @@ void InsertParagraphSeparatorCommand::DoApply(EditingState* editing_state) {
   Position canonical_pos =
       CreateVisiblePosition(insertion_position).DeepEquivalent();
   if (!start_block || !start_block->NonShadowBoundaryParentNode() ||
-      (RuntimeEnabledFeatures::InsertLineBreakIfPhrasingContentEnabled() &&
-       IsEditableRootPhrasingContent(insertion_position)) ||
+      IsEditableRootPhrasingContent(insertion_position) ||
       IsDisplayInlineType(list_child) || IsTableCell(start_block) ||
       IsA<HTMLFormElement>(*start_block) ||
+      (RuntimeEnabledFeatures::FixLinebreakForPreTagEnabled() &&
+       start_block->HasTagName(html_names::kPreTag)) ||
       // FIXME: If the node is hidden, we don't have a canonical position so we
       // will do the wrong thing for tables and <hr>.
       // https://bugs.webkit.org/show_bug.cgi?id=40342

@@ -50,6 +50,10 @@
 #include "components/user_manager/user_names.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "components/policy/core/common/features.h"
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
 namespace {
 #if !BUILDFLAG(IS_CHROMEOS)
 // Creates a Profile and its underlying OTR Profile for testing.
@@ -289,6 +293,8 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceBrowserTest,
 
     // This service is needed to handle navigations in the Profile Picker.
     "ChromePolicyBlocklistService",
+
+    "ProfileMetricsService",
   };
   // clang-format on
 
@@ -345,6 +351,8 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceBrowserTest,
 
     // This service is needed to handle navigations in the Profile Picker.
     "ChromePolicyBlocklistService",
+
+    "ProfileMetricsService",
   };
   // clang-format on
 
@@ -422,7 +430,7 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "EnterpriseReportingPrivateEventRouter",
     "ExtensionNavigationRegistry",
     "ExtensionSystem",
-    "ExtensionURLLoaderFactory::BrowserContextShutdownNotifierFactory",
+    "ExtensionProtocolShutdownNotifierFactory",
     "FederatedIdentityPermissionContext",
     "FederatedIdentityAutoReauthnPermissionContext",
     "FeedbackPrivateAPI",
@@ -470,8 +478,10 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
 #if !BUILDFLAG(IS_ANDROID)
     "SafeSearch",
 #endif
+#if BUILDFLAG(IS_CHROMEOS)
     "SerialConnectionManager",
     "SerialPortManager",
+#endif
     "SettingsPrivateEventRouter",
     "SiteDataCacheFacadeFactory",
     "SiteEngagementService",
@@ -691,7 +701,7 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "ExtensionSystem",
     "ExtensionSystemShared",
     "ExtensionUpdater",
-    "ExtensionURLLoaderFactory::BrowserContextShutdownNotifierFactory",
+    "ExtensionProtocolShutdownNotifierFactory",
     "ExtensionWebUIOverrideRegistrar",
     "ExternalInstallManager",
   #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -826,13 +836,16 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "SendTabToSelfClientService",
 #endif  // !BUILDFLAG(IS_CHROMEOS)
     "SendTabToSelfSyncService",
+#if BUILDFLAG(IS_CHROMEOS)
     "SerialConnectionManager",
     "SerialPortManager",
+#endif
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
     "ServerCertificateDatabaseService",
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
     "SessionDataService",
     "SessionProtoDBFactory",
+    "SessionSyncService",
     "SessionsAPI",
     "sessions::TabRestoreService",
     "SettingsOverridesAPI",
@@ -855,6 +868,7 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
     "StorageNotificationService",
     "SupervisedUserService",
     "SyncInvalidationsService",
+    "SyncSessionsWebContentsRouter",
     "SystemInfoAPI",
     "TCPServerSocketEventDispatcher",
     "TCPSocketEventDispatcher",
@@ -957,13 +971,15 @@ IN_PROC_BROWSER_TEST_F(ProfileKeyedServiceGuestBrowserTest,
   };
   // clang-format on
 
-  if (base::FeatureList::IsEnabled(commerce::kProductSpecifications)) {
-    guest_active_services.insert("ProductSpecificationsService");
-  }
-
   if (SearchEnginePreconnector::ShouldBeEnabledAsKeyedService()) {
     guest_active_services.insert("SearchEnginePreconnector");
   }
+#if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  if (base::FeatureList::IsEnabled(
+          policy::features::kEnableExtensionInstallPolicyFetching)) {
+    guest_active_services.insert("ExtensionInstallPolicyService");
+  }
+#endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #if BUILDFLAG(IS_CHROMEOS)
   EXPECT_TRUE(user_manager::UserManager::Get()->IsLoggedInAsGuest());
   // ChromeOS Guest mode starts with the guest otr profile.

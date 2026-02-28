@@ -97,6 +97,7 @@
 #if BUILDFLAG(IS_WIN)
 #include "base/path_service.h"
 #include "chrome/browser/performance_manager/policies/priority_boost_browser_network_policy.h"
+#include "chrome/browser/performance_manager/policies/priority_boost_foreground_browser_network_policy.h"
 #include "chrome/browser/performance_manager/policies/priority_boost_gpu_browser_network_policy.h"
 #include "chrome/browser/performance_manager/policies/priority_boost_loading_browser_network_policy.h"
 #endif
@@ -223,6 +224,11 @@ void ChromeBrowserMainExtraPartsPerformanceManager::CreatePoliciesAndDecorators(
             std::make_unique<performance_manager::policies::
                                  PriorityBoostLoadingBrowserNetworkPolicy>());
         break;
+      case features::DisableBoostPriorityExemption::kForegroundBrowserNetwork:
+        graph->PassToGraph(std::make_unique<
+                           performance_manager::policies::
+                               PriorityBoostForegroundBrowserNetworkPolicy>());
+        break;
     }
   }
 #endif  // BUILDFLAG(IS_WIN)
@@ -244,9 +250,12 @@ void ChromeBrowserMainExtraPartsPerformanceManager::CreatePoliciesAndDecorators(
   graph->PassToGraph(FormInteractionTabHelper::CreateGraphObserver());
 
 #if URGENT_DISCARDING_FROM_PERFORMANCE_MANAGER()
-  graph->PassToGraph(
-      std::make_unique<
-          performance_manager::policies::UrgentPageDiscardingPolicy>());
+  if (!base::FeatureList::IsEnabled(
+          performance_manager::features::kDisableTabDiscarding)) {
+    graph->PassToGraph(
+        std::make_unique<
+            performance_manager::policies::UrgentPageDiscardingPolicy>());
+  }
 #endif  // URGENT_DISCARDING_FROM_PERFORMANCE_MANAGER()
 
   graph->PassToGraph(std::make_unique<
@@ -348,11 +357,13 @@ ChromeBrowserMainExtraPartsPerformanceManager::GetFeatureObserverClient() {
 }
 
 void ChromeBrowserMainExtraPartsPerformanceManager::PostCreateThreads() {
+  CHECK(g_browser_process->local_state());
   performance_manager_lifetime_ =
       std::make_unique<performance_manager::PerformanceManagerLifetime>(
           performance_manager::GraphFeatures::WithDefault(),
           base::BindOnce(&ChromeBrowserMainExtraPartsPerformanceManager::
-                             CreatePoliciesAndDecorators));
+                             CreatePoliciesAndDecorators),
+          g_browser_process->local_state());
 
   // There are no existing loaded profiles.
   DCHECK(g_browser_process->profile_manager()->GetLoadedProfiles().empty());

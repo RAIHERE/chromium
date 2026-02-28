@@ -595,7 +595,9 @@ public class ArchivedTabsDialogCoordinator implements SnackbarManager.SnackbarMa
         }
 
         mOnTabSelectingListener = onTabSelectingListener;
-        mArchivedTabModelOrchestrator.getTabCountSupplier().addObserver(mTabCountObserver);
+        mArchivedTabModelOrchestrator
+                .getTabCountSupplier()
+                .addSyncObserverAndPostIfNonNull(mTabCountObserver);
 
         TabListEditorController controller = mTabListEditorCoordinator.getController();
         controller.setLifecycleObserver(mTabListEditorLifecycleObserver);
@@ -808,6 +810,7 @@ public class ArchivedTabsDialogCoordinator implements SnackbarManager.SnackbarMa
                         mDesktopWindowStateManager,
                         /* edgeToEdgeSupplier= */ null,
                         CreationMode.FULL_SCREEN,
+                        /* itemPickerSelectionHandler= */ null,
                         mUndoBarController,
                         COMPONENT_NAME,
                         TabListEditorCoordinator.UNLIMITED_SELECTION,

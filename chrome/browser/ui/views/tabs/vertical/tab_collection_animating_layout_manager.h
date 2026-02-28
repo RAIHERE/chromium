@@ -57,7 +57,8 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
   explicit TabCollectionAnimatingLayoutManager(
       std::unique_ptr<LayoutManagerBase> target_layout_manager,
       Delegate* delegate = nullptr,
-      AnimationAxis animation_axis = AnimationAxis::kVertical);
+      AnimationAxis animation_axis = AnimationAxis::kVertical,
+      bool animate_host_size = false);
   TabCollectionAnimatingLayoutManager(
       const TabCollectionAnimatingLayoutManager&) = delete;
   TabCollectionAnimatingLayoutManager& operator=(
@@ -65,6 +66,7 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
   ~TabCollectionAnimatingLayoutManager() override;
 
   // LayoutManagerBase:
+  bool OnViewRemoved(views::View* host, views::View* view) override;
   gfx::Size GetPreferredSize(const views::View* host) const override;
   gfx::Size GetPreferredSize(
       const views::View* host,
@@ -83,8 +85,10 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
       views::View* view_to_reparent,
       std::unique_ptr<SourceLayoutInfo> source_layout_info);
 
-  // Snaps the container to the target layout.
-  void ResetToTargetLayout();
+  // Recalculates the target layout, and `views_to_snap` to the new target,
+  // skipping animations.
+  void ResetViewsToTargetLayout(
+      const std::vector<const views::View*>& views_to_snap);
 
   // Animates the removal of `child_view` from the `host_view()` associated with
   // this layout manager. `child_view` will be destroyed by the layout manager
@@ -134,6 +138,9 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
   // `animation_` has ended.
   void ClearViewAnimationMetadata();
 
+  // Clears any metadata specific to the animating layout manager from `view`.
+  void ClearViewAnimationMetadataForView(views::View* view);
+
   // The layout manager that defines the goal state.
   const raw_ref<LayoutManagerBase> target_layout_manager_;
 
@@ -145,11 +152,12 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
   views::ProposedLayout target_layout_;    // Goal state.
   views::ProposedLayout current_layout_;   // Current interpolated state.
 
-  // Precomputed sets and maps for starting and target layouts for fast
-  // lookup. Updated in `SetStartingLayout()` and `SetTargetLayout()`.
-  using StartViewBoundsMap = base::flat_map<raw_ptr<views::View>, gfx::Rect>;
-  StartViewBoundsMap start_view_bounds_map_;
-  base::flat_set<raw_ptr<views::View>> target_view_set_;
+  // Precomputed maps for starting and target layouts for fast lookup. Updated
+  // in `SetStartingLayout()` and `SetTargetLayout()`.
+  using ChildViewLayoutMap =
+      base::flat_map<raw_ptr<const views::View>, views::ChildLayout>;
+  ChildViewLayoutMap start_view_layout_map_;
+  ChildViewLayoutMap target_view_layout_map_;
 
   // Where in the animation the last layout recalculation happened.
   double starting_offset_ = 0.0;
@@ -162,6 +170,19 @@ class TabCollectionAnimatingLayoutManager : public views::LayoutManagerBase,
   // The axis along which bounds for animate-in and animate-out transitions are
   // interpolated.
   AnimationAxis animation_axis_;
+
+  // Stores the height of the `current_layout_`. Recomputed on each call to
+  // `InterpolateLayout()`. Mutable since this is a cached artifact of
+  // calculating `current_layout_` and does not affect logical constness.
+  mutable int current_layout_content_height_ = 0;
+
+  // True if the manager should animate its preferred size, i.e. the manager
+  // will update the host's preferred size to match the layout calculated in
+  // `current_layout_`. This should be used only when the host's parent is not
+  // using an animating layout manager and instead snaps the host immediately
+  // to its target size. In such cases animating the host's preferred size
+  // avoids clipping close / fade-out animations.
+  const bool animate_host_size_ = false;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_TABS_VERTICAL_TAB_COLLECTION_ANIMATING_LAYOUT_MANAGER_H_

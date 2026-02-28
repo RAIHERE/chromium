@@ -15,12 +15,14 @@
 #include <utility>
 #include <vector>
 
+#include "base/files/file_util.h"
 #include "base/files/scoped_temp_dir.h"
 #include "base/format_macros.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/memory/ptr_util.h"
 #include "base/memory/raw_ptr.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/pickle.h"
 #include "base/run_loop.h"
 #include "base/strings/strcat.h"
@@ -62,6 +64,7 @@
 #include "net/cert/x509_certificate.h"
 #include "net/disk_cache/disk_cache.h"
 #include "net/disk_cache/memory_entry_data_hints.h"
+#include "net/disk_cache/trivial_cache_entry_hasher.h"
 #include "net/http/http_byte_range.h"
 #include "net/http/http_cache_transaction.h"
 #include "net/http/http_request_headers.h"
@@ -10180,7 +10183,8 @@ TEST_F(HttpCacheTest, PersistHttpResponseInfo) {
   // Unpickle.
   HttpResponseInfo response2;
   bool response_truncated;
-  EXPECT_TRUE(response2.InitFromPickle(*pickle, &response_truncated));
+  EXPECT_TRUE(response2.InitFromPickle(base::PickleIterator(*pickle),
+                                       &response_truncated));
   EXPECT_FALSE(response_truncated);
 
   // Verify fields.
@@ -15010,13 +15014,15 @@ class MockCacheEncryptionDelegate : public net::CacheEncryptionDelegate {
     std::move(callback).Run(init_result_);
   }
 
-  bool EncryptData(base::span<const uint8_t> plaintext,
-                   std::vector<uint8_t>* ciphertext) override {
-    return false;
+  disk_cache::BackendFileOperationsFactory* GetEncryptionFileOperationsFactory(
+      scoped_refptr<disk_cache::BackendFileOperationsFactory>
+          file_operations_factory) override {
+    factory_ = base::MakeRefCounted<disk_cache::TrivialFileOperationsFactory>();
+    return factory_.get();
   }
-  bool DecryptData(base::span<const uint8_t> ciphertext,
-                   std::vector<uint8_t>* plaintext) override {
-    return false;
+
+  std::unique_ptr<disk_cache::CacheEntryHasher> GetCacheEntryHasher() override {
+    return std::make_unique<disk_cache::TrivialCacheEntryHasher>();
   }
 
   void SetInitResult(net::Error result) { init_result_ = result; }
@@ -15032,6 +15038,7 @@ class MockCacheEncryptionDelegate : public net::CacheEncryptionDelegate {
   bool init_called_ = false;
   net::Error init_result_ = net::OK;
   base::OnceCallback<void(net::Error)> pending_callback_;
+  scoped_refptr<disk_cache::TrivialFileOperationsFactory> factory_;
 };
 
 // A backend factory that creates a disk cache and injects a mock
@@ -15114,6 +15121,312 @@ TEST_F(HttpCacheTest, EncryptionDelegateInitFailure) {
   // To ensure the cache and its backend are destroyed before the test exits.
   cache.reset();
   base::RunLoop().RunUntilIdle();
+}
+
+TEST_F(HttpCacheTest, SharedResourceCacheControlPublic) {
+  MockHttpCache cache;
+
+  ScopedMockTransaction transaction(kSimpleGET_Transaction);
+  transaction.is_shared_resource = true;
+  transaction.response_headers = "cache-control: public, max-age=31536000\n";
+
+  // initial load
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(1, cache.network_layer()->transaction_count());
+  EXPECT_EQ(0, cache.disk_cache()->open_count());
+  EXPECT_EQ(1, cache.disk_cache()->create_count());
+
+  // try loading again; it should not result in a network fetch
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(1, cache.network_layer()->transaction_count());
+  EXPECT_EQ(1, cache.disk_cache()->open_count());
+  EXPECT_EQ(1, cache.disk_cache()->create_count());
+
+  disk_cache::Entry* entry;
+  MockHttpRequest request(transaction);
+  EXPECT_TRUE(cache.OpenBackendEntry(request.CacheKey(), &entry));
+  disk_cache::ScopedEntryPtr closer(entry);
+}
+
+TEST_F(HttpCacheTest, SharedResourceNotCacheControlPublic) {
+  MockHttpCache cache;
+
+  ScopedMockTransaction transaction(kSimpleGET_Transaction);
+  transaction.is_shared_resource = true;
+  transaction.response_headers = "cache-control: private, max-age=31536000\n";
+
+  // initial load
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(1, cache.network_layer()->transaction_count());
+  EXPECT_EQ(0, cache.disk_cache()->open_count());
+  EXPECT_EQ(1, cache.disk_cache()->create_count());
+
+  // try loading again; it should result in a network fetch
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(2, cache.network_layer()->transaction_count());
+  EXPECT_EQ(0, cache.disk_cache()->open_count());
+  EXPECT_EQ(2, cache.disk_cache()->create_count());
+
+  disk_cache::Entry* entry;
+  MockHttpRequest request(transaction);
+  EXPECT_FALSE(cache.OpenBackendEntry(request.CacheKey(), &entry));
+}
+
+TEST_F(HttpCacheTest, SharedResourceNoCacheControl) {
+  MockHttpCache cache;
+
+  ScopedMockTransaction transaction(kSimpleGET_Transaction);
+  transaction.is_shared_resource = true;
+
+  // initial load
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(1, cache.network_layer()->transaction_count());
+  EXPECT_EQ(0, cache.disk_cache()->open_count());
+  EXPECT_EQ(1, cache.disk_cache()->create_count());
+
+  // try loading again; it should result in a network fetch
+  RunTransactionTest(cache.http_cache(), transaction);
+
+  EXPECT_EQ(2, cache.network_layer()->transaction_count());
+  EXPECT_EQ(0, cache.disk_cache()->open_count());
+  EXPECT_EQ(2, cache.disk_cache()->create_count());
+
+  disk_cache::Entry* entry;
+  MockHttpRequest request(transaction);
+  EXPECT_FALSE(cache.OpenBackendEntry(request.CacheKey(), &entry));
+}
+
+class MockHttpCacheBackendForEarlyInit : public HttpCache::DefaultBackend {
+ public:
+  explicit MockHttpCacheBackendForEarlyInit(const base::FilePath& path)
+      : HttpCache::DefaultBackend(DISK_CACHE,
+                                  CACHE_BACKEND_DEFAULT,
+                                  nullptr,
+                                  path,
+                                  0,
+                                  false,
+                                  nullptr) {}
+
+  disk_cache::BackendResult CreateBackend(
+      NetLog* net_log,
+      disk_cache::BackendResultCallback callback) override {
+    if (create_backend_called_ptr_) {
+      *create_backend_called_ptr_ = true;
+    }
+
+    auto completion_callback = std::move(create_backend_completion_callback_);
+    return HttpCache::DefaultBackend::CreateBackend(
+        net_log,
+        base::BindOnce(
+            [](disk_cache::BackendResultCallback cb, base::OnceClosure done,
+               disk_cache::BackendResult result) {
+              std::move(cb).Run(std::move(result));
+              if (done) {
+                std::move(done).Run();
+              }
+            },
+            std::move(callback), std::move(completion_callback)));
+  }
+
+  void HasExistingFileToLoad(base::OnceCallback<void(bool)> callback) override {
+    HttpCache::DefaultBackend::HasExistingFileToLoad(base::BindOnce(
+        [](base::OnceCallback<void(bool)> cb, base::OnceClosure done,
+           bool result) {
+          std::move(cb).Run(result);
+          if (done) {
+            std::move(done).Run();
+          }
+        },
+        std::move(callback), std::move(check_callback_)));
+  }
+
+  void set_check_callback(base::OnceClosure callback) {
+    check_callback_ = std::move(callback);
+  }
+
+  void set_create_backend_completion_callback(base::OnceClosure callback) {
+    create_backend_completion_callback_ = std::move(callback);
+  }
+
+  void set_create_backend_called_ptr(bool* ptr) {
+    create_backend_called_ptr_ = ptr;
+  }
+
+ private:
+  raw_ptr<bool> create_backend_called_ptr_ = nullptr;
+  base::OnceClosure check_callback_;
+  base::OnceClosure create_backend_completion_callback_;
+};
+
+class HttpCacheEarlyInitTest : public ::testing::Test,
+                               public ::testing::WithParamInterface<bool> {
+ protected:
+  HttpCacheEarlyInitTest() {
+    if (GetParam()) {
+      feature_list_.InitAndEnableFeatureWithParameters(
+          kHttpCacheInitializeDiskCacheBackendEarly, {{"check_disk", "true"}});
+    } else {
+      feature_list_.InitAndDisableFeature(
+          kHttpCacheInitializeDiskCacheBackendEarly);
+    }
+  }
+
+  void TearDown() override { disk_cache::FlushCacheThreadForTesting(); }
+
+  base::test::ScopedFeatureList feature_list_;
+  base::test::TaskEnvironment task_environment_;
+};
+
+TEST_P(HttpCacheEarlyInitTest, FileExists) {
+  base::ScopedTempDir temp_dir;
+  EXPECT_TRUE(temp_dir.CreateUniqueTempDir());
+  // Create a cache and initialize it to ensure valid cache files exist.
+  {
+    auto factory =
+        std::make_unique<MockHttpCacheBackendForEarlyInit>(temp_dir.GetPath());
+    auto* factory_ptr = factory.get();
+
+    base::RunLoop run_loop;
+    if (GetParam()) {
+      factory_ptr->set_check_callback(run_loop.QuitClosure());
+    }
+
+    MockHttpCache cache(std::move(factory));
+
+    if (GetParam()) {
+      run_loop.Run();
+    }
+
+    ScopedMockTransaction transaction(kSimpleGET_Transaction);
+    transaction.is_shared_resource = true;
+    RunTransactionTest(cache.http_cache(), transaction);
+  }
+  disk_cache::FlushCacheThreadForTesting();
+
+  EXPECT_TRUE(base::PathExists(temp_dir.GetPath().AppendASCII("index")));
+
+  base::HistogramTester histogram_tester;
+
+  auto factory =
+      std::make_unique<MockHttpCacheBackendForEarlyInit>(temp_dir.GetPath());
+  auto* factory_ptr = factory.get();
+
+  base::RunLoop run_loop;
+  base::RunLoop backend_creation_loop;
+  bool create_backend_called = false;
+  if (GetParam()) {
+    factory_ptr->set_check_callback(run_loop.QuitClosure());
+    factory_ptr->set_create_backend_completion_callback(
+        backend_creation_loop.QuitClosure());
+    factory_ptr->set_create_backend_called_ptr(&create_backend_called);
+  }
+
+  MockHttpCache cache(std::move(factory));
+
+  if (GetParam()) {
+    run_loop.Run();
+    backend_creation_loop.Run();
+  }
+
+  EXPECT_EQ(GetParam(), create_backend_called);
+  histogram_tester.ExpectBucketCount("HttpCache.CreateBackendEarly", true,
+                                     GetParam() ? 1 : 0);
+}
+
+TEST_P(HttpCacheEarlyInitTest, NoFile) {
+  base::HistogramTester histogram_tester;
+  base::FilePath temp_dir;
+  ASSERT_TRUE(base::GetTempDir(&temp_dir));
+  base::FilePath non_exsiting_dir =
+      temp_dir.AppendASCII("HttpCacheEarlyInitTest");
+  ASSERT_TRUE(!base::DirectoryExists(non_exsiting_dir));
+  auto factory =
+      std::make_unique<MockHttpCacheBackendForEarlyInit>(non_exsiting_dir);
+  auto* factory_ptr = factory.get();
+
+  base::RunLoop run_loop;
+  bool create_backend_called = false;
+  if (GetParam()) {
+    factory_ptr->set_check_callback(run_loop.QuitClosure());
+    factory_ptr->set_create_backend_called_ptr(&create_backend_called);
+  }
+
+  MockHttpCache cache(std::move(factory));
+
+  // Wait for async check.
+  if (GetParam()) {
+    run_loop.Run();
+  }
+
+  EXPECT_FALSE(create_backend_called);
+  histogram_tester.ExpectBucketCount("HttpCache.CreateBackendEarly", false,
+                                     GetParam() ? 1 : 0);
+}
+
+TEST_P(HttpCacheEarlyInitTest, EmptyPath) {
+  base::HistogramTester histogram_tester;
+  auto factory =
+      std::make_unique<MockHttpCacheBackendForEarlyInit>(base::FilePath());
+  auto* factory_ptr = factory.get();
+
+  base::RunLoop run_loop;
+  bool create_backend_called = false;
+  if (GetParam()) {
+    factory_ptr->set_check_callback(run_loop.QuitClosure());
+    factory_ptr->set_create_backend_called_ptr(&create_backend_called);
+  }
+
+  MockHttpCache cache(std::move(factory));
+
+  // Wait for async check.
+  if (GetParam()) {
+    run_loop.Run();
+  }
+
+  EXPECT_FALSE(create_backend_called);
+  histogram_tester.ExpectBucketCount("HttpCache.CreateBackendEarly", false,
+                                     GetParam() ? 1 : 0);
+}
+
+INSTANTIATE_TEST_SUITE_P(All, HttpCacheEarlyInitTest, ::testing::Bool());
+
+class HttpCacheEarlyInitTestCheckDiskFalse : public ::testing::Test {
+ protected:
+  HttpCacheEarlyInitTestCheckDiskFalse() {
+    feature_list_.InitAndEnableFeatureWithParameters(
+        kHttpCacheInitializeDiskCacheBackendEarly, {{"check_disk", "false"}});
+  }
+
+  void TearDown() override { disk_cache::FlushCacheThreadForTesting(); }
+
+  base::test::ScopedFeatureList feature_list_;
+  base::test::TaskEnvironment task_environment_;
+};
+
+TEST_F(HttpCacheEarlyInitTestCheckDiskFalse, CheckDiskDisabled) {
+  base::HistogramTester histogram_tester;
+  base::ScopedTempDir temp_dir;
+  EXPECT_TRUE(temp_dir.CreateUniqueTempDir());
+  auto factory =
+      std::make_unique<MockHttpCacheBackendForEarlyInit>(temp_dir.GetPath());
+  auto* factory_ptr = factory.get();
+  bool create_backend_called = false;
+  factory_ptr->set_create_backend_called_ptr(&create_backend_called);
+  base::RunLoop backend_creation_loop;
+  factory_ptr->set_create_backend_completion_callback(
+      backend_creation_loop.QuitClosure());
+
+  MockHttpCache cache(std::move(factory));
+  backend_creation_loop.Run();
+
+  // Should be called synchronously because check_disk is false
+  EXPECT_TRUE(create_backend_called);
+  histogram_tester.ExpectBucketCount("HttpCache.CreateBackendEarly", true, 1);
 }
 
 }  // namespace net

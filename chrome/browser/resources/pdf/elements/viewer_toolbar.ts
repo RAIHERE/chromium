@@ -3,6 +3,7 @@
 // found in the LICENSE file.
 
 import 'chrome://resources/cr_elements/cr_action_menu/cr_action_menu.js';
+import 'chrome://resources/cr_elements/cr_button/cr_button.js';
 import 'chrome://resources/cr_elements/cr_icon_button/cr_icon_button.js';
 import 'chrome://resources/cr_elements/cr_icon/cr_icon.js';
 import 'chrome://resources/cr_elements/cr_progress/cr_progress.js';
@@ -108,6 +109,8 @@ export class ViewerToolbarElement extends CrLitElement {
       printingEnabled_: {type: Boolean},
       viewportZoomPercent_: {type: Number},
 
+      pdfGlicSummarizeEnabled_: {type: Boolean},
+
       // <if expr="enable_pdf_ink2">
       annotationAvailable: {type: Boolean},
       annotationMode: {
@@ -150,6 +153,8 @@ export class ViewerToolbarElement extends CrLitElement {
   protected accessor loading_: boolean = true;
   protected accessor printingEnabled_: boolean = false;
   private accessor viewportZoomPercent_: number = 0;
+
+  protected accessor pdfGlicSummarizeEnabled_: boolean = false;
 
   // <if expr="enable_pdf_save_to_drive">
   accessor pdfSaveToDriveEnabled: boolean = false;
@@ -222,6 +227,8 @@ export class ViewerToolbarElement extends CrLitElement {
 
   private updateLoadTimeData_() {
     this.printingEnabled_ = loadTimeData.getBoolean('printingEnabled');
+    this.pdfGlicSummarizeEnabled_ =
+        loadTimeData.getBoolean('pdfGlicSummarizeEnabled');
     // <if expr="enable_pdf_ink2">
     this.pdfTextAnnotationsEnabled_ =
         loadTimeData.getBoolean('pdfTextAnnotationsEnabled');
@@ -247,6 +254,10 @@ export class ViewerToolbarElement extends CrLitElement {
     return loadTimeData.getString(
         this.fittingType_ === FittingType.FIT_TO_PAGE ? 'tooltipFitToPage' :
                                                         'tooltipFitToWidth');
+  }
+
+  protected onGlicSummarizeClick_() {
+    this.fire('glic-summarize');
   }
 
   // <if expr="enable_pdf_ink2">
@@ -477,9 +488,7 @@ export class ViewerToolbarElement extends CrLitElement {
     this.currentStroke--;
 
     this.updateCanUndoRedo_();
-    this.dispatchEvent(new CustomEvent(
-        'strokes-updated',
-        {detail: this.currentStroke, bubbles: true, composed: true}));
+    this.fire('strokes-updated', this.currentStroke);
     record(UserAction.UNDO_INK2);
   }
 
@@ -497,9 +506,7 @@ export class ViewerToolbarElement extends CrLitElement {
     this.pluginController_.redo();
     this.currentStroke++;
     this.updateCanUndoRedo_();
-    this.dispatchEvent(new CustomEvent(
-        'strokes-updated',
-        {detail: this.currentStroke, bubbles: true, composed: true}));
+    this.fire('strokes-updated', this.currentStroke);
     record(UserAction.REDO_INK2);
   }
 
@@ -525,8 +532,7 @@ export class ViewerToolbarElement extends CrLitElement {
     this.currentStroke = 0;
     this.mostRecentStroke = 0;
     this.updateCanUndoRedo_();
-    this.dispatchEvent(new CustomEvent(
-        'strokes-updated', {detail: 0, bubbles: true, composed: true}));
+    this.fire('strokes-updated', 0);
   }
   // </if>
 

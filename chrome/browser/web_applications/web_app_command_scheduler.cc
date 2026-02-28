@@ -26,6 +26,7 @@
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/web_applications/commands/app_migration_data_read_command.h"
 #include "chrome/browser/web_applications/commands/app_update_data_read_command.h"
 #include "chrome/browser/web_applications/commands/apply_manifest_migration_command.h"
 #include "chrome/browser/web_applications/commands/apply_pending_manifest_update_command.h"
@@ -41,6 +42,7 @@
 #include "chrome/browser/web_applications/commands/install_app_locally_command.h"
 #include "chrome/browser/web_applications/commands/install_from_info_command.h"
 #include "chrome/browser/web_applications/commands/install_from_sync_command.h"
+#include "chrome/browser/web_applications/commands/install_migrate_to_app_command.h"
 #include "chrome/browser/web_applications/commands/internal/callback_command.h"
 #include "chrome/browser/web_applications/commands/launch_web_app_command.h"
 #include "chrome/browser/web_applications/commands/manifest_silent_update_command.h"
@@ -55,9 +57,10 @@
 #include "chrome/browser/web_applications/commands/update_file_handler_command.h"
 #include "chrome/browser/web_applications/commands/update_protocol_handler_approval_command.h"
 #include "chrome/browser/web_applications/commands/web_app_icon_diagnostic_command.h"
+#include "chrome/browser/web_applications/commands/web_app_install_from_migrate_from_field_command.h"
 #include "chrome/browser/web_applications/commands/web_app_uninstall_command.h"
 #include "chrome/browser/web_applications/commands/web_install_from_url_command.h"
-#include "chrome/browser/web_applications/isolated_web_apps/commands/check_isolated_web_app_bundle_installability_command.h"
+#include "chrome/browser/web_applications/isolated_web_apps/commands/check_isolated_web_app_bundle_user_installability_command.h"
 #include "chrome/browser/web_applications/isolated_web_apps/commands/cleanup_orphaned_isolated_web_apps_command.h"
 #include "chrome/browser/web_applications/isolated_web_apps/commands/get_controlled_frame_partition_command.h"
 #include "chrome/browser/web_applications/isolated_web_apps/commands/get_isolated_web_app_browsing_data_command.h"
@@ -75,6 +78,7 @@
 #include "chrome/browser/web_applications/locks/shared_web_contents_lock.h"
 #include "chrome/browser/web_applications/locks/shared_web_contents_with_app_lock.h"
 #include "chrome/browser/web_applications/os_integration/os_integration_sub_manager.h"
+#include "chrome/browser/web_applications/proto/web_app.pb.h"
 #include "chrome/browser/web_applications/proto/web_app_install_state.pb.h"
 #include "chrome/browser/web_applications/scheduler/apply_pending_manifest_update_result.h"
 #include "chrome/browser/web_applications/scheduler/fetch_install_info_from_install_url_result.h"
@@ -90,7 +94,6 @@
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/browser/web_applications/web_contents/web_app_data_retriever.h"
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
-#include "chrome/common/chrome_features.h"
 #include "components/keep_alive_registry/keep_alive_registry.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -386,13 +389,13 @@ void WebAppCommandScheduler::ApplyPendingIsolatedWebAppUpdate(
 
 // Given the |bundle_metadata| of a Signed Web Bundle, schedules a command to
 // check the installability of the bundle.
-void WebAppCommandScheduler::CheckIsolatedWebAppBundleInstallability(
+void WebAppCommandScheduler::CheckIsolatedWebAppBundleUserInstallability(
     const SignedWebBundleMetadata& bundle_metadata,
     base::OnceCallback<void(IsolatedInstallabilityCheckResult,
                             std::optional<IwaVersion>)> callback,
     const base::Location& call_location) {
   provider_->command_manager().ScheduleCommand(
-      std::make_unique<CheckIsolatedWebAppBundleInstallabilityCommand>(
+      std::make_unique<CheckIsolatedWebAppBundleUserInstallabilityCommand>(
           &profile_.get(), bundle_metadata, std::move(callback)),
       call_location);
 }
@@ -486,11 +489,16 @@ void WebAppCommandScheduler::InstallFromSync(const WebApp& web_app,
   if (web_app.sync_proto().has_theme_color()) {
     theme_color = web_app.sync_proto().theme_color();
   }
+  std::optional<webapps::ManifestId> migrated_from_manifest_id;
+  if (web_app.sync_proto().has_migrated_from_manifest_id()) {
+    migrated_from_manifest_id = webapps::ManifestId(
+        GURL(web_app.sync_proto().migrated_from_manifest_id()));
+  }
   InstallFromSyncCommand::Params params = InstallFromSyncCommand::Params(
       web_app.app_id(), web_app.manifest_id(), web_app.start_url(),
       web_app.sync_proto().name(), GURL(web_app.sync_proto().scope()),
       theme_color, web_app.user_display_mode(), manifest_icon_infos,
-      trusted_icon_infos);
+      trusted_icon_infos, migrated_from_manifest_id);
   provider_->command_manager().ScheduleCommand(
       std::make_unique<InstallFromSyncCommand>(&profile_.get(), params,
                                                std::move(callback)),
@@ -774,11 +782,14 @@ void WebAppCommandScheduler::InstallAppFromUrl(
 void WebAppCommandScheduler::FetchManifestAndUpdate(
     const GURL& install_url,
     const webapps::ManifestId& manifest_id,
-    base::OnceCallback<void(FetchManifestAndUpdateResult)> callback,
+    std::optional<base::Time> previous_time_for_silent_icon_update,
+    bool force_trusted_silent_update,
+    FetchManifestAndUpdateCallback callback,
     const base::Location& location) {
   provider_->command_manager().ScheduleCommand(
-      std::make_unique<FetchManifestAndUpdateCommand>(install_url, manifest_id,
-                                                      std::move(callback)),
+      std::make_unique<FetchManifestAndUpdateCommand>(
+          install_url, manifest_id, previous_time_for_silent_icon_update,
+          force_trusted_silent_update, std::move(callback)),
       location);
 }
 
@@ -857,6 +868,19 @@ void WebAppCommandScheduler::ReadAppUpdateDataFromDisk(
       location);
 }
 
+void WebAppCommandScheduler::ReadAppMigrationDataFromDisk(
+    const webapps::AppId& old_app_id,
+    const webapps::AppId& new_app_id,
+    bool is_forced_migration_on_startup,
+    base::OnceCallback<void(std::optional<WebAppIdentityUpdate>)> callback,
+    const base::Location& location) {
+  provider_->command_manager().ScheduleCommand(
+      std::make_unique<AppMigrationDataReadCommand>(
+          old_app_id, new_app_id, is_forced_migration_on_startup,
+          std::move(callback)),
+      location);
+}
+
 void WebAppCommandScheduler::MarkAppPendingUpdateAsIgnored(
     const webapps::AppId& app_id,
     base::OnceClosure done,
@@ -877,17 +901,42 @@ void WebAppCommandScheduler::ScheduleResolveWebAppPendingMigrationInfo(
       location);
 }
 
+void WebAppCommandScheduler::ScheduleWebAppInstallFromMigrateFromField(
+    base::WeakPtr<content::WebContents> web_contents,
+    blink::mojom::ManifestPtr manifest,
+    WebAppInstallFromMigrateFromFieldCallback callback,
+    const base::Location& location) {
+  provider_->command_manager().ScheduleCommand(
+      std::make_unique<WebAppInstallFromMigrateFromFieldCommand>(
+          web_contents, std::move(manifest), std::move(callback)),
+      location);
+}
+
+void WebAppCommandScheduler::ScheduleInstallMigrateToApp(
+    const webapps::ManifestId& source_manifest_id,
+    const webapps::ManifestId& target_manifest_id,
+    const GURL& target_install_url,
+    InstallMigrateToAppResultCallback callback,
+    const base::Location& location) {
+  provider_->command_manager().ScheduleCommand(
+      std::make_unique<InstallMigrateToAppCommand>(
+          source_manifest_id, target_manifest_id, target_install_url,
+          &*profile_, std::move(callback)),
+      location);
+}
+
 void WebAppCommandScheduler::ApplyManifestMigration(
     const webapps::AppId& source_app_id,
     const webapps::AppId& destination_app_id,
+    const MigrationBehavior migration_behavior,
     std::unique_ptr<ScopedKeepAlive> keep_alive,
     std::unique_ptr<ScopedProfileKeepAlive> profile_keep_alive,
     ApplyManifestMigrationResultCallback callback,
     const base::Location& location) {
   provider_->command_manager().ScheduleCommand(
       std::make_unique<ApplyManifestMigrationCommand>(
-          source_app_id, destination_app_id, &profile_.get(),
-          std::move(keep_alive), std::move(profile_keep_alive),
+          source_app_id, destination_app_id, migration_behavior,
+          &profile_.get(), std::move(keep_alive), std::move(profile_keep_alive),
           std::move(callback)),
       location);
 }

@@ -8,6 +8,7 @@ source_set("ios") {
   sources = [
     "ios_passkey_client.h",
     "ios_passkey_client.mm",
+    "ios_passkey_client_commands.h",
     "ios_webauthn_credentials_delegate.h",
     "ios_webauthn_credentials_delegate.mm",
     "ios_webauthn_credentials_delegate_factory.h",
@@ -39,6 +40,24 @@ source_set("ios") {
     "//ios/web/public/js_messaging",
     "//services/network/public/cpp",
     "//services/network/public/mojom",
+  ]
+}
+
+static_library("test_support") {
+  testonly = true
+  sources = [
+    "fake_ios_passkey_client.h",
+    "fake_ios_passkey_client.mm",
+    "passkey_test_util.h",
+    "passkey_test_util.mm",
+  ]
+  deps = [
+    ":ios",
+    "//base",
+    "//components/sync/protocol",
+    "//components/webauthn/core/browser:passkey_model",
+    "//components/webauthn/ios",
+    "//ios/web/public/test/fakes",
   ]
 }
 
@@ -94,6 +113,7 @@ source_set("unit_tests") {
   deps = [
     ":ios",
     ":js_tests",
+    ":test_support",
     ":utils",
     "//base/test:test_support",
     "//components/autofill/ios/browser",

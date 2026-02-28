@@ -62,6 +62,7 @@ public class PopupCreator implements PopupIntentCreator {
     private static @Nullable ReparentingTask sReparentingTaskForTesting;
     private static @Nullable Insets sInsetsForecastForTesting;
     private static @Nullable Boolean sMoveTabToNewPopupResultForTesting;
+    private static @Nullable Boolean sMoveToNewDocumentPiPWindowResultForTesting;
     private static @Nullable Boolean sSetMovableTaskRequiredForPopupsForTesting;
 
     /**
@@ -115,11 +116,7 @@ public class PopupCreator implements PopupIntentCreator {
                 popupIntentCreator.createPopupIntent(windowFeatures, tab.isIncognitoBranded());
 
         return getReparentingTask(tab)
-                .begin(
-                        ContextUtils.getApplicationContext(),
-                        intent,
-                        activityOptions.toBundle(),
-                        null);
+                .begin(tab.getContext(), intent, activityOptions.toBundle(), null);
     }
 
     /**
@@ -131,6 +128,10 @@ public class PopupCreator implements PopupIntentCreator {
      */
     public static boolean moveWebContentsToNewDocumentPictureInPictureWindow(
             WebContents webContents, PictureInPictureWindowOptions windowOptions) {
+        if (sMoveToNewDocumentPiPWindowResultForTesting != null) {
+            return sMoveToNewDocumentPiPWindowResultForTesting;
+        }
+
         final ActivityOptions activityOptions =
                 createDocumentPipActivityOptions(
                         windowOptions.windowBounds, webContents.getTopLevelNativeWindow());
@@ -484,6 +485,13 @@ public class PopupCreator implements PopupIntentCreator {
     public static void setMoveTabToNewPopupResultForTesting(Boolean moveTabToNewPopupResult) {
         sMoveTabToNewPopupResultForTesting = moveTabToNewPopupResult;
         ResettersForTesting.register(() -> sMoveTabToNewPopupResultForTesting = null);
+    }
+
+    /** Overrides values returned by {@link moveWebContentsToNewDocumentPictureInPictureWindow}. */
+    public static void setMoveToNewDocumentPiPWindowResultForTesting(
+            Boolean moveToNewDocumentPiPWindowResult) {
+        sMoveToNewDocumentPiPWindowResultForTesting = moveToNewDocumentPiPWindowResult;
+        ResettersForTesting.register(() -> sMoveToNewDocumentPiPWindowResultForTesting = null);
     }
 
     /**

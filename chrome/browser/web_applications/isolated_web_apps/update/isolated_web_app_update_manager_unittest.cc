@@ -66,7 +66,6 @@
 #include "chrome/browser/web_applications/web_app_management_type.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "chrome/common/url_constants.h"
 #include "components/web_package/signed_web_bundles/ed25519_public_key.h"
@@ -251,7 +250,6 @@ class IsolatedWebAppUpdateManagerTest : public IsolatedWebAppTest {
     std::unique_ptr<ScopedBundledIsolatedWebApp> app =
         IsolatedWebAppBuilder(manifest).BuildBundle(
             GetIwa1WebBundleId(), {test::GetDefaultEd25519KeyPair()});
-    app->TrustSigningKey();
     app->FakeInstallPageState(profile());
     return app;
   }
@@ -262,7 +260,6 @@ class IsolatedWebAppUpdateManagerTest : public IsolatedWebAppTest {
         IsolatedWebAppBuilder(ManifestBuilder().SetVersion(version))
             .BuildBundle(GetIwa2WebBundleId(),
                          {test::GetDefaultEcdsaP256KeyPair()});
-    app->TrustSigningKey();
     app->FakeInstallPageState(profile());
     return app;
   }

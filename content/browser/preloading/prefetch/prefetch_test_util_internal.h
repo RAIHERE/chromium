@@ -10,6 +10,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
+#include "components/variations/scoped_variations_ids_provider.h"
 #include "content/browser/preloading/prefetch/prefetch_service.h"
 #include "content/public/test/preloading_test_util.h"
 #include "content/public/test/test_renderer_host.h"
@@ -29,6 +30,8 @@ class RunLoop;
 }  // namespace base
 
 namespace content {
+
+network::mojom::URLResponseHeadPtr SuccessfulPrefetchResponseHeadForTesting();
 
 using OnPrefetchCompleteTestFuture =
     base::test::TestFuture<network::URLLoaderCompletionStatus>;
@@ -209,7 +212,7 @@ class TestPrefetchService final : public PrefetchService {
   void PrefetchUrl(
       base::WeakPtr<PrefetchContainer> prefetch_container) override;
   void OnPrefetchCompletedOrFailed(
-      PrefetchContainer& prefetch_container,
+      const PrefetchContainer& prefetch_container,
       const network::URLLoaderCompletionStatus& completion_status,
       const std::optional<int>& response_code) override;
   void EvictPrefetch(size_t index);
@@ -310,6 +313,13 @@ class PrefetchingMetricsTestBase : public RenderViewHostTestHarness {
   std::unique_ptr<ukm::TestAutoSetUkmRecorder> test_ukm_recorder_;
   std::unique_ptr<test::PreloadingAttemptUkmEntryBuilder>
       attempt_entry_builder_;
+
+  // Except for some tests related to variations header (using
+  // `variations::VariationsIdsProvider::GetInstance()`), this is just to
+  // prevent `PrefetchContainer`'s resource request creation from crashing due
+  // to lack of a `VariationsIdsProvider`.
+  variations::test::ScopedVariationsIdsProvider scoped_variations_ids_provider_{
+      variations::VariationsIdsProvider::Mode::kIgnoreSignedInState};
 };
 
 // Helpers for parametrized tests for rearchitecturing/refactoring of the core
@@ -334,10 +344,6 @@ class PrefetchingMetricsTestBase : public RenderViewHostTestHarness {
 struct PrefetchRearchParam final {
  public:
   static std::vector<PrefetchRearchParam> Params();
-
-  bool prefetch_scheduler;
-  bool prefetch_scheduler_progress_sync_best_effort;
-  bool graceful_notification;
 };
 
 class WithPrefetchRearchParam {
@@ -351,8 +357,6 @@ class WithPrefetchRearchParam {
 
  private:
   PrefetchRearchParam param_;
-  base::test::ScopedFeatureList feature_list_prefetch_scheduler_;
-  base::test::ScopedFeatureList feature_list_graceful_notification_;
 };
 
 // A wrapper for `PrefetchService::SetInjectedEligibilityCheckForTesting`.

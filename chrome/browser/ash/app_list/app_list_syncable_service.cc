@@ -24,6 +24,7 @@
 #include "base/strings/to_string.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/values.h"
+#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/apps/app_preload_service/app_preload_service.h"
 #include "chrome/browser/apps/app_service/app_service_proxy.h"
@@ -1357,7 +1358,7 @@ AppListSyncableService::MergeDataAndStartSyncing(
   oem_folder_using_provisional_default_position_ = false;
 
   // Fix items that do not contain valid app list position, required for
-  // builds prior to M53 (crbug.com/677647).
+  // builds prior to M53 (crbug.com/40499759).
   for (const auto& [item_id, sync_item] : sync_items_) {
     sync_item->ordinal_to_undo_on_non_empty_initial_sync.reset();
     if (sync_item->item_type != sync_pb::AppListSpecifics::TYPE_APP ||

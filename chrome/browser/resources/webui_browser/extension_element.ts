@@ -10,11 +10,19 @@ import {MenuSourceType} from '//resources/mojo/ui/base/mojom/menu_source_type.mo
 
 import {getCss} from './extension_element.css.js';
 import {getHtml} from './extension_element.html.js';
-import type {ExtensionsBar} from './extensions_bar.js';
+import type {ExtensionsBarElement} from './extensions_bar.js';
 
 export class ExtensionElement extends CrLitElement {
   static get is() {
     return 'webui-browser-extension-element';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
   }
 
   static override get properties() {
@@ -27,18 +35,10 @@ export class ExtensionElement extends CrLitElement {
   accessor iconUrl: string = '';
   accessor visible: boolean = false;
 
-  private bar: ExtensionsBar;
+  private bar: ExtensionsBarElement;
   private extensionId: string;
 
-  static override get styles() {
-    return getCss();
-  }
-
-  override render() {
-    return getHtml.bind(this)();
-  }
-
-  constructor(extensionId: string, bar: ExtensionsBar) {
+  constructor(extensionId: string, bar: ExtensionsBarElement) {
     super();
     this.extensionId = extensionId;
     this.bar = bar;
@@ -53,7 +53,7 @@ export class ExtensionElement extends CrLitElement {
     this.bar.onClick(this.extensionId);
   }
 
-  protected onContextMenu(event: PointerEvent) {
+  protected onContextmenu_(event: PointerEvent) {
     event.preventDefault();
     let sourceType: MenuSourceType = MenuSourceType.kNone;
     switch (event.pointerType) {

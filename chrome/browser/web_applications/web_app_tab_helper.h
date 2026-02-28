@@ -109,6 +109,9 @@ class WebAppTabHelper : public content::WebContentsUserData<WebAppTabHelper>,
   // Note: If we are in an app window, this is not guaranteed to match
   // `window_app_id()` - for example, if the web contents of an app navigates
   // out of scope of the app, this will be std::nullopt.
+  //
+  // Note: Isolated Web Apps don't 'control' browser app tab
+  // even if they have scope extended url that includes this tab.
   const std::optional<webapps::AppId>& app_id() const { return app_id_; }
 
   // Returns the installed web app window that contains this tab, or
@@ -163,6 +166,9 @@ class WebAppTabHelper : public content::WebContentsUserData<WebAppTabHelper>,
   // `UpdateAudioFocusGroupId()` if either has changed.
   void SetState(std::optional<webapps::AppId> app_id,
                 std::optional<webapps::AppId> window_app_id);
+
+  void MaybeShowBlockedMigrationInfoBar(
+      const std::optional<webapps::AppId>& app_id);
 
   // Runs any logic when the associated app is added, changed or removed.
   void OnAssociatedAppChanged(

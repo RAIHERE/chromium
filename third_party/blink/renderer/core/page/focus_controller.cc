@@ -789,6 +789,14 @@ bool ScopedFocusNavigation::IsNonEntryFocusgroupItem(const Element& element) {
     return false;
   }
 
+  // When an element is in an excluded subtree (either explicitly via
+  // focusgroup="none", or because it's inside a focused arrow key handler),
+  // treat it as not a focusgroup item for sequential navigation purposes.
+  // This allows normal Tab order to apply.
+  if (FocusgroupControllerUtils::FindExcludedSubtreeRoot(&element)) {
+    return false;
+  }
+
   // Calling this on every element is expensive. TODO(janewman): We should keep
   // track of when we enter/exit focusgroups during navigation, and only call
   // this when we are inside a focusgroup.
@@ -801,7 +809,8 @@ bool ScopedFocusNavigation::IsNonEntryFocusgroupItem(const Element& element) {
 
   // Find the first item in this element's segment to use as the cache key.
   const Element* segment_first_item =
-      FocusgroupControllerUtils::FirstFocusgroupItemInSegment(element);
+      FocusgroupControllerUtils::FocusgroupItemInSegment(
+          element, FocusgroupItemPosition::kFirst);
   // An element in a focusgroup defines a segment, so this should never be null.
   CHECK(segment_first_item);
 
@@ -924,6 +933,9 @@ ScopedFocusNavigation ScopedFocusNavigation::OwnedByPopoverInvoker(
     const Element& invoker,
     FocusController::OwnerMap& owner_map) {
   HTMLElement* popover = invoker.GetOpenPopoverTarget();
+  if (IsShadowHost(popover)) {
+    return ScopedFocusNavigation::OwnedByShadowHost(*popover, owner_map);
+  }
   DCHECK(InvokerForOpenPopover(popover));
   return ScopedFocusNavigation(*popover, nullptr, owner_map);
 }
@@ -971,10 +983,10 @@ bool IsLikelyCaptchaIframe(const Element& element) {
   }
   DEFINE_STATIC_LOCAL(String, kCaptcha, ("captcha"));
   return iframe_element->FastGetAttribute(html_names::kSrcAttr)
-             .Contains(kCaptcha) ||
-         iframe_element->title().Contains(kCaptcha) ||
-         iframe_element->GetIdAttribute().Contains(kCaptcha) ||
-         iframe_element->GetNameAttribute().Contains(kCaptcha);
+             .contains(kCaptcha) ||
+         iframe_element->title().contains(kCaptcha) ||
+         iframe_element->GetIdAttribute().contains(kCaptcha) ||
+         iframe_element->GetNameAttribute().contains(kCaptcha);
 }
 
 // Checks whether |element| is a captcha <iframe> or enclosed with such an

@@ -7,6 +7,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 
 #include "base/check_op.h"
 #include "base/compiler_specific.h"
@@ -201,7 +202,7 @@ void ParseConfigurationArguments(const base::ListValue& args,
   }
 }
 
-std::string GetSyncErrorAction(SyncStatusActionType action_type) {
+std::string_view GetSyncErrorAction(SyncStatusActionType action_type) {
   switch (action_type) {
     case SyncStatusActionType::kReauthenticate:
       return "reauthenticate";
@@ -229,17 +230,15 @@ base::DictValue GetAccountValue(signin::IdentityManager* identity_manager,
   DCHECK(!account.IsEmpty());
   auto dict =
       base::DictValue()
-          .Set("email", account.email)
-          .Set("fullName", account.full_name)
-          .Set("givenName", account.given_name)
+          .Set("email", account.GetEmail())
+          .Set("fullName", account.GetFullName().value_or(""))
+          .Set("givenName", account.GetGivenName().value_or(""))
           .Set("isPrimaryAccount",
-               account.account_id ==
-                   identity_manager
-                       ->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin)
-                       .account_id);
-  if (!account.account_image.IsEmpty()) {
+               account.GetAccountId() == identity_manager->GetPrimaryAccountId(
+                                             signin::ConsentLevel::kSignin));
+  if (account.GetAvatarImage().has_value()) {
     dict.Set("avatarImage",
-             webui::GetBitmapDataUrl(account.account_image.AsBitmap()));
+             webui::GetBitmapDataUrl(account.GetAvatarImage()->AsBitmap()));
   }
   return dict;
 }

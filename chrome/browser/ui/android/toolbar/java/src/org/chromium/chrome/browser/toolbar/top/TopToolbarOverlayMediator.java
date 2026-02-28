@@ -141,8 +141,10 @@ public class TopToolbarOverlayMediator {
         mModel = model;
         mBottomToolbarControlsOffsetSupplier = bottomToolbarControlsOffsetSupplier;
         mSuppressToolbarSceneLayerSupplier = suppressToolbarSceneLayerSupplier;
-        mBottomToolbarControlsOffsetSupplier.addObserver(mOnBottomToolbarControlsOffsetChanged);
-        mSuppressToolbarSceneLayerSupplier.addObserver(mOnSuppressToolbarSceneLayerChanged);
+        mBottomToolbarControlsOffsetSupplier.addSyncObserverAndPostIfNonNull(
+                mOnBottomToolbarControlsOffsetChanged);
+        mSuppressToolbarSceneLayerSupplier.addSyncObserverAndPostIfNonNull(
+                mOnSuppressToolbarSceneLayerChanged);
         mIsVisibilityManuallyControlled = manualVisibilityControl;
         mIsOnValidLayout = (mLayoutStateProvider.getActiveLayoutType() & layoutsToShowOn) > 0;
         mTabSupplier = tabSupplier;
@@ -296,9 +298,7 @@ public class TopToolbarOverlayMediator {
 
                     @Override
                     public void onCompositedLayersVisibilityChanged() {
-                        if (ChromeFeatureList.sAndroidAnimatedProgressBarInBrowser.isEnabled()) {
-                            updateProgress();
-                        }
+                        updateProgress();
                     }
                 };
         if (progressBar != null) {

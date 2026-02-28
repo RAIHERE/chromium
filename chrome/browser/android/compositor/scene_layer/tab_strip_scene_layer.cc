@@ -44,6 +44,9 @@ TabStripSceneLayer::TabStripSceneLayer(JNIEnv* env,
       right_fade_(cc::slim::UIResourceLayer::Create()),
       left_padding_layer_(cc::slim::SolidColorLayer::Create()),
       right_padding_layer_(cc::slim::SolidColorLayer::Create()),
+      glic_button_(cc::slim::UIResourceLayer::Create()),
+      glic_button_background_(cc::slim::UIResourceLayer::Create()),
+      glic_button_keyboard_focus_ring_(cc::slim::UIResourceLayer::Create()),
       model_selector_button_(cc::slim::UIResourceLayer::Create()),
       model_selector_button_background_(cc::slim::UIResourceLayer::Create()),
       model_selector_button_keyboard_focus_ring_(
@@ -52,6 +55,8 @@ TabStripSceneLayer::TabStripSceneLayer(JNIEnv* env,
       content_tree_(nullptr) {
   new_tab_button_->SetIsDrawable(true);
   new_tab_button_background_->SetIsDrawable(true);
+  glic_button_->SetIsDrawable(true);
+  glic_button_background_->SetIsDrawable(true);
   model_selector_button_->SetIsDrawable(true);
   model_selector_button_background_->SetIsDrawable(true);
 
@@ -108,11 +113,13 @@ TabStripSceneLayer::TabStripSceneLayer(JNIEnv* env,
     tab_strip_layer_->AddChild(right_fade_);
     tab_strip_layer_->AddChild(right_padding_layer_);
   }
-
+  tab_strip_layer_->AddChild(glic_button_background_);
   tab_strip_layer_->AddChild(model_selector_button_background_);
   tab_strip_layer_->AddChild(new_tab_button_background_);
+  tab_strip_layer_->AddChild(glic_button_);
   tab_strip_layer_->AddChild(model_selector_button_);
   tab_strip_layer_->AddChild(new_tab_button_);
+  tab_strip_layer_->AddChild(glic_button_keyboard_focus_ring_);
   tab_strip_layer_->AddChild(model_selector_button_keyboard_focus_ring_);
   tab_strip_layer_->AddChild(new_tab_button_keyboard_focus_ring_);
 
@@ -286,6 +293,37 @@ void TabStripSceneLayer::UpdateNewTabButton(
                          should_apply_hover_highlight, button_alpha,
                          new_tab_button_keyboard_focus_ring_,
                          is_keyboard_focused, keyboard_focus_ring_drawable);
+}
+
+void TabStripSceneLayer::UpdateGlicButton(
+    JNIEnv* env,
+    int32_t resource_id,
+    int32_t bg_resource_id,
+    float x,
+    float y,
+    bool visible,
+    bool should_apply_hover_highlight,
+    int32_t tint,
+    int32_t background_tint,
+    float button_alpha,
+    bool is_keyboard_focused,
+    int32_t keyboard_focus_ring_resource_id,
+    int32_t keyboard_focus_ring_color) {
+  DCHECK(resource_manager_);
+  ui::Resource* button_resource =
+      resource_manager_->GetStaticResourceWithTint(resource_id, tint);
+  ui::Resource* background_resource =
+      resource_manager_->GetStaticResourceWithTint(bg_resource_id,
+                                                   background_tint, true);
+  ui::Resource* keyboard_focus_ring_drawable =
+      resource_manager_->GetStaticResourceWithTint(
+          keyboard_focus_ring_resource_id, keyboard_focus_ring_color, true);
+
+  UpdateCompositorButton(glic_button_, glic_button_background_, button_resource,
+                         background_resource, x, y, visible,
+                         should_apply_hover_highlight, button_alpha,
+                         glic_button_keyboard_focus_ring_, is_keyboard_focused,
+                         keyboard_focus_ring_drawable);
 }
 
 void TabStripSceneLayer::UpdateModelSelectorButton(
@@ -473,6 +511,9 @@ void TabStripSceneLayer::PutStripTabLayer(
     int32_t media_indicator_resource_id,
     int32_t media_indicator_tint,
     float media_indicator_width,
+    float media_indicator_spacing,
+    float media_indicator_internal_padding,
+    float title_to_media_indicator_spacing,
     float toolbar_width,
     float x,
     float y,
@@ -538,19 +579,28 @@ void TabStripSceneLayer::PutStripTabLayer(
         media_indicator_resource_id, media_indicator_tint);
   }
 
+  float media_indicator_opacity = 1.0f;
+  if (media_indicator_tint == close_tint) {
+    // Match close button opacity (0.7) if tints are the same, as the
+    // media indicator is expected to look like the close button in such cases.
+    media_indicator_opacity = 0.7f;
+  }
+
   layer->SetProperties(
       id, close_button_resource, close_button_hover_resource,
       is_close_keyboard_focused, close_button_keyboard_focus_ring_resource,
       divider_resource, tab_handle_resource, tab_handle_outline_resource,
       foreground, is_pinned, shouldShowTabOutline, close_pressed,
       should_hide_favicon, should_show_media_indicator,
-      media_indicator_drawable, media_indicator_width, toolbar_width, x, y,
-      width, height, content_offset_y, divider_offset_x, bottom_margin,
-      top_margin, close_button_padding, close_button_alpha,
-      is_start_divider_visible, is_end_divider_visible, is_loading,
-      spinner_rotation, opacity, is_keyboard_focused,
-      keyboard_focus_ring_drawable, keyboard_focus_ring_offset, stroke_width,
-      folio_foot_length, width_to_hide_tab_title);
+      media_indicator_drawable, media_indicator_width, media_indicator_spacing,
+      media_indicator_internal_padding, title_to_media_indicator_spacing,
+      media_indicator_opacity, toolbar_width, x, y, width, height,
+      content_offset_y, divider_offset_x, bottom_margin, top_margin,
+      close_button_padding, close_button_alpha, is_start_divider_visible,
+      is_end_divider_visible, is_loading, spinner_rotation, opacity,
+      is_keyboard_focused, keyboard_focus_ring_drawable,
+      keyboard_focus_ring_offset, stroke_width, folio_foot_length,
+      width_to_hide_tab_title);
 }
 
 void TabStripSceneLayer::PutGroupIndicatorLayer(

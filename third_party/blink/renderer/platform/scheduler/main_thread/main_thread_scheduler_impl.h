@@ -49,6 +49,7 @@
 #include "third_party/blink/renderer/platform/scheduler/main_thread/memory_purge_manager.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/page_scheduler_impl.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/pending_user_input.h"
+#include "third_party/blink/renderer/platform/scheduler/main_thread/performance_helper.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/render_widget_signals.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/use_case.h"
 #include "third_party/blink/renderer/platform/scheduler/main_thread/user_model.h"
@@ -426,6 +427,11 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     return main_thread_only().current_task_start_time;
   }
 
+  // TODO(crbug.com/470337728): Remove these functions when
+  // kWebRtcUseMediaThreadTypes is enabled by default.
+  void IncreaseDefaultThreadTypeUsageCount();
+  void DecreaseDefaultThreadTypeUsageCount();
+
  protected:
   // ThreadSchedulerBase implementation:
   Vector<base::OnceClosure>& GetOnTaskCompletionCallbacks() override;
@@ -668,6 +674,8 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
       MainThreadTaskQueue*,
       const base::sequence_manager::TaskQueue::TaskTiming&);
 
+  void ApplyPerformanceState(bool prefer_efficient_scheduling);
+
   // Computes the priority for compositing based on the current use case.
   // Returns nullopt if the use case does not need to set the priority.
   std::optional<TaskPriority> ComputeCompositorPriorityFromUseCase() const;
@@ -680,6 +688,8 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 
   bool AllPagesFrozen() const;
 
+  void MaybeSetBusyLoop();
+
   // Indicates that scheduler has been shutdown.
   // It should be accessed only on the main thread, but couldn't be a member
   // of MainThreadOnly struct because last might be destructed before we
@@ -688,6 +698,9 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 
   bool has_ipc_callback_set_ = false;
   bool IsIpcTrackingEnabledForAllPages();
+
+  // Updates the thread type lease based on the current use case.
+  void MaybeUpdateThreadTypeLease();
 
   // This controller should be initialized before any TraceableVariables
   // because they require one to initialize themselves.
@@ -780,6 +793,8 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
         has_navigated;
     TraceableState<bool, TRACE_DISABLED_BY_DEFAULT("renderer.scheduler.debug")>
         pause_timers_for_webview;
+    // If true, indicates that CPU performance management is applied.
+    TraceableState<bool, "renderer.scheduler"> restrict_cpu_performance;
     base::TimeTicks background_status_changed_at;
     HashSet<PageSchedulerImpl*> page_schedulers;  // Not owned.
     base::ObserverList<RAILModeObserver>::Unchecked
@@ -843,6 +858,9 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
     // enabled.
     std::unique_ptr<ThreadAffinityBoost> affinity_boost = nullptr;
 #endif  // BUILDFLAG(IS_ANDROID)
+
+    // Multiplier to apply to the message busy loop maximum duration
+    float busy_loop_scale_factor = 0.f;
   };
 
   struct AnyThread {
@@ -921,6 +939,12 @@ class PLATFORM_EXPORT MainThreadSchedulerImpl
 
   PollableThreadSafeFlag policy_may_need_update_;
   WeakPersistent<AgentGroupScheduler> current_agent_group_scheduler_;
+
+  PerformanceHelper performance_helper_;
+
+  std::optional<base::PlatformThread::RaiseThreadTypeLease>
+      raise_thread_type_lease_;
+  size_t default_thread_type_usage_count_ = 0;
 
   // This is accessed from both the main and IO (IPC) threads. It's incremented
   // when an urgent IPC task is posted and decremented when that IPC task runs

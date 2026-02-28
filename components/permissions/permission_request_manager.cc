@@ -104,13 +104,13 @@ const char kGestureGatedNotificationMessage[] =
     "The Notification permission request was suppressed and shown as a quiet "
     "prompt because it was requested without a user gesture. Users are more "
     "likely to grant permissions when requested in context. See "
-    "https://developer.chrome.com/blog/permissions-chip#without_user_gesture.";
+    "https://crbug.com/479151408 for more details.";
 
 const char kGestureGatedGeolocationMessage[] =
     "The Geolocation permission request was suppressed and shown as a quiet "
     "prompt because it was requested without a user gesture. Users are more "
     "likely to grant permissions when requested in context. See "
-    "https://developer.chrome.com/blog/permissions-chip#without_user_gesture.";
+    "https://crbug.com/479151408 for more details.";
 
 namespace {
 
@@ -1733,6 +1733,14 @@ void PermissionRequestManager::OnPermissionUiSelectorDone(
     current_request_ui_to_use_ = *final_decision;
     ShowPrompt();
   }
+}
+
+void PermissionRequestManager::SwitchToLoudPrompt() {
+  current_request_ui_to_use_ =
+      UiDecision::UseNormalUi(UiDecision::ShowNoWarning(),
+                              current_request_ui_to_use_->geolocation_accuracy);
+  view_.reset();
+  ShowPrompt();
 }
 
 PermissionPromptDisposition

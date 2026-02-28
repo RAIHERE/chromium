@@ -57,6 +57,7 @@
 #include "chrome/browser/ash/arc/arc_util.h"
 #include "chrome/browser/ash/base/locale_util.h"
 #include "chrome/browser/ash/boot_times_recorder/boot_times_recorder.h"
+#include "chrome/browser/ash/browser_delegate/browser_controller.h"
 #include "chrome/browser/ash/child_accounts/child_policy_observer.h"
 #include "chrome/browser/ash/drive/file_system_util.h"
 #include "chrome/browser/ash/eol/eol_notification.h"
@@ -107,14 +108,10 @@
 #include "chrome/browser/ash/system_web_apps/apps/help_app/help_app_notification_controller.h"
 #include "chrome/browser/ash/tether/tether_service.h"
 #include "chrome/browser/ash/tpm/tpm_firmware_update_notification.h"
-#include "chrome/browser/ash/u2f/u2f_notification.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part_ash.h"
 #include "chrome/browser/first_run/first_run.h"
 #include "chrome/browser/global_features.h"
-#include "chrome/browser/lifetime/application_lifetime.h"
-#include "chrome/browser/lifetime/application_lifetime_chromeos.h"
-#include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/metrics/first_web_contents_profiler.h"
 #include "chrome/browser/prefs/session_startup_pref.h"
 #include "chrome/browser/profiles/profile.h"
@@ -350,7 +347,7 @@ void InitLocaleAndInputMethodsForNewUser(
 
   // Save the input methods in the user's preferences.
   StringPrefMember language_preload_engines;
-  language_preload_engines.Init(::prefs::kLanguagePreloadEngines, prefs);
+  language_preload_engines.Init(ash::prefs::kLanguagePreloadEngines, prefs);
   language_preload_engines.SetValue(base::JoinString(input_method_ids, ","));
   BootTimesRecorder::Get()->AddLoginTimeMarker("IMEStarted", false);
 
@@ -382,7 +379,7 @@ void InitLocaleAndInputMethodsForNewUser(
 
   // Indicate that we need to merge the syncable input methods when we sync,
   // since we have not applied the synced prefs before.
-  prefs->SetBoolean(::prefs::kLanguageShouldMergeInputMethods, true);
+  prefs->SetBoolean(ash::prefs::kLanguageShouldMergeInputMethods, true);
 }
 
 bool IsKioskProfile(Profile* profile) {
@@ -428,12 +425,6 @@ void LogCustomFeatureFlags(const std::set<std::string>& feature_flags) {
 
   about_flags::ReadOnlyFlagsStorage flags_storage(feature_flags, {});
   ::about_flags::RecordUMAStatistics(&flags_storage, "Login.CustomFlags");
-}
-
-// Calls the real AttemptRestart method. This is used to avoid taking a function
-// pointer to chrome::AttemptRestart directly.
-void CallChromeAttemptRestart() {
-  chrome::AttemptRestart();
 }
 
 bool IsRunningTest() {
@@ -633,7 +624,8 @@ UserSessionManager::UserSessionManager()
       should_obtain_handles_(true),
       should_launch_browser_(true),
       waiting_for_child_account_status_(false),
-      attempt_restart_closure_(base::BindRepeating(&CallChromeAttemptRestart)) {
+      attempt_restart_closure_(base::BindRepeating(
+          []() { session_manager::SessionManager::Get()->RequestRestart(); })) {
   user_manager::UserManager::Get()->AddSessionStateObserver(this);
   content::GetNetworkConnectionTrackerFromUIThread(
       base::BindOnce(&UserSessionManager::SetNetworkConnectionTracker,
@@ -847,7 +839,7 @@ void UserSessionManager::RestoreAuthenticationSession(Profile* user_profile) {
     // Even if we're online we should wait till initial
     // OnConnectionTypeChanged() call. Otherwise starting fetchers too early may
     // end up canceling all request when initial network connection type is
-    // processed. See http://crbug.com/121643.
+    // processed. See http://crbug.com/40184809.
     pending_signin_restore_sessions_.insert(user->GetAccountId());
   }
 }
@@ -929,8 +921,8 @@ bool UserSessionManager::RespectLocalePreference(
     Profile* profile,
     const user_manager::User* user,
     locale_util::SwitchLanguageCallback callback) const {
-  // TODO(alemate): http://crbug.com/288941 : Respect preferred language list in
-  // the Google user profile.
+  // TODO(alemate): http://crbug.com/260016091 : Respect preferred language list
+  // in the Google user profile.
   if (g_browser_process == nullptr)
     return false;
 
@@ -1131,7 +1123,7 @@ void UserSessionManager::OnSessionRestoreStateChanged(
   }
 
   // We should not be clearing existing token state if that was a connection
-  // error. http://crbug.com/295245
+  // error. http://crbug.com/40333700
   if (!connection_error) {
     // We are in one of "done" states here.
     user_manager::UserManager::Get()->SaveUserOAuthStatus(
@@ -1144,12 +1136,12 @@ void UserSessionManager::OnSessionRestoreStateChanged(
   // Terminate user session if merge session fails for an online sign-in.
   // Otherwise, auth token dependent code would be in an invalid state.
   // Important piece such as policy code might be broken because of this and
-  // subject to an exploit. See http://crbug.com/677312.
+  // subject to an exploit. See http://crbug.com/41292933.
   if (IsOnlineSignin(user_context_) &&
       state == OAuth2LoginManager::SESSION_RESTORE_FAILED) {
     SYSLOG(ERROR)
         << "Session restore failed for online sign-in, terminating session.";
-    chrome::AttemptUserExit();
+    session_manager::SessionManager::Get()->RequestSignOut();
     return;
   }
 
@@ -1161,9 +1153,9 @@ void UserSessionManager::OnSessionRestoreStateChanged(
 }
 
 void UserSessionManager::OnConnectionChanged(
-    network::mojom::ConnectionType type) {
+    net::NetworkChangeNotifier::ConnectionType type) {
   user_manager::UserManager* user_manager = user_manager::UserManager::Get();
-  if (type == network::mojom::ConnectionType::CONNECTION_NONE ||
+  if (type == net::NetworkChangeNotifier::ConnectionType::CONNECTION_NONE ||
       !user_manager->IsUserLoggedIn() ||
       !user_manager->IsLoggedInAsUserWithGaiaAccount() ||
       user_manager->IsLoggedInAsStub() || IsRunningTest()) {
@@ -1196,7 +1188,7 @@ void UserSessionManager::OnProfilePrepared(Profile* profile,
   if (!IsRunningTest()) {
     // Did not log in (we crashed or are debugging), need to restore Sync.
     // TODO(nkostylev): Make sure that OAuth state is restored correctly for all
-    // users once it is fully multi-profile aware. http://crbug.com/238987
+    // users once it is fully multi-profile aware. http://crbug.com/41011298
     // For now if we have other user pending sessions they'll override OAuth
     // session restore for previous users.
     RestoreAuthenticationSession(profile);
@@ -1528,8 +1520,8 @@ void UserSessionManager::InitProfilePreferences(
       // old Device Account tokens (`revoke_old_token` = `false`), otherwise
       // Gaia will revoke all tokens associated to this user's device id,
       // including `refresh_token_` and the user will be stuck performing an
-      // online auth with Gaia at every login. See https://crbug.com/952570 and
-      // https://crbug.com/865189 for context.
+      // online auth with Gaia at every login. See https://crbug.com/40623046
+      // and https://crbug.com/40585591 for context.
       account_manager->UpsertAccount(account_key,
                                      user->GetDisplayEmail() /* raw_email */,
                                      user_context.GetRefreshToken());
@@ -1558,7 +1550,8 @@ void UserSessionManager::InitProfilePreferences(
     const signin::PrimaryAccountMutator::PrimaryAccountError
         set_account_result =
             identity_manager->GetPrimaryAccountMutator()->SetPrimaryAccount(
-                account_id, ConsentLevel::kSync);
+                account_id, ConsentLevel::kSync,
+                signin_metrics::AccessPoint::kAshUserSessionManager);
     VLOG(1) << "SetPrimaryAccount result="
             << static_cast<int>(set_account_result);
 
@@ -2223,9 +2216,6 @@ void UserSessionManager::ShowNotificationsIfNeeded(Profile* profile) {
   // and show the message accordingly.
   tpm_firmware_update::ShowNotificationIfNeeded(profile);
 
-  // Show legacy U2F notification if applicable.
-  MaybeShowU2FNotification();
-
   MaybeShowHelpAppReleaseNotesNotification(profile);
 
   g_browser_process->platform_part()
@@ -2407,9 +2397,10 @@ void UserSessionManager::CheckEolInfo(Profile* profile) {
 void UserSessionManager::DoBrowserLaunchInternal(Profile* profile,
                                                  bool locale_pref_checked) {
   TRACE_EVENT0("login", "UserSessionManager::DoBrowserLaunchInternal");
-  if (browser_shutdown::IsTryingToQuit() ||
-      chrome::IsSendingStopRequestToSessionManager())
+  if (ash::BrowserController::GetInstance()->IsTryingToQuit() ||
+      ash::SessionTerminationManager::IsSendingStopRequestToSessionManager()) {
     return;
+  }
 
   if (!locale_pref_checked) {
     RespectLocalePreferenceWrapper(
@@ -2443,7 +2434,7 @@ void UserSessionManager::DoBrowserLaunchInternal(Profile* profile,
       // instead override `ServiceIsCreatedWithBrowserContext` in the
       // factory to conditionally construct the service after profile creation.
       FloatingWorkspaceServiceFactory::GetForProfile(profile);
-    } else if (!floating_workspace_handles_restore) {
+    } else {
       if (!IsFullRestoreEnabled(profile)) {
         LaunchBrowser(profile);
         PerformPostBrowserLaunchOOBEActions(profile);
@@ -2528,9 +2519,10 @@ void UserSessionManager::DoBrowserLaunchInternal(Profile* profile,
 void UserSessionManager::RespectLocalePreferenceWrapper(
     Profile* profile,
     base::OnceClosure callback) {
-  if (browser_shutdown::IsTryingToQuit() ||
-      chrome::IsSendingStopRequestToSessionManager())
+  if (ash::BrowserController::GetInstance()->IsTryingToQuit() ||
+      ash::SessionTerminationManager::IsSendingStopRequestToSessionManager()) {
     return;
+  }
 
   const user_manager::User* const user =
       ProfileHelper::Get()->GetUserByProfile(profile);
@@ -2627,7 +2619,6 @@ void UserSessionManager::Shutdown() {
   token_observers_.clear();
   always_on_vpn_manager_.reset();
   child_policy_observer_.reset();
-  u2f_notification_.reset();
   help_app_notification_controller_.reset();
   password_service_voted_.reset();
   password_was_saved_ = false;
@@ -2640,7 +2631,7 @@ void UserSessionManager::SetSwitchesForUser(
     CommandLineSwitchesType switches_type,
     const std::vector<std::string>& switches) {
   // TODO(pmarko): Introduce a CHECK that `account_id` is the primary user
-  // (https://crbug.com/832857).
+  // (https://crbug.com/276837931).
   // Early out so that switches for secondary users are not applied to the whole
   // session. This could be removed when things like flags UI of secondary users
   // are fixed properly and TODO above to add CHECK() is done.
@@ -2661,13 +2652,6 @@ void UserSessionManager::SetSwitchesForUser(
   SessionManagerClient::Get()->SetFlagsForUser(
       cryptohome::CreateAccountIdentifierFromAccountId(account_id),
       all_switches);
-}
-
-void UserSessionManager::MaybeShowU2FNotification() {
-  if (!u2f_notification_) {
-    u2f_notification_ = std::make_unique<U2FNotification>();
-    u2f_notification_->Check();
-  }
 }
 
 void UserSessionManager::MaybeShowHelpAppReleaseNotesNotification(

@@ -58,12 +58,20 @@ public class EmptyTabModel implements IncognitoTabModelInternal {
     }
 
     @Override
+    public @TabModelType int getTabModelType() {
+        return TabModelType.EMPTY;
+    }
+
+    @Override
     public @Nullable Profile getProfile() {
         return null;
     }
 
     @Override
     public void associateWithBrowserWindow(long nativeAndroidBrowserWindow) {}
+
+    @Override
+    public void dissociateWithBrowserWindow() {}
 
     @Override
     public boolean isIncognito() {
@@ -297,5 +305,10 @@ public class EmptyTabModel implements IncognitoTabModelInternal {
     @Override
     public @Nullable Tab duplicateTab(Tab tab) {
         return null;
+    }
+
+    @Override
+    public boolean isClosingAllTabs() {
+        return false;
     }
 }

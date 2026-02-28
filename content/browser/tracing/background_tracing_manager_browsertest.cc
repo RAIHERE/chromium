@@ -672,8 +672,14 @@ IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
 // now started asynchronously.
 // TODO(khokhlov): Re-enable when background tracing is switched to synchronous
 // start.
+// TODO(https://crbug.com/480203711): Flaky on Linux TSan.
+#if BUILDFLAG(IS_LINUX) && defined(THREAD_SANITIZER)
+#define MAYBE_EarlyTraceEventsInTrace DISABLED_EarlyTraceEventsInTrace
+#else
+#define MAYBE_EarlyTraceEventsInTrace EarlyTraceEventsInTrace
+#endif
 IN_PROC_BROWSER_TEST_F(BackgroundTracingManagerBrowserTest,
-                       EarlyTraceEventsInTrace) {
+                       MAYBE_EarlyTraceEventsInTrace) {
   TestBackgroundTracingHelper background_tracing_helper;
 
   EXPECT_TRUE(BackgroundTracingManager::GetInstance().InitializeFieldScenarios(
@@ -973,7 +979,14 @@ IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest,
   background_tracing_helper.WaitForScenarioIdle();
 }
 
-IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, ProtoTraceReceived) {
+// TODO(crbug.com/478626922): This test is flaky on TSan builds. Re-enable it
+// once the data race is fixed.
+#if BUILDFLAG(IS_LINUX) && defined(THREAD_SANITIZER)
+#define MAYBE_ProtoTraceReceived DISABLED_ProtoTraceReceived
+#else
+#define MAYBE_ProtoTraceReceived ProtoTraceReceived
+#endif
+IN_PROC_BROWSER_TEST_F(ProtoBackgroundTracingTest, MAYBE_ProtoTraceReceived) {
   TestBackgroundTracingHelper background_tracing_helper;
 
   EXPECT_TRUE(BackgroundTracingManager::GetInstance().InitializeFieldScenarios(

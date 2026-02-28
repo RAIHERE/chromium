@@ -37,8 +37,8 @@ void OptionListIterator::Advance(HTMLOptionElement* previous) {
       // the call to OwnerSelectElement.
       // TODO(crbug.com/398887837): Remove the skip_check parameter.
       if (optgroup->OwnerSelectElement(/*skip_check=*/true) == select_ ||
-          HTMLSelectElement::AssociatedSelectAndOptgroup(*optgroup).first ==
-              select_) {
+          HTMLSelectElement::AssociatedSelectAndOptgroupAndDatalist(*optgroup)
+                  .select == select_) {
         current = ElementTraversal::Next(*current, &select_);
       } else {
         // Don't track elements inside nested <optgroup>s.
@@ -75,8 +75,8 @@ void OptionListIterator::Retreat(HTMLOptionElement* next) {
       // optgroup->OwnerSelectElement() might be null because this method may
       // be called before InsertedInto is called on the optgroup.
       if (optgroup->OwnerSelectElement() == select_ ||
-          HTMLSelectElement::AssociatedSelectAndOptgroup(*optgroup).first ==
-              select_) {
+          HTMLSelectElement::AssociatedSelectAndOptgroupAndDatalist(*optgroup)
+                  .select == select_) {
         current = ElementTraversal::Previous(*current, &select_);
       } else {
         // Don't track elements inside nested <optgroup>s.
@@ -100,9 +100,10 @@ unsigned OptionList::size() const {
   return count;
 }
 
-HTMLOptionElement* OptionList::FindFocusableOption(HTMLOptionElement& option,
-                                                   bool forward,
-                                                   bool inclusive) {
+HTMLOptionElement* OptionList::FindOption(HTMLOptionElement& option,
+                                          OptionMatchingPredicate predicate,
+                                          bool forward,
+                                          bool inclusive) {
   DCHECK_EQ(option.OwnerSelectElement(), select_);
   DCHECK(!Empty());
   OptionListIterator option_list_iterator = begin();
@@ -122,7 +123,7 @@ HTMLOptionElement* OptionList::FindFocusableOption(HTMLOptionElement& option,
       return nullptr;
     }
     inclusive = false;
-    if (option_list_iterator->IsFocusable()) {
+    if (predicate(*option_list_iterator)) {
       return &*option_list_iterator;
     }
   }

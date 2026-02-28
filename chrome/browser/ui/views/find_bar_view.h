@@ -106,6 +106,11 @@ class FindBarView : public views::BoxLayoutView,
                         const ui::MouseEvent& key_event) override;
   void OnAfterUserAction(views::Textfield* sender) override;
   void OnAfterPaste() override;
+  bool OnBeforeCutOrCopy(views::Textfield* sender,
+                         std::u16string* copy_contents) override;
+  bool OnBeforePaste(views::Textfield* sender,
+                     std::u16string* paste_contents) override;
+  std::unique_ptr<ui::ScopedClipboardWriter> CreateClipboardWriter() override;
 
  private:
   FRIEND_TEST_ALL_PREFIXES(LegacyFindInPageTest, AccessibleName);

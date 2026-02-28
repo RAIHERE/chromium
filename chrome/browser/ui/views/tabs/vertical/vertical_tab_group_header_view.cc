@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/views/chrome_layout_provider.h"
 #include "chrome/browser/ui/views/tabs/tab_group_editor_bubble_tracker.h"
 #include "chrome/grit/generated_resources.h"
+#include "components/strings/grit/components_strings.h"
 #include "components/tab_groups/tab_group_visual_data.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
@@ -100,7 +101,8 @@ END_METADATA
 }  // namespace
 
 VerticalTabGroupHeaderView::VerticalTabGroupHeaderView(
-    Delegate* delegate,
+    Delegate& delegate,
+    tabs::VerticalTabStripStateController* state_controller,
     const tab_groups::TabGroupVisualData* tab_group_visual_data)
     : sync_icon_(AddChildView(std::make_unique<views::ImageView>())),
       group_header_label_(
@@ -110,7 +112,8 @@ VerticalTabGroupHeaderView::VerticalTabGroupHeaderView(
           base::BindRepeating(&VerticalTabGroupHeaderView::ShowEditorBubble,
                               base::Unretained(this))))),
       collapse_icon_(AddChildView(std::make_unique<views::ImageView>())),
-      delegate_(delegate) {
+      delegate_(delegate),
+      editor_bubble_tracker_(state_controller) {
   SetProperty(views::kElementIdentifierKey, kTabGroupHeaderElementId);
   SetNotifyEnterExitOnChild(true);
 
@@ -192,11 +195,22 @@ bool VerticalTabGroupHeaderView::OnMousePressed(const ui::MouseEvent& event) {
     return false;
   }
 
+  // Potentially start the drag for the mouse press.
+  // Follow-up mouse-movement events will update the drag controller and
+  // eventually kick off the drag-loop.
+  delegate_->InitHeaderDrag(event);
+
   // Return true so that we receive subsequent MouseRelease event.
   return true;
 }
 
+bool VerticalTabGroupHeaderView::OnMouseDragged(const ui::MouseEvent& event) {
+  return delegate_->ContinueHeaderDrag(event);
+}
+
 void VerticalTabGroupHeaderView::OnMouseReleased(const ui::MouseEvent& event) {
+  delegate_->CancelHeaderDrag();
+
   bool open_editor_bubble =
       event.IsRightMouseButton() && !editor_bubble_tracker_.is_open();
   bool toggle_collapse = event.IsLeftMouseButton();
@@ -229,6 +243,7 @@ void VerticalTabGroupHeaderView::OnMouseMoved(const ui::MouseEvent& event) {
 }
 
 void VerticalTabGroupHeaderView::OnMouseEntered(const ui::MouseEvent& event) {
+  delegate_->HideHoverCard();
   UpdateEditorBubbleButtonVisibility();
 }
 
@@ -318,7 +333,21 @@ void VerticalTabGroupHeaderView::OnDataChanged(
   }
 
   UpdateIsCollapsed(tab_group_visual_data);
-  UpdateAccessibleName(tab_group_visual_data);
+  UpdateAccessibleName(tab_group_visual_data, needs_attention, is_shared);
+  UpdateTooltipText();
+}
+
+void VerticalTabGroupHeaderView::UpdateTooltipText() {
+  if (group_header_label_->GetText().empty()) {
+    SetTooltipText(
+        l10n_util::GetStringFUTF16(IDS_TAB_GROUPS_UNNAMED_GROUP_TOOLTIP,
+                                   delegate_->GetGroupContentString()));
+  } else {
+    SetTooltipText(l10n_util::GetStringFUTF16(
+        IDS_TAB_GROUPS_NAMED_GROUP_TOOLTIP,
+        std::u16string(group_header_label_->GetText()),
+        delegate_->GetGroupContentString()));
+  }
 }
 
 void VerticalTabGroupHeaderView::UpdateIsCollapsed(
@@ -332,7 +361,9 @@ void VerticalTabGroupHeaderView::UpdateIsCollapsed(
 }
 
 void VerticalTabGroupHeaderView::UpdateAccessibleName(
-    const tab_groups::TabGroupVisualData* tab_group_visual_data) {
+    const tab_groups::TabGroupVisualData* tab_group_visual_data,
+    bool needs_attention,
+    bool is_shared) {
   const std::u16string title = tab_group_visual_data->title();
 
   const std::u16string contents = delegate_->GetGroupContentString();
@@ -347,8 +378,14 @@ void VerticalTabGroupHeaderView::UpdateAccessibleName(
                      : l10n_util::GetStringUTF16(IDS_GROUP_AX_LABEL_EXPANDED);
 #endif
 
-  // TODO(crbug.com/439955962): Incorporate shared group state.
   std::u16string shared_state = u"";
+  if (is_shared) {
+    shared_state = l10n_util::GetStringUTF16(IDS_SAVED_GROUP_AX_LABEL_SHARED);
+    if (tab_group_visual_data->is_collapsed() && needs_attention) {
+      shared_state += u", " + l10n_util::GetStringUTF16(
+                                  DATA_SHARING_GROUP_LABEL_NEW_ACTIVITY);
+    }
+  }
 
   std::u16string final_name;
   if (title.empty()) {

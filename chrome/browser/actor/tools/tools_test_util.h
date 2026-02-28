@@ -15,7 +15,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/password_manager/actor_login/actor_login_service.h"
-#include "chrome/test/base/in_process_browser_test.h"
+#include "chrome/test/base/platform_browser_test.h"
 #include "components/optimization_guide/content/browser/page_content_proto_provider.h"
 #include "components/password_manager/core/browser/actor_login/actor_login_quality_logger_interface.h"
 #include "content/public/browser/render_frame_host.h"
@@ -37,6 +37,9 @@ namespace actor {
 actor_login::Credential MakeTestCredential(const std::u16string& username,
                                            const GURL& url,
                                            bool immediately_available_to_login);
+actor_login::Credential MakeTestCredentialFederated(
+    const std::u16string& username,
+    const GURL& url);
 
 class MockActorLoginService : public actor_login::ActorLoginService {
  public:
@@ -75,7 +78,7 @@ class MockActorLoginService : public actor_login::ActorLoginService {
 inline constexpr int32_t kNonExistentContentNodeId =
     std::numeric_limits<int32_t>::max();
 
-class ActorToolsTest : public InProcessBrowserTest {
+class ActorToolsTest : public PlatformBrowserTest {
  public:
   ActorToolsTest();
   ActorToolsTest(const ActorToolsTest&) = delete;
@@ -93,14 +96,12 @@ class ActorToolsTest : public InProcessBrowserTest {
   tabs::TabInterface* active_tab();
   content::RenderFrameHost* main_frame();
   ExecutionEngine& execution_engine();
+  ActorKeyedService& actor_keyed_service() const;
   ActorTask& actor_task() const;
 
   void GetPageApc();
 
  protected:
-  virtual std::unique_ptr<ExecutionEngine> CreateExecutionEngine(
-      Profile* profile);
-
   TaskId CreateNewTask();
 
   void SetPageContent(

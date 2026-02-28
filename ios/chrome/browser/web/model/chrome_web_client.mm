@@ -46,6 +46,8 @@
 #import "ios/chrome/browser/enterprise/connectors/reporting/ios_reporting_event_router_factory.h"
 #import "ios/chrome/browser/flags/chrome_switches.h"
 #import "ios/chrome/browser/https_upgrades/model/https_upgrade_service_factory.h"
+#import "ios/chrome/browser/intelligence/actuation/model/tools/click_tool_java_script_feature.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_extractor_java_script_feature.h"
 #import "ios/chrome/browser/link_to_text/model/link_to_text_java_script_feature.h"
 #import "ios/chrome/browser/ntp/model/browser_policy_new_tab_page_rewriter.h"
@@ -76,6 +78,8 @@
 #import "ios/chrome/browser/supervised_user/model/supervised_user_interstitial_java_script_feature.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_service_factory.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_url_filter_tab_helper.h"
+#import "ios/chrome/browser/unified_consent/model/url_keyed_data_collection_consent_helper_factory_ios.h"
+#import "ios/chrome/browser/unified_consent/model/url_keyed_data_collection_consent_helper_ios.h"
 #import "ios/chrome/browser/web/model/browser_about_rewriter.h"
 #import "ios/chrome/browser/web/model/choose_file/choose_file_java_script_feature.h"
 #import "ios/chrome/browser/web/model/choose_file/choose_file_tab_helper.h"
@@ -90,6 +94,7 @@
 #import "ios/chrome/browser/web/model/web_performance_metrics/web_performance_metrics_java_script_feature.h"
 #import "ios/chrome/browser/web_selection/model/web_selection_java_script_feature.h"
 #import "ios/chrome/common/channel_info.h"
+#import "ios/chrome/common/crash_report/crash_helper.h"
 #import "ios/components/security_interstitials/https_only_mode/feature.h"
 #import "ios/components/security_interstitials/https_only_mode/https_only_mode_blocking_page.h"
 #import "ios/components/security_interstitials/https_only_mode/https_only_mode_container.h"
@@ -441,6 +446,10 @@ std::vector<web::JavaScriptFeature*> ChromeWebClient::GetJavaScriptFeatures(
   features.push_back(ChooseFileJavaScriptFeature::GetInstance());
   features.push_back(PageContextExtractorJavaScriptFeature::GetInstance());
 
+  if (base::FeatureList::IsEnabled(kActuationTools)) {
+    features.push_back(ClickToolJavaScriptFeature::GetInstance());
+  }
+
   features.push_back(
       SupervisedUserInterstitialJavaScriptFeature::GetInstance());
 
@@ -654,4 +663,20 @@ void ChromeWebClient::RunOpenPanel(
   ChooseFileTabHelper* tab_helper = ChooseFileTabHelper::FromWebState(source);
   CHECK(tab_helper);
   tab_helper->RunOpenPanel(parameters, frame, std::move(completion));
+}
+
+web::JSErrorReportLoggingLevel ChromeWebClient::GetJSErrorReportLoggingLevel(
+    web::BrowserState* browser_state) const {
+  if (!crash_helper::common::UserEnabledUploading()) {
+    return web::JSErrorReportLoggingLevel::NONE;
+  }
+
+  ProfileIOS* profile = ProfileIOS::FromBrowserState(browser_state);
+  UrlKeyedDataCollectionConsentHelperIOS* consent_helper =
+      UrlKeyedDataCollectionConsentHelperFactoryIOS::GetForProfile(profile);
+  if (consent_helper->IsEnabled()) {
+    return web::JSErrorReportLoggingLevel::FULL;
+  }
+
+  return web::JSErrorReportLoggingLevel::REPORT_WITHOUT_URL;
 }

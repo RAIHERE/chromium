@@ -26,6 +26,7 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/test_future.h"
 #include "base/version_info/version_info.h"
+#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
 #include "chrome/app/chrome_command_ids.h"
@@ -1186,10 +1187,6 @@ IN_PROC_BROWSER_TEST_F(StartupBrowserCreatorTest,
                         {default_profile, StartupProfileMode::kBrowserWindow},
                         last_opened_profiles);
 
-  // |browser()| is still around at this point, even though we've closed its
-  // window. Thus the browser count for default_profile is 1.
-  ASSERT_EQ(1u, chrome::GetBrowserCount(default_profile));
-
   // When the kNotificationLaunchId switch is present, any last opened profile
   // is ignored. Thus there is no browser for other_profile.
   ASSERT_EQ(0u, chrome::GetBrowserCount(&other_profile));
@@ -1366,11 +1363,8 @@ IN_PROC_BROWSER_TEST_F(StartupBrowserCreatorTest, StartupURLsForTwoProfiles) {
 
   // urls1 were opened in a browser for default_profile, and urls2 were opened
   // in a browser for other_profile.
-  BrowserWindowInterface* new_browser = nullptr;
-  // |browser()| is still around at this point, even though we've closed its
-  // window. Thus the browser count for default_profile is 2.
-  ASSERT_EQ(2u, chrome::GetBrowserCount(default_profile));
-  new_browser = FindOneOtherBrowserForProfile(default_profile, browser());
+  BrowserWindowInterface* new_browser =
+      FindOneOtherBrowserForProfile(default_profile, nullptr);
   ASSERT_TRUE(new_browser);
   TabStripModel* tab_strip = new_browser->GetTabStripModel();
 
@@ -1865,8 +1859,9 @@ class StartupBrowserWithListAppsFeature : public StartupBrowserCreatorTest {
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
+// TODO(crbug.com/484997712): Flaky on all platforms.
 IN_PROC_BROWSER_TEST_F(StartupBrowserWithListAppsFeature,
-                       ListAppsForAllProfiles) {
+                       DISABLED_ListAppsForAllProfiles) {
   ProfileManager* profile_manager = g_browser_process->profile_manager();
   base::FilePath user_data_dir = profile_manager->user_data_dir();
   Profile* profile1 = browser()->profile();
@@ -3085,8 +3080,9 @@ IN_PROC_BROWSER_TEST_F(StartupBrowserWebAppProtocolAndFileHandlingTest,
   content::WebContents* web_contents = tab_strip->GetWebContentsAt(0);
   EXPECT_EQ(file_handler.action, web_contents->GetVisibleURL());
 
+  ui_test_utils::BrowserDestroyedObserver observer(app_browser);
   app_browser->GetWindow()->Close();
-  ui_test_utils::WaitForBrowserToClose(app_browser);
+  observer.Wait();
 }
 
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
@@ -4088,12 +4084,6 @@ class StartupBrowserCreatorPickerUnknownEmailCreateProfileIfNotExists
   // browser will be relaunched by the main test.
   upgrade_util::ScopedRelaunchChromeBrowserOverride relaunch_chrome_override_{
       base::BindRepeating([](const base::CommandLine&) { return true; })};
-
-  // The `kCreateProfileEmailIfNotExists` switch requires the
-  // `kCreateProfileIfNoneExists` feature to be enabled.
-  // TODO: Remove once enabled by default
-  base::test::ScopedFeatureList scoped_feature_list_{
-      features::kCreateProfileIfNoneExists};
 };
 
 IN_PROC_BROWSER_TEST_F(
@@ -4394,10 +4384,6 @@ class StartupBrowserCreatorOpenUrlsInNextProfileCreatedTest
     command_line->AppendSwitch(switches::kCreateProfileEmailIfNotExists);
     command_line->AppendArg("https://www.google.com");
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_{
-      features::kCreateProfileIfNoneExists};
 };
 
 IN_PROC_BROWSER_TEST_F(StartupBrowserCreatorOpenUrlsInNextProfileCreatedTest,

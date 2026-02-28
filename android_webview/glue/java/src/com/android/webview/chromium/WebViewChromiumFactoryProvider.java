@@ -72,6 +72,8 @@ import org.chromium.base.StrictModeContext;
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.ScopedSysTraceEvent;
+import org.chromium.base.task.PostTask;
+import org.chromium.base.task.TaskTraits;
 import org.chromium.base.version_info.VersionConstants;
 import org.chromium.blink_public.common.BlinkFeatures;
 import org.chromium.build.BuildConfig;
@@ -467,7 +469,9 @@ public class WebViewChromiumFactoryProvider implements WebViewFactoryProvider {
                 CommandLineUtil.initCommandLine();
             }
 
-            if (shouldEnableContextExperiment(ctx)) {
+            ManifestMetadataUtil.ensureMetadataCacheInitialized(ctx);
+
+            if (shouldEnableContextExperiment()) {
                 try (DualTraceEvent ignored =
                         DualTraceEvent.scoped(
                                 "WebViewChromiumFactoryProvider.enableContextExperiment")) {
@@ -598,12 +602,27 @@ public class WebViewChromiumFactoryProvider implements WebViewFactoryProvider {
                             dataDirectoryBasePath, cacheDirectoryBasePath, dataDirectorySuffix);
                 }
 
+                boolean enableSystemTracing =
+                        WebViewCachedFlags.get()
+                                .isCachedFeatureEnabled(
+                                        TracingServiceFeatures.ENABLE_PERFETTO_SYSTEM_TRACING);
                 if (WebViewCachedFlags.get()
-                        .isCachedFeatureEnabled(AwFeatures.WEBVIEW_EARLY_PERFETTO_INIT)) {
-                    AwBrowserProcess.initPerfetto(
-                            WebViewCachedFlags.get()
-                                    .isCachedFeatureEnabled(
-                                            TracingServiceFeatures.ENABLE_PERFETTO_SYSTEM_TRACING));
+                        .isCachedFeatureEnabled(AwFeatures.WEBVIEW_EARLY_TRACING_INIT)) {
+                    AwBrowserProcess.disableTracingInitDuringBrowserMain();
+                    AwBrowserProcess.initTracing(
+                            enableSystemTracing, /* runningOnBackgroundThread= */ false);
+                } else if (WebViewCachedFlags.get()
+                        .isCachedFeatureEnabled(AwFeatures.WEBVIEW_BACKGROUND_TRACING_INIT)) {
+                    AwBrowserProcess.disableTracingInitDuringBrowserMain();
+                    AwBrowserProcess.markTracingInitializedOnBackground();
+                    // Posting as USER_VISIBLE because startup will eventually wait if it isn't done
+                    // yet.
+                    PostTask.postTask(
+                            TaskTraits.USER_VISIBLE,
+                            () ->
+                                    AwBrowserProcess.initTracing(
+                                            enableSystemTracing,
+                                            /* runningOnBackgroundThread= */ true));
                 }
 
                 try (DualTraceEvent e2 =
@@ -672,17 +691,27 @@ public class WebViewChromiumFactoryProvider implements WebViewFactoryProvider {
             helper.applyFlagOverrides(
                     Map.of(AwFeatures.WEBVIEW_FILE_SYSTEM_ACCESS, shouldEnableFileSystemAccess()));
 
-            // Apply user-agent reduction overrides for WebView. These features
-            // are intended to be enabled only for Android B+.
+            // Set user-agent reduction command-line switches and feature flags for WebView.
+            // We set command line switches as well because we want to read the configuration before
+            // feature flags are set for enabling `getDefaultUserAgent` to not wait for browser
+            // startup.
+            // These features are intended to be enabled only for Android B+.
             // 1) ReduceUserAgentMinorVersion: Enables reduction of the user-agent minor version.
             // 2) WebViewReduceUAAndroidVersionDeviceModel: Enables reduction of the user-agent
             //    Android version and device model.
+            boolean shouldEnableUserAgentReduction = shouldEnableUserAgentReduction();
             helper.applyFlagOverrides(
                     Map.of(
                             AwFeatures.WEBVIEW_REDUCE_UA_ANDROID_VERSION_DEVICE_MODEL,
-                            shouldEnableUserAgentReduction(),
+                            shouldEnableUserAgentReduction,
                             BlinkFeatures.REDUCE_USER_AGENT_MINOR_VERSION,
-                            shouldEnableUserAgentReduction()));
+                            shouldEnableUserAgentReduction));
+            if (shouldEnableUserAgentReduction) {
+                CommandLine.getInstance()
+                        .appendSwitch(AwSwitches.WEBVIEW_REDUCE_USER_AGENT_MINOR_VERSION);
+                CommandLine.getInstance()
+                        .appendSwitch(AwSwitches.WEBVIEW_REDUCE_UA_ANDROID_VERSION_DEVICE_MODEL);
+            }
 
             setSingleton(this);
         }
@@ -1001,24 +1030,15 @@ public class WebViewChromiumFactoryProvider implements WebViewFactoryProvider {
         return mInitInfo;
     }
 
-    private boolean shouldEnableContextExperiment(Context ctx) {
+    private boolean shouldEnableContextExperiment() {
         // Command line switch overrides all other conditions.
         if (CommandLine.getInstance().hasSwitch(AwSwitches.WEBVIEW_USE_SEPARATE_RESOURCE_CONTEXT)) {
             return true;
         }
-
         // Don't enable on V+.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.VANILLA_ICE_CREAM) {
             return !isRegisterResourcePathsAvailable();
         }
-
-        // Allow the developer to opt in or opt out of the experiment.
-        ManifestMetadataUtil.ensureMetadataCacheInitialized(ctx);
-        Boolean valueFromManifest = ManifestMetadataUtil.shouldEnableContextExperiment();
-        if (valueFromManifest != null) {
-            return valueFromManifest;
-        }
-
         return true;
     }
 

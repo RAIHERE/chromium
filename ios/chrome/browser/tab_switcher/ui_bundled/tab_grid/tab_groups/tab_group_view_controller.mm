@@ -19,6 +19,7 @@
 #import "ios/chrome/browser/shared/public/commands/tab_groups_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/ui/elements/extended_touch_target_button.h"
+#import "ios/chrome/browser/shared/ui/elements/gradient/gradient_view.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/browser/shared/ui/util/color_palette/tab_group_color_palette.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
@@ -32,7 +33,6 @@
 #import "ios/chrome/browser/tab_switcher/ui_bundled/tab_grid/toolbars/tab_grid_toolbars_grid_delegate.h"
 #import "ios/chrome/browser/tab_switcher/ui_bundled/tab_group_action_type.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
-#import "ios/chrome/common/ui/elements/gradient_view.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ui/base/l10n/l10n_util_mac.h"
@@ -55,6 +55,7 @@ constexpr CGFloat kBottomToolbarMargin = 8;
 constexpr CGFloat kButtonSpacing = 10;
 constexpr CGFloat kCloseImageSize = 12.5;
 constexpr CGFloat kMenuImageSize = 16;
+constexpr CGFloat kButtonAlpha = 0.2;
 
 // Animation.
 constexpr CGFloat kTranslationCompletion = 0;
@@ -73,13 +74,13 @@ constexpr CGFloat kContainerBackgroundAlpha = 0.8;
 // Returns a button to be added to the top toolbar.
 UIButton* TopToolbarButton(NSString* symbol_name,
                            UIAction* action,
-                           CGFloat image_size) {
+                           CGFloat image_size,
+                           UIColor* background_color) {
   UIBackgroundConfiguration* background_configuration =
       [UIBackgroundConfiguration clearConfiguration];
   background_configuration.visualEffect = [UIBlurEffect
       effectWithStyle:UIBlurEffectStyleSystemUltraThinMaterialDark];
-  background_configuration.backgroundColor =
-      TabGroupViewButtonBackgroundColor();
+  background_configuration.backgroundColor = background_color;
 
   UIButtonConfiguration* configuration =
       [UIButtonConfiguration plainButtonConfiguration];
@@ -123,6 +124,8 @@ UIButton* TopToolbarButton(NSString* symbol_name,
   UIStackView* _topToolbarButtonsStackView;
   // The tab group menu button.
   UIButton* _menuButton;
+  // The tab group view's close button.
+  UIButton* _closeButton;
   // Tab Groups handler.
   __weak id<TabGroupsCommands> _handler;
   // Group's title.
@@ -265,8 +268,10 @@ UIButton* TopToolbarButton(NSString* symbol_name,
 }
 
 - (void)gridViewControllerDidScroll {
-  _bottomGradient.hidden = self.gridViewController.scrolledToBottom;
-  _topToolbarBackground.hidden = self.gridViewController.scrolledToTop;
+  _bottomGradient.hidden =
+      self.gridViewController.remainingScrollDistanceBottom <= 0;
+  _topToolbarBackground.hidden =
+      self.gridViewController.remainingScrollDistanceTop <= 0;
 }
 
 #pragma mark - UIViewController
@@ -442,17 +447,17 @@ UIButton* TopToolbarButton(NSString* symbol_name,
 - (void)setGroupColor:(UIColor*)color {
   _groupColor = color;
   _gridViewController.groupColor = color;
-  [_coloredDotView setBackgroundColor:_groupColor];
+  _coloredDotView.backgroundColor = color;
+}
 
-  if (!IsTabGroupColorOnSurfaceEnabled()) {
-    return;
-  }
-  // Create the palette.
-  _tabGroupColorPalette =
-      [[TabGroupColorPalette alloc] initWithSeedColor:color];
-  [_coloredDotView setBackgroundColor:_tabGroupColorPalette.commonColor];
+- (void)setTabGroupColorPalette:(TabGroupColorPalette*)tabGroupColorPalette {
+  _tabGroupColorPalette = tabGroupColorPalette;
   // Forward it to the TabGroupGridViewController.
   _gridViewController.tabGroupColorPalette = _tabGroupColorPalette;
+  if (!self.viewLoaded) {
+    return;
+  }
+  [self updateGroupColorSurfaces];
 }
 
 - (void)setShareAvailable:(BOOL)shareAvailable {
@@ -521,7 +526,16 @@ UIButton* TopToolbarButton(NSString* symbol_name,
 
 // Returns the menu button, configured.
 - (UIButton*)configuredMenuButton {
-  UIButton* button = TopToolbarButton(kMenuSymbol, nil, kMenuImageSize);
+  UIColor* backgroundColor;
+  if (IsTabGroupColorOnSurfaceEnabled()) {
+    backgroundColor = [_tabGroupColorPalette.commonColor
+        colorWithAlphaComponent:kButtonAlpha];
+  } else {
+    backgroundColor = TabGroupViewButtonBackgroundColor();
+  }
+
+  UIButton* button =
+      TopToolbarButton(kMenuSymbol, nil, kMenuImageSize, backgroundColor);
   button.showsMenuAsPrimaryAction = YES;
   button.menu = [self configuredTabGroupMenu];
   button.accessibilityIdentifier = kTabGroupOverflowMenuButtonIdentifier;
@@ -542,6 +556,7 @@ UIButton* TopToolbarButton(NSString* symbol_name,
                 primaryAction:[UIAction actionWithHandler:^(UIAction* action) {
                   [weakSelf didTapFacePileButton];
                 }]];
+
   container.accessibilityIdentifier = kTabGroupFacePileButtonIdentifier;
   [self updateFacePileContainer:container withFacePile:_facePileView];
   return container;
@@ -566,12 +581,19 @@ UIButton* TopToolbarButton(NSString* symbol_name,
     [weakSelf didTapCloseButton];
   }];
 
-  UIButton* closeButton =
-      TopToolbarButton(kXMarkSymbol, closeAction, kCloseImageSize);
-  closeButton.accessibilityLabel = l10n_util::GetNSString(IDS_CLOSE);
-  closeButton.accessibilityIdentifier = kTabGroupCloseButtonIdentifier;
+  UIColor* backgroundColor;
+  if (IsTabGroupColorOnSurfaceEnabled()) {
+    backgroundColor = [_tabGroupColorPalette.commonColor
+        colorWithAlphaComponent:kButtonAlpha];
+  } else {
+    backgroundColor = TabGroupViewButtonBackgroundColor();
+  }
+  _closeButton = TopToolbarButton(kXMarkSymbol, closeAction, kCloseImageSize,
+                                  backgroundColor);
+  _closeButton.accessibilityLabel = l10n_util::GetNSString(IDS_CLOSE);
+  _closeButton.accessibilityIdentifier = kTabGroupCloseButtonIdentifier;
 
-  [stackView addArrangedSubview:closeButton];
+  [stackView addArrangedSubview:_closeButton];
 
   return stackView;
 }
@@ -632,7 +654,11 @@ UIButton* TopToolbarButton(NSString* symbol_name,
   UIView* dotView = [[UIView alloc] initWithFrame:CGRectZero];
   dotView.translatesAutoresizingMaskIntoConstraints = NO;
   dotView.layer.cornerRadius = kDotSize / 2;
-  dotView.backgroundColor = _groupColor;
+  if (IsTabGroupColorOnSurfaceEnabled()) {
+    dotView.backgroundColor = _tabGroupColorPalette.commonColor;
+  } else {
+    dotView.backgroundColor = _groupColor;
+  }
 
   [NSLayoutConstraint activateConstraints:@[
     [dotView.heightAnchor constraintEqualToConstant:kDotSize],
@@ -987,6 +1013,24 @@ UIButton* TopToolbarButton(NSString* symbol_name,
       _container.transform = CGAffineTransformIdentity;
       break;
   }
+}
+
+// Updates the UI elements' colors.
+- (void)updateGroupColorSurfaces {
+  UIColor* buttonColor =
+      [_tabGroupColorPalette.commonColor colorWithAlphaComponent:kButtonAlpha];
+
+  UIButtonConfiguration* menuButtonConfig = _menuButton.configuration;
+  menuButtonConfig.background.backgroundColor = buttonColor;
+  _menuButton.configuration = menuButtonConfig;
+
+  UIButtonConfiguration* closeButtonConfig = _closeButton.configuration;
+  closeButtonConfig.background.backgroundColor = buttonColor;
+  _closeButton.configuration = closeButtonConfig;
+
+  [_bottomToolbar
+      updateNewTabButtonBackgroundColor:_tabGroupColorPalette.commonColor];
+  _coloredDotView.backgroundColor = _tabGroupColorPalette.commonColor;
 }
 
 #pragma mark - UIGestureRecognizerDelegate

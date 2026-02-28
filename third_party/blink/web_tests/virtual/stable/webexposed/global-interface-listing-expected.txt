@@ -173,6 +173,7 @@ interface AudioContext : BaseAudioContext
     getter onerror
     getter onsinkchange
     getter outputLatency
+    getter playbackStats
     getter sinkId
     method close
     method constructor
@@ -284,6 +285,17 @@ interface AudioParamMap
     method has
     method keys
     method values
+interface AudioPlaybackStats
+    attribute @@toStringTag
+    getter averageLatency
+    getter maximumLatency
+    getter minimumLatency
+    getter totalDuration
+    getter underrunDuration
+    getter underrunEvents
+    method constructor
+    method resetLatency
+    method toJSON
 interface AudioProcessingEvent : Event
     attribute @@toStringTag
     getter inputBuffer
@@ -1322,6 +1334,12 @@ interface CountQueuingStrategy
     getter highWaterMark
     getter size
     method constructor
+interface CrashReportContext
+    attribute @@toStringTag
+    method constructor
+    method delete
+    method initialize
+    method set
 interface CreateMonitor : EventTarget
     attribute @@toStringTag
     getter ondownloadprogress
@@ -1362,6 +1380,7 @@ interface CustomElementRegistry
     method define
     method get
     method getName
+    method initialize
     method upgrade
     method whenDefined
 interface CustomEvent : Event
@@ -1722,6 +1741,7 @@ interface DisposableStack
     method move
     method use
 interface Document : Node
+    static method parseHTML
     static method parseHTMLUnsafe
     attribute @@toStringTag
     attribute @@unscopables
@@ -1743,6 +1763,7 @@ interface Document : Node
     getter contentType
     getter cookie
     getter currentScript
+    getter customElementRegistry
     getter defaultView
     getter designMode
     getter dir
@@ -2197,6 +2218,7 @@ interface EditContext : EventTarget
 interface Element : Node
     attribute @@toStringTag
     attribute @@unscopables
+    getter activeViewTransition
     getter ariaActiveDescendantElement
     getter ariaAtomic
     getter ariaAutoComplete
@@ -2258,6 +2280,7 @@ interface Element : Node
     getter clientTop
     getter clientWidth
     getter currentCSSZoom
+    getter customElementRegistry
     getter elementTiming
     getter firstElementChild
     getter id
@@ -2338,8 +2361,10 @@ interface Element : Node
     method setAttributeNS
     method setAttributeNode
     method setAttributeNodeNS
+    method setHTML
     method setHTMLUnsafe
     method setPointerCapture
+    method startViewTransition
     method toggleAttribute
     method webkitMatchesSelector
     method webkitRequestFullScreen
@@ -3078,7 +3103,11 @@ interface GPUSupportedLimits
     getter maxSampledTexturesPerShaderStage
     getter maxSamplersPerShaderStage
     getter maxStorageBufferBindingSize
+    getter maxStorageBuffersInFragmentStage
+    getter maxStorageBuffersInVertexStage
     getter maxStorageBuffersPerShaderStage
+    getter maxStorageTexturesInFragmentStage
+    getter maxStorageTexturesInVertexStage
     getter maxStorageTexturesPerShaderStage
     getter maxTextureArrayLayers
     getter maxTextureDimension1D
@@ -3101,6 +3130,7 @@ interface GPUTexture
     getter label
     getter mipLevelCount
     getter sampleCount
+    getter textureBindingViewDimension
     getter usage
     getter width
     method constructor
@@ -4834,11 +4864,13 @@ interface HTMLTemplateElement : HTMLElement
     attribute @@toStringTag
     getter content
     getter shadowRootClonable
+    getter shadowRootCustomElementRegistry
     getter shadowRootDelegatesFocus
     getter shadowRootMode
     getter shadowRootSerializable
     method constructor
     setter shadowRootClonable
+    setter shadowRootCustomElementRegistry
     setter shadowRootDelegatesFocus
     setter shadowRootMode
     setter shadowRootSerializable
@@ -6209,6 +6241,7 @@ interface NavigationHistoryEntry : EventTarget
     setter ondispose
 interface NavigationPrecommitController
     attribute @@toStringTag
+    method addHandler
     method constructor
     method redirect
 interface NavigationPreloadManager
@@ -8844,6 +8877,18 @@ interface SVGViewElement : SVGElement
     getter zoomAndPan
     method constructor
     setter zoomAndPan
+interface Sanitizer
+    attribute @@toStringTag
+    method allowAttribute
+    method allowElement
+    method constructor
+    method get
+    method removeAttribute
+    method removeElement
+    method removeUnsafe
+    method replaceElementWithChildren
+    method setComments
+    method setDataAttributes
 interface Scheduler
     attribute @@toStringTag
     method constructor
@@ -9047,6 +9092,7 @@ interface ShadowRoot : DocumentFragment
     getter activeElement
     getter adoptedStyleSheets
     getter clonable
+    getter customElementRegistry
     getter delegatesFocus
     getter fullscreenElement
     getter host
@@ -9064,6 +9110,7 @@ interface ShadowRoot : DocumentFragment
     method getAnimations
     method getHTML
     method getSelection
+    method setHTML
     method setHTMLUnsafe
     setter adoptedStyleSheets
     setter fullscreenElement
@@ -9580,10 +9627,10 @@ interface TimelineTrigger : AnimationTrigger
     method constructor
 interface TimelineTriggerRange
     attribute @@toStringTag
+    getter activationRangeEnd
+    getter activationRangeStart
     getter activeRangeEnd
     getter activeRangeStart
-    getter entryRangeEnd
-    getter entryRangeStart
     getter timeline
     method constructor
 interface TimelineTriggerRangeList
@@ -10001,6 +10048,7 @@ interface ViewTransition
     attribute @@toStringTag
     getter finished
     getter ready
+    getter transitionRoot
     getter types
     getter updateCallbackDone
     method constructor
@@ -11705,6 +11753,43 @@ interface XRCamera
     getter height
     getter width
     method constructor
+interface XRCompositionLayer : XRLayer
+    attribute @@toStringTag
+    getter blendTextureSourceAlpha
+    getter forceMonoPresentation
+    getter layout
+    getter mipLevels
+    getter needsRedraw
+    getter opacity
+    method constructor
+    method destroy
+    setter blendTextureSourceAlpha
+    setter forceMonoPresentation
+    setter opacity
+interface XRCubeLayer : XRCompositionLayer
+    attribute @@toStringTag
+    getter onredraw
+    getter orientation
+    getter space
+    method constructor
+    setter onredraw
+    setter orientation
+    setter space
+interface XRCylinderLayer : XRCompositionLayer
+    attribute @@toStringTag
+    getter aspectRatio
+    getter centralAngle
+    getter onredraw
+    getter radius
+    getter space
+    getter transform
+    method constructor
+    setter aspectRatio
+    setter centralAngle
+    setter onredraw
+    setter radius
+    setter space
+    setter transform
 interface XRDOMOverlayState
     attribute @@toStringTag
     getter type
@@ -11718,8 +11803,26 @@ interface XRDepthInformation
     getter transform
     getter width
     method constructor
+interface XREquirectLayer : XRCompositionLayer
+    attribute @@toStringTag
+    getter centralHorizontalAngle
+    getter lowerVerticalAngle
+    getter onredraw
+    getter radius
+    getter space
+    getter transform
+    getter upperVerticalAngle
+    method constructor
+    setter centralHorizontalAngle
+    setter lowerVerticalAngle
+    setter onredraw
+    setter radius
+    setter space
+    setter transform
+    setter upperVerticalAngle
 interface XRFrame
     attribute @@toStringTag
+    getter detectedPlanes
     getter session
     getter trackedAnchors
     method constructor
@@ -11793,6 +11896,10 @@ interface XRJointSpace : XRSpace
 interface XRLayer : EventTarget
     attribute @@toStringTag
     method constructor
+interface XRLayerEvent : Event
+    attribute @@toStringTag
+    getter layer
+    method constructor
 interface XRLightEstimate
     attribute @@toStringTag
     getter primaryLightDirection
@@ -11805,11 +11912,53 @@ interface XRLightProbe : EventTarget
     getter probeSpace
     method constructor
     setter onreflectionchange
+interface XRPlane
+    attribute @@toStringTag
+    getter lastChangedTime
+    getter orientation
+    getter planeSpace
+    getter polygon
+    getter semanticLabel
+    method constructor
+interface XRPlaneSet
+    attribute @@toStringTag
+    getter size
+    method @@iterator
+    method constructor
+    method entries
+    method forEach
+    method has
+    method keys
+    method values
 interface XRPose
     attribute @@toStringTag
     getter emulatedPosition
     getter transform
     method constructor
+interface XRProjectionLayer : XRCompositionLayer
+    attribute @@toStringTag
+    getter deltaPose
+    getter fixedFoveation
+    getter ignoreDepthValues
+    getter textureArrayLength
+    getter textureHeight
+    getter textureWidth
+    method constructor
+    setter deltaPose
+    setter fixedFoveation
+interface XRQuadLayer : XRCompositionLayer
+    attribute @@toStringTag
+    getter height
+    getter onredraw
+    getter space
+    getter transform
+    getter width
+    method constructor
+    setter height
+    setter onredraw
+    setter space
+    setter transform
+    setter width
 interface XRRay
     attribute @@toStringTag
     getter direction
@@ -11833,6 +11982,7 @@ interface XRRenderState
     getter depthFar
     getter depthNear
     getter inlineVerticalFieldOfView
+    getter layers
     method constructor
 interface XRRigidTransform
     attribute @@toStringTag
@@ -11852,6 +12002,7 @@ interface XRSession : EventTarget
     getter environmentBlendMode
     getter inputSources
     getter interactionMode
+    getter maxRenderLayers
     getter onend
     getter oninputsourceschange
     getter onselect
@@ -11868,6 +12019,7 @@ interface XRSession : EventTarget
     method cancelAnimationFrame
     method constructor
     method end
+    method initiateRoomCapture
     method pauseDepthSensing
     method requestAnimationFrame
     method requestHitTestSource
@@ -11892,6 +12044,10 @@ interface XRSessionEvent : Event
     method constructor
 interface XRSpace : EventTarget
     attribute @@toStringTag
+    method constructor
+interface XRSubImage
+    attribute @@toStringTag
+    getter viewport
     method constructor
 interface XRSystem : EventTarget
     attribute @@toStringTag
@@ -11941,10 +12097,19 @@ interface XRVisibilityMaskChangeEvent : Event
     method constructor
 interface XRWebGLBinding
     attribute @@toStringTag
+    getter nativeProjectionScaleFactor
+    getter usesDepthValues
     method constructor
+    method createCubeLayer
+    method createCylinderLayer
+    method createEquirectLayer
+    method createProjectionLayer
+    method createQuadLayer
     method getCameraImage
     method getDepthInformation
     method getReflectionCubeMap
+    method getSubImage
+    method getViewSubImage
 interface XRWebGLDepthInformation : XRDepthInformation
     attribute @@toStringTag
     getter texture
@@ -11959,6 +12124,19 @@ interface XRWebGLLayer : XRLayer
     getter ignoreDepthValues
     method constructor
     method getViewport
+interface XRWebGLSubImage : XRSubImage
+    attribute @@toStringTag
+    getter colorTexture
+    getter colorTextureHeight
+    getter colorTextureWidth
+    getter depthStencilTexture
+    getter depthStencilTextureHeight
+    getter depthStencilTextureWidth
+    getter imageIndex
+    getter motionVectorTexture
+    getter motionVectorTextureHeight
+    getter motionVectorTextureWidth
+    method constructor
 interface XSLTProcessor
     attribute @@toStringTag
     method clearParameters
@@ -12312,6 +12490,7 @@ namespace console
     getter clientInformation
     getter closed
     getter cookieStore
+    getter crashReport
     getter credentialless
     getter crossOriginIsolated
     getter crypto

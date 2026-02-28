@@ -13,6 +13,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/time/time.h"
+#include "base/types/strong_alias.h"
 #include "base/unguessable_token.h"
 #include "components/page_load_metrics/browser/observers/core/largest_contentful_paint_handler.h"
 #include "components/page_load_metrics/browser/page_load_metrics_observer.h"
@@ -215,12 +216,12 @@ class PageLoadTracker : public PageLoadMetricsUpdateDispatcher::Client,
   // PageLoadMetricsUpdateDispatcher::Client implementation:
   bool IsPageMainFrame(content::RenderFrameHost* rfh) const override;
   void OnTimingChanged() override;
-  void OnPageInputTimingChanged(uint64_t num_interactions) override;
+  void OnPageEventTimingChanged(uint64_t num_interactions) override;
   void OnSubFrameTimingChanged(content::RenderFrameHost* rfh,
                                const mojom::PageLoadTiming& timing) override;
-  void OnSubFrameInputTimingChanged(
+  void OnSubFrameEventTimingChanged(
       content::RenderFrameHost* rfh,
-      const mojom::InputTiming& input_timing_delta) override;
+      const std::vector<mojom::EventTimingPtr>& event_timings) override;
   void OnPageRenderDataChanged(const mojom::FrameRenderDataUpdate& render_data,
                                bool is_main_frame) override;
   void OnSubFrameRenderDataChanged(
@@ -277,11 +278,12 @@ class PageLoadTracker : public PageLoadMetricsUpdateDispatcher::Client,
       BfcacheStrategy bfcache_strategy) const override;
   const NormalizedCLSData& GetSoftNavigationIntervalNormalizedCLSData()
       const override;
-  const ResponsivenessMetricsNormalization&
-  GetResponsivenessMetricsNormalization() const override;
-  const ResponsivenessMetricsNormalization&
-  GetSoftNavigationIntervalResponsivenessMetricsNormalization() const override;
-  const mojom::InputTiming& GetPageInputTiming() const override;
+  const InteractionToNextPaintCalculator& GetInteractionToNextPaintCalculator()
+      const override;
+  const InteractionToNextPaintCalculator&
+  GetSoftNavigationIntervalInteractionToNextPaintCalculator() const override;
+  const ContentfulPaintTimingInfo& GetSoftNavigationLargestContentfulPaint()
+      const override;
   const std::optional<blink::SubresourceLoadMetrics>&
   GetSubresourceLoadMetrics() const override;
   const PageRenderData& GetMainFrameRenderData() const override;
@@ -455,17 +457,19 @@ class PageLoadTracker : public PageLoadMetricsUpdateDispatcher::Client,
   // Checks if this tracker is for outermost pages.
   bool IsOutermostTracker() const { return !parent_tracker_; }
 
-  void UpdateMetrics(content::RenderFrameHost* render_frame_host,
-                     mojom::PageLoadTimingPtr new_timing,
-                     mojom::FrameMetadataPtr new_metadata,
-                     const std::vector<blink::UseCounterFeature>& new_features,
-                     const std::vector<mojom::ResourceDataUpdatePtr>& resources,
-                     mojom::FrameRenderDataUpdatePtr render_data,
-                     mojom::CpuTimingPtr new_cpu_timing,
-                     mojom::InputTimingPtr input_timing_delta,
-                     const std::optional<blink::SubresourceLoadMetrics>&
-                         subresource_load_metrics,
-                     mojom::SoftNavigationMetricsPtr soft_navigation_metrics);
+  void UpdateMetrics(
+      content::RenderFrameHost* render_frame_host,
+      mojom::PageLoadTimingPtr new_timing,
+      mojom::FrameMetadataPtr new_metadata,
+      const std::vector<blink::UseCounterFeature>& new_features,
+      const std::vector<mojom::ResourceDataUpdatePtr>& resources,
+      mojom::FrameRenderDataUpdatePtr render_data,
+      mojom::CpuTimingPtr new_cpu_timing,
+      std::vector<mojom::EventTimingPtr> event_timings,
+      const std::optional<blink::SubresourceLoadMetrics>&
+          subresource_load_metrics,
+      mojom::SoftNavigationMetricsPtr soft_navigation_metrics,
+      mojom::LargestContentfulPaintTimingPtr soft_largest_contentful_paint);
 
   void AddCustomUserTimings(
       std::vector<mojom::CustomUserTimingMarkPtr> custom_timings);

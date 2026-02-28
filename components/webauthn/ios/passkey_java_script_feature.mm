@@ -5,6 +5,7 @@
 #import "components/webauthn/ios/passkey_java_script_feature.h"
 
 #import "base/base64url.h"
+#import "base/metrics/histogram_functions.h"
 #import "base/no_destructor.h"
 #import "base/strings/strcat.h"
 #import "base/strings/sys_string_conversions.h"
@@ -16,6 +17,7 @@
 #import "ios/web/public/js_messaging/java_script_feature_util.h"
 #import "ios/web/public/js_messaging/script_message.h"
 #import "ios/web/public/js_messaging/web_frames_manager.h"
+#import "ios/web/public/web_state.h"
 
 namespace webauthn {
 
@@ -28,6 +30,8 @@ using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::kGetRequested;
 using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::kGetResolvedGpm;
 using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::
     kGetResolvedNonGpm;
+using WebAuthenticationIOSContentAreaEvent =
+    PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent;
 
 namespace {
 
@@ -38,24 +42,6 @@ constexpr char kHandlerName[] = "PasskeyInteractionHandler";
 constexpr char kHandlePasskeyRequestsPlaceholder[] =
     "/*! {{PLACEHOLDER_HANDLE_PASSKEY_REQUESTS}} */";
 
-// Message event.
-constexpr char kEvent[] = "event";
-
-// Message event types.
-constexpr char kHandleGetRequest[] = "handleGetRequest";
-constexpr char kHandleCreateRequest[] = "handleCreateRequest";
-constexpr char kLogGetRequest[] = "logGetRequest";
-constexpr char kLogCreateRequest[] = "logCreateRequest";
-constexpr char kLogGetResolved[] = "logGetResolved";
-constexpr char kLogCreateResolved[] = "logCreateResolved";
-
-// Parameters of the "logGetResolved" event.
-constexpr char kCredentialId[] = "credentialId";
-constexpr char kRpId[] = "rpId";
-
-// Parameter for the "logCreateResolved" event.
-constexpr char kIsGpm[] = "isGpm";
-
 // Returns the placeholder replacements for the JavaScript feature script.
 web::JavaScriptFeature::FeatureScript::PlaceholderReplacements
 GetPlaceholderReplacements() {
@@ -65,11 +51,17 @@ GetPlaceholderReplacements() {
       base::FeatureList::IsEnabled(kIOSPasskeyModalLoginWithShim);
   bool handle_conditional_passkey_requests =
       base::FeatureList::IsEnabled(kIOSPasskeyConditionalLoginWithShim);
+  // Overrides the placeholder for whether to shim
+  // PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable.
+  bool shim_is_uvpaa = base::FeatureList::IsEnabled(kIOSPasskeyUVPAAWorkaround);
+
   std::u16string handle_passkey_requests_script_block = base::StrCat(
       {u"const shouldHandleModalPasskeyRequests = () => { return ",
        handle_modal_passkey_requests ? u"true;" : u"false;", u" };\n\n",
        u"const shouldHandleConditionalPasskeyRequests = () => { return ",
-       handle_conditional_passkey_requests ? u"true;" : u"false;", u" };"});
+       handle_conditional_passkey_requests ? u"true;" : u"false;", u" };\n\n",
+       u"const shouldShimIsUVPAA = () => { return ",
+       shim_is_uvpaa ? u"true;" : u"false;", u" };"});
   return @{
     base::SysUTF8ToNSString(kHandlePasskeyRequestsPlaceholder) :
         base::SysUTF16ToNSString(handle_passkey_requests_script_block),
@@ -96,43 +88,32 @@ std::string Base64UrlEncode(std::string_view input) {
   return output;
 }
 
-// Reads the type of log event received.
-// Returns std::nullopt on any non log event or invalid log event.
-std::optional<PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent>
-ReadLogEventType(const std::string& event,
-                 const base::DictValue& dict,
-                 const PasskeyTabHelper& tab_helper) {
-  if (event == kLogGetRequest) {
-    return kGetRequested;
-  } else if (event == kLogCreateRequest) {
-    return kCreateRequested;
-  } else if (event == kLogGetResolved) {
-    const std::string* credential_id = dict.FindString(kCredentialId);
-    const std::string* rp_id = dict.FindString(kRpId);
-    if (!credential_id || credential_id->empty() || !rp_id || rp_id->empty()) {
-      return std::nullopt;
-    }
-
-    bool isGpm = tab_helper.HasCredential(*rp_id, *credential_id);
-    return isGpm ? kGetResolvedGpm : kGetResolvedNonGpm;
-  } else if (event == kLogCreateResolved) {
-    // Parameter for the "logCreateResolved" event.
-    std::optional<bool> isGpm = dict.FindBool(kIsGpm);
-    if (!isGpm.has_value()) {
-      return std::nullopt;
-    }
-
-    return *isGpm ? kCreateResolvedGpm : kCreateResolvedNonGpm;
+bool ValidateFeatureUsage(const PasskeyRequestParams& request_params) {
+  if (request_params.Type() == PasskeyRequestParams::RequestType::kModal) {
+    return base::FeatureList::IsEnabled(kIOSPasskeyModalLoginWithShim);
+  } else {
+    return base::FeatureList::IsEnabled(kIOSPasskeyConditionalLoginWithShim);
   }
-
-  return std::nullopt;
 }
 
-bool ValidateFeatureUsage(const PasskeyRequestParams& request_params) {
-  if (request_params.IsConditional()) {
-    return base::FeatureList::IsEnabled(kIOSPasskeyConditionalLoginWithShim);
-  } else {
-    return base::FeatureList::IsEnabled(kIOSPasskeyModalLoginWithShim);
+// Helper to determine the logging event type based on the parsed script event.
+WebAuthenticationIOSContentAreaEvent ToWebAuthenticationIOSContentAreaEvent(
+    PasskeyScriptEvent event) {
+  switch (event) {
+    case PasskeyScriptEvent::kHandleGetRequest:
+    case PasskeyScriptEvent::kLogGetRequest:
+      return WebAuthenticationIOSContentAreaEvent::kGetRequested;
+    case PasskeyScriptEvent::kHandleCreateRequest:
+    case PasskeyScriptEvent::kLogCreateRequest:
+      return WebAuthenticationIOSContentAreaEvent::kCreateRequested;
+    case PasskeyScriptEvent::kLogGetResolvedGpm:
+      return WebAuthenticationIOSContentAreaEvent::kGetResolvedGpm;
+    case PasskeyScriptEvent::kLogGetResolvedNonGpm:
+      return WebAuthenticationIOSContentAreaEvent::kGetResolvedNonGpm;
+    case PasskeyScriptEvent::kLogCreateResolvedGpm:
+      return WebAuthenticationIOSContentAreaEvent::kCreateResolvedGpm;
+    case PasskeyScriptEvent::kLogCreateResolvedNonGpm:
+      return WebAuthenticationIOSContentAreaEvent::kCreateResolvedNonGpm;
   }
 }
 
@@ -192,10 +173,21 @@ PasskeyJavaScriptFeature::PasskeyJavaScriptFeature()
 
 PasskeyJavaScriptFeature::~PasskeyJavaScriptFeature() = default;
 
-void PasskeyJavaScriptFeature::DeferToRenderer(web::WebFrame* web_frame,
-                                               std::string_view request_id) {
-  CallJavaScriptFunction(web_frame, "passkey.deferToRenderer",
+void PasskeyJavaScriptFeature::RejectPasskeyRequest(
+    web::WebFrame* web_frame,
+    std::string_view request_id) {
+  CallJavaScriptFunction(web_frame, "passkey.rejectPasskeyRequest",
                          base::ListValue().Append(request_id));
+}
+
+void PasskeyJavaScriptFeature::DeferToRenderer(
+    web::WebFrame* web_frame,
+    std::string_view request_id,
+    PasskeyRequestParams::RequestType request_type) {
+  CallJavaScriptFunction(web_frame, "passkey.deferToRenderer",
+                         base::ListValue()
+                             .Append(request_id)
+                             .Append(std::to_underlying(request_type)));
 }
 
 void PasskeyJavaScriptFeature::ResolveAttestationRequest(
@@ -265,20 +257,26 @@ void PasskeyJavaScriptFeature::ScriptMessageReceived(
   }
 
   const base::DictValue& dict = body->GetDict();
-  const std::string* event = dict.FindString(kEvent);
-  if (!event || event->empty()) {
+
+  std::optional<PasskeyScriptEvent> event = ParsePasskeyScriptEvent(
+      dict, [passkey_tab_helper](const std::string& rp_id,
+                                 const std::string& credential_id) {
+        return passkey_tab_helper->HasCredential(rp_id, credential_id);
+      });
+
+  if (!event.has_value()) {
+    // TODO(crbug.com/460485333): Log parsing failure metrics.
     return;
   }
 
-  bool is_handle_get_request_event = (*event == kHandleGetRequest);
-  bool is_handle_create_request_event = (*event == kHandleCreateRequest);
-  if (!is_handle_get_request_event && !is_handle_create_request_event) {
-    std::optional<PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent>
-        log_event_type = ReadLogEventType(*event, dict, *passkey_tab_helper);
+  passkey_tab_helper->LogEvent(ToWebAuthenticationIOSContentAreaEvent(*event));
 
-    if (log_event_type.has_value()) {
-      passkey_tab_helper->LogEvent(*log_event_type);
-    }
+  bool is_handle_get_request_event =
+      (*event == PasskeyScriptEvent::kHandleGetRequest);
+  bool is_handle_create_request_event =
+      (*event == PasskeyScriptEvent::kHandleCreateRequest);
+
+  if (!is_handle_get_request_event && !is_handle_create_request_event) {
     return;
   }
 
@@ -290,50 +288,102 @@ void PasskeyJavaScriptFeature::ScriptMessageReceived(
 
   auto request_info = BuildRequestInfo(dict);
   if (!request_info.has_value()) {
-    // TODO(460485333): Log the error.
+    base::UmaHistogramEnumeration("WebAuthentication.IOS.PasskeyParsingError",
+                                  request_info.error());
+    return;
+  }
+
+  if (is_handle_create_request_event) {
+    // base::Unretained is safe because this is a singleton.
+    if (passkey_tab_helper->ShowCreationInterstitialIfNecessary(
+            base::BindOnce(&PasskeyJavaScriptFeature::OnInterstitialDecision,
+                           base::Unretained(this), web_state->GetWeakPtr(),
+                           *request_info, dict.Clone()))) {
+      return;
+    }
+
+    ProcessCreateRequest(web_state, std::move(*request_info), dict.Clone());
     return;
   }
 
   if (is_handle_get_request_event) {
-    passkey_tab_helper->LogEvent(
-        PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::kGetRequested);
     auto assertion_request_params =
-        BuildAssertionRequestParams(std::move(*request_info), dict);
+        BuildAssertionRequestParams(*request_info, dict);
     if (!assertion_request_params.has_value()) {
-      // TODO(460485333): Log the error.
-      passkey_tab_helper->DeferToRenderer(std::move(*request_info));
+      base::UmaHistogramEnumeration("WebAuthentication.IOS.PasskeyParsingError",
+                                    assertion_request_params.error());
+      passkey_tab_helper->DeferToRenderer(
+          std::move(*request_info),
+          PasskeyRequestParams::RequestType::kUnknown);
       return;
     }
 
     if (!ValidateFeatureUsage(*assertion_request_params)) {
       // TODO(460485333): Log the error.
-      passkey_tab_helper->DeferToRenderer(std::move(*request_info));
+      passkey_tab_helper->DeferToRenderer(std::move(*request_info),
+                                          assertion_request_params->Type());
       return;
     }
 
     passkey_tab_helper->HandleGetRequestedEvent(
         std::move(*assertion_request_params));
-  } else {  // is_handle_create_request_event
-    passkey_tab_helper->LogEvent(
-        PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::
-            kCreateRequested);
-    auto registration_request_params =
-        BuildRegistrationRequestParams(std::move(*request_info), dict);
-    if (!registration_request_params.has_value()) {
-      // TODO(460485333): Log the error.
-      passkey_tab_helper->DeferToRenderer(std::move(*request_info));
-      return;
-    }
-
-    if (!ValidateFeatureUsage(*registration_request_params)) {
-      // TODO(460485333): Log the error.
-      passkey_tab_helper->DeferToRenderer(std::move(*request_info));
-      return;
-    }
-
-    passkey_tab_helper->HandleCreateRequestedEvent(
-        std::move(*registration_request_params));
   }
+}
+
+void PasskeyJavaScriptFeature::OnInterstitialDecision(
+    base::WeakPtr<web::WebState> web_state,
+    IOSPasskeyClient::RequestInfo request_info,
+    base::DictValue dict,
+    bool proceed) {
+  if (!web_state) {
+    return;
+  }
+
+  if (!proceed) {
+    web::WebFramesManager* frames_manager =
+        GetWebFramesManager(web_state.get());
+    web::WebFrame* frame =
+        frames_manager->GetFrameWithId(request_info.frame_id);
+    if (frame) {
+      RejectPasskeyRequest(frame, request_info.request_id);
+    }
+    return;
+  }
+
+  ProcessCreateRequest(web_state.get(), std::move(request_info),
+                       std::move(dict));
+}
+
+void PasskeyJavaScriptFeature::ProcessCreateRequest(
+    web::WebState* web_state,
+    IOSPasskeyClient::RequestInfo request_info,
+    base::DictValue dict) {
+  PasskeyTabHelper* passkey_tab_helper =
+      PasskeyTabHelper::FromWebState(web_state);
+  if (!passkey_tab_helper) {
+    return;
+  }
+
+  auto registration_request_params =
+      BuildRegistrationRequestParams(request_info, dict);
+
+  if (!registration_request_params.has_value()) {
+    base::UmaHistogramEnumeration("WebAuthentication.IOS.PasskeyParsingError",
+                                  registration_request_params.error());
+    passkey_tab_helper->DeferToRenderer(
+        std::move(request_info), PasskeyRequestParams::RequestType::kUnknown);
+    return;
+  }
+
+  if (!ValidateFeatureUsage(*registration_request_params)) {
+    // TODO(460485333): Log the error.
+    passkey_tab_helper->DeferToRenderer(std::move(request_info),
+                                        registration_request_params->Type());
+    return;
+  }
+
+  passkey_tab_helper->HandleCreateRequestedEvent(
+      std::move(*registration_request_params));
 }
 
 }  // namespace webauthn

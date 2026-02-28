@@ -72,7 +72,6 @@ enum class TabAlert;
 //    DraggedTab, focusing on tasks that require reshuffling other tabs
 //    in response to dragged tabs.
 class TabStrip : public views::View,
-                 public views::ViewObserver,
                  public views::WidgetObserver,
                  public TabContainerController,
                  public TabSlotController,
@@ -80,7 +79,9 @@ class TabStrip : public views::View,
   METADATA_HEADER(TabStrip, views::View)
 
  public:
-  explicit TabStrip(std::unique_ptr<TabStripController> controller);
+  TabStrip(std::unique_ptr<TabStripController> tab_strip_controller,
+           std::unique_ptr<TabHoverCardController> hover_card_controller);
+
   TabStrip(const TabStrip&) = delete;
   TabStrip& operator=(const TabStrip&) = delete;
   ~TabStrip() override;
@@ -215,9 +216,6 @@ class TabStrip : public views::View,
   // TODO(tbergquist): This should return an optional<size_t>.
   std::optional<int> GetModelIndexOf(const TabSlotView* view) const;
 
-  // Gets the number of Tabs in the tab strip.
-  int GetTabCount() const;
-
   // Cover method for TabStripController::GetCount.
   int GetModelCount() const;
 
@@ -282,6 +280,8 @@ class TabStrip : public views::View,
   void ShowContextMenuForTab(Tab* tab,
                              const gfx::Point& p,
                              ui::mojom::MenuSourceType source_type) override;
+  void TabKeyboardFocusChangedTo(const tabs::TabInterface* tab) override;
+  int GetTabCount() const override;
   bool IsActiveTab(const TabSlotView* tab) const override;
   bool IsTabSelected(const TabSlotView* tab) const override;
   bool IsFocusInTabs() const override;
@@ -320,9 +320,6 @@ class TabStrip : public views::View,
   void ShiftGroupRight(const tab_groups::TabGroupId& group) override;
   Browser* GetBrowser() override;
   BrowserWindowInterface* GetBrowserWindowInterface() override;
-#if BUILDFLAG(IS_CHROMEOS)
-  bool IsLockedForOnTask() override;
-#endif
 
   // views::View:
   views::SizeBounds GetAvailableSize(const View* child) const override;
@@ -409,10 +406,6 @@ class TabStrip : public views::View,
   // ui::EventHandler:
   void OnGestureEvent(ui::GestureEvent* event) override;
 
-  // views::ViewObserver:
-  void OnViewFocused(views::View* observed_view) override;
-  void OnViewBlurred(views::View* observed_view) override;
-
   // views::WidgetObserver:
   void OnWidgetActivationChanged(views::Widget* widget, bool active) override;
 
@@ -447,19 +440,6 @@ class TabStrip : public views::View,
   // Used to track if the time from mouse entered to tab switch has been
   // reported.
   bool has_reported_time_mouse_entered_to_switch_ = false;
-
-  // Used to track if the tab dragging metrics have been reported.
-  bool has_reported_tab_drag_metrics_ = false;
-
-  // Used to track the time of last tab dragging.
-  std::optional<base::TimeTicks> last_tab_drag_time_;
-
-  // Used to count the number of tab dragging in the last 30 minutes and 5
-  // minutes.
-  int tab_drag_count_30min_ = 0;
-  int tab_drag_count_5min_ = 0;
-  std::unique_ptr<base::RepeatingTimer> tab_drag_count_timer_30min_;
-  std::unique_ptr<base::RepeatingTimer> tab_drag_count_timer_5min_;
 
   const raw_ptr<const TabStyle> style_;
 

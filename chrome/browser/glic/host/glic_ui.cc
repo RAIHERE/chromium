@@ -49,11 +49,25 @@
 #include "ui/webui/webui_allowlist.h"
 #include "ui/webui/webui_util.h"
 
+#if !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+#include "chrome/grit/guest_view_shared_resources_map.h"  // nogncheck
+#endif  // !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
 namespace glic {
 
 // Enables sending bitmaps across glic for favicons instead of converting to
 // PNG.
 BASE_FEATURE(kGlicBitmapsEnabled, base::FEATURE_ENABLED_BY_DEFAULT);
+
+// Sets the maximum number of in-flight requests to the guest.
+BASE_FEATURE(kGlicMaxInFlightRequests, base::FEATURE_ENABLED_BY_DEFAULT);
+BASE_FEATURE_PARAM(int,
+                   kGlicMaxInFlightRequestLimit,
+                   &kGlicMaxInFlightRequests,
+                   "max_in_flight_request_limit",
+                   200);
+BASE_FEATURE(kGlicSendResponsesForAllRequests,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 class GlicPreloadHandler : public glic::mojom::GlicPreloadHandler {
  public:
@@ -111,7 +125,10 @@ bool GlicUIConfig::IsWebUIEnabled(content::BrowserContext* browser_context) {
 }
 
 GlicUI::GlicUI(content::WebUI* web_ui)
-    : ui::MojoWebUIController(web_ui), preload_factory_receiver_{this} {
+    : ui::MojoWebUIController(web_ui,
+                              /*enable_chrome_send=*/false,
+                              /*enable_chrome_histograms=*/true),
+      preload_factory_receiver_{this} {
   static constexpr webui::LocalizedString kStrings[] = {
       {"closeButtonLabel", IDS_GLIC_NOTICE_CLOSE_BUTTON_LABEL},
       {"errorNotice", IDS_GLIC_ERROR_NOTICE},
@@ -146,6 +163,13 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   webui::SetupWebUIDataSource(source, kGlicResources, IDR_GLIC_GLIC_HTML);
   ConfigureSharedWebUISource(*source);
 
+#if !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+  auto bindings = web_ui->GetBindings();
+  bindings.Put(content::BindingsPolicyValue::kSlimWebView);
+  web_ui->SetBindings(bindings);
+  source->AddResourcePaths(kGuestViewSharedResources);
+#endif  // !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
   for (const auto& resource : kGlicFreResources) {
     source->AddResourcePath(base::StrCat({"fre/", resource.path}), resource.id);
   }
@@ -174,10 +198,16 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   source->AddBoolean("loggingEnabled",
                      command_line->HasSwitch(::switches::kGlicHostLogging));
 
-  auto* profile = Profile::FromBrowserContext(browser_context);
+  source->AddInteger("maxInFlightRequests",
+                     base::FeatureList::IsEnabled(kGlicMaxInFlightRequests)
+                         ? kGlicMaxInFlightRequestLimit.Get()
+                         : INT_MAX);
+  source->AddBoolean(
+      "sendResponsesForAllRequests",
+      base::FeatureList::IsEnabled(kGlicSendResponsesForAllRequests));
 
   // Set up guest URL via cli flag or default to finch param value.
-  const GURL guest_url = GetGuestURL(profile);
+  const GURL guest_url = GetGuestURL();
   source->AddString("glicGuestURL", guest_url.spec());
   net_log::LogDummyNetworkRequestForTrafficAnnotation(guest_url,
                                                       net_log::GlicPage::kGlic);
@@ -200,6 +230,7 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   }
 
   // Allow corp origins for @google accounts.
+  auto* profile = Profile::FromBrowserContext(browser_context);
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(profile);
   if (identity_manager && IsPrimaryAccountGoogleInternal(*identity_manager)) {
@@ -251,9 +282,10 @@ GlicUI::GlicUI(content::WebUI* web_ui)
   source->AddString("glicFreURL", GetFreURL(profile).spec());
   source->AddBoolean("isUnifiedFre",
                      GlicEnabling::IsUnifiedFreEnabled(profile));
-  source->AddBoolean("shouldShowFre",
-                     !GlicEnabling::IsTrustFirstOnboardingEnabled() &&
-                         !GlicEnabling::HasConsentedForProfile(profile));
+  source->AddBoolean(
+      "shouldShowFre",
+      !GlicEnabling::IsTrustFirstOnboardingEnabledForProfile(profile) &&
+          !GlicEnabling::HasConsentedForProfile(profile));
   source->AddInteger("reloadMaxLoadingTimeMs",
                      features::kGlicReloadMaxLoadingTimeMs.Get());
   source->AddBoolean("caaGuestError", base::FeatureList::IsEnabled(
@@ -357,5 +389,11 @@ void GlicUI::CreatePreloadHandler(
       web_ui()->GetWebContents()->GetBrowserContext(), std::move(receiver),
       std::move(page));
 }
+
+#if !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+content::RenderFrameHost* GlicUI::GetWebUiRenderFrameHost() {
+  return web_ui()->GetRenderFrameHost();
+}
+#endif  // !BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 
 }  // namespace glic

@@ -72,7 +72,9 @@ public class TabGroupUiOneshotSupplier extends OneshotSupplierImpl<TabGroupUi> {
             mSetter = setter;
             mActivityTabProvider = activityTabProvider;
             mTabModelSelector = tabModelSelector;
-            activityTabProvider.asObservable().addObserver(mActivityTabObserver);
+            activityTabProvider
+                    .asObservable()
+                    .addSyncObserverAndPostIfNonNull(mActivityTabObserver);
         }
 
         void destroy() {
@@ -163,7 +165,7 @@ public class TabGroupUiOneshotSupplier extends OneshotSupplierImpl<TabGroupUi> {
             ThemeColorProvider themeColorProvider,
             UndoBarThrottle undoBarThrottle,
             MonotonicObservableSupplier<TabBookmarker> tabBookmarkerSupplier,
-            Supplier<ShareDelegate> shareDelegateSupplier) {
+            Supplier<@Nullable ShareDelegate> shareDelegateSupplier) {
         Runnable setter =
                 () -> {
                     var tabGroupUi =

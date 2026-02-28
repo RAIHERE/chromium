@@ -12,7 +12,10 @@
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/memory/raw_ptr.h"
+#include "base/test/gtest_util.h"
+#include "base/test/test_timeouts.h"
 #include "base/threading/platform_thread.h"
+#include "base/threading/thread_restrictions.h"
 #include "base/time/time.h"
 #include "build/build_config.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -256,6 +259,29 @@ TEST(WaitableEventTest, ZeroTimeout) {
   start_time = TimeTicks::Now();
   EXPECT_TRUE(ev.TimedWait(TimeDelta()));
   EXPECT_LT(TimeTicks::Now() - start_time, Milliseconds(1));
+}
+
+// Tests that TimedWait() doesn't instantiate a ScopedBlockingCall if the
+// WaitableEvent is already signaled.
+TEST(WaitableEventTest, TimedWaitDoesNotBlockIfAlreadySignaled) {
+  WaitableEvent event(WaitableEvent::ResetPolicy::MANUAL,
+                      WaitableEvent::InitialState::SIGNALED);
+
+  const TimeDelta short_delay = TestTimeouts::tiny_timeout();
+  const TimeTicks start_time = TimeTicks::Now();
+  EXPECT_TRUE(event.TimedWait(short_delay));
+  const TimeDelta actual_delay = TimeTicks::Now() - start_time;
+  // TimedWait() should return almost immediately.
+  EXPECT_LE(actual_delay, short_delay / 2);
+}
+
+// Verifies the suggestion that AssertBaseSyncPrimitivesAllowed() is called even
+// if the event is already signaled and the wait skipped.
+TEST(WaitableEventTest, TimedWaitRespectsRestrictionsEvenIfSignaled) {
+  WaitableEvent event(WaitableEvent::ResetPolicy::MANUAL,
+                      WaitableEvent::InitialState::SIGNALED);
+  DisallowBaseSyncPrimitives();
+  EXPECT_DCHECK_DEATH({ event.TimedWait(Milliseconds(10)); });
 }
 
 // Same as ZeroTimeout for negative timeouts.

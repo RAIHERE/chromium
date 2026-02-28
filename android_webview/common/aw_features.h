@@ -17,10 +17,14 @@ namespace android_webview::features {
 // Alphabetical:
 BASE_DECLARE_FEATURE(kWebViewAddQuicHints);
 BASE_DECLARE_FEATURE(kWebViewBackForwardCache);
+BASE_DECLARE_FEATURE(kWebViewBackgroundTracingInit);
 // TODO(crbug.com/455296998): Remove this code for M145.
 BASE_DECLARE_FEATURE(kWebViewBypassHttpCacheForPrefetchFromHeader);
 BASE_DECLARE_FEATURE(kWebViewConfigurableLibraryPrefetch);
 BASE_DECLARE_FEATURE(kWebViewContentRestrictionSupport);
+BASE_DECLARE_FEATURE(kWebViewDeferStartupGmsCalls);
+BASE_DECLARE_FEATURE(kWebViewEarlyStartupTracing);
+BASE_DECLARE_FEATURE(kWebViewEarlyTracingInit);
 BASE_DECLARE_FEATURE(kWebViewFileSystemAccess);
 BASE_DECLARE_FEATURE(kWebViewIgnoreDuplicateNavs);
 BASE_DECLARE_FEATURE(kWebViewInvokeZoomPickerOnGSU);
@@ -41,6 +45,7 @@ BASE_DECLARE_FEATURE(kWebViewReduceUAAndroidVersionDeviceModel);
 BASE_DECLARE_FEATURE(kWebViewEnableCrash);
 BASE_DECLARE_FEATURE(kWebViewPrefetchNativeLibrary);
 extern const base::FeatureParam<bool> kWebViewPrefetchFromRenderer;
+BASE_DECLARE_FEATURE(kWebViewPrefetchOffTheMainThread);
 BASE_DECLARE_FEATURE(kWebViewSkipInterceptsForPrefetch);
 BASE_DECLARE_FEATURE(kWebViewHyperlinkContextMenu);
 BASE_DECLARE_FEATURE(kCreateSpareRendererOnBrowserContextCreation);
@@ -57,8 +62,6 @@ BASE_DECLARE_FEATURE(kWebViewConnectToComponentProviderInBackground);
 BASE_DECLARE_FEATURE(kAndroidMetricsAsyncMetricLogging);
 BASE_DECLARE_FEATURE(kWebViewReducedSeedExpiration);
 BASE_DECLARE_FEATURE(kWebViewReducedSeedRequestPeriod);
-BASE_DECLARE_FEATURE(kWebViewEarlyStartupTracing);
-BASE_DECLARE_FEATURE(kWebViewEarlyPerfettoInit);
 BASE_DECLARE_FEATURE(kWebViewCacheBoundaryInterfaceMethods);
 BASE_DECLARE_FEATURE(kWebViewOptInToGmsBindServiceOptimization);
 BASE_DECLARE_FEATURE(kWebViewMoveWorkToProviderInit);
@@ -71,6 +74,9 @@ extern const base::FeatureParam<base::TimeDelta>
 BASE_DECLARE_FEATURE(kWebViewFetchOriginTrialsComponent);
 BASE_DECLARE_FEATURE(kWebViewEnableApiCallUserActions);
 BASE_DECLARE_FEATURE(kWebViewWebPerformanceMetricsReporting);
+BASE_DECLARE_FEATURE(kWebViewTestNonembeddedLowEntropySource);
+BASE_DECLARE_FEATURE(kWebViewUseNonembeddedLowEntropySource);
+BASE_DECLARE_FEATURE(kWebViewFasterGetDefaultUserAgent);
 }  // namespace android_webview::features
 
 #endif  // ANDROID_WEBVIEW_COMMON_AW_FEATURES_H_

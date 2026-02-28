@@ -11,6 +11,7 @@
 #include "build/build_config.h"
 #include "chrome/browser/glic/common/future_browser_features.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
@@ -118,7 +119,7 @@ void GlicActiveTabForProfileTracker::UpdateActiveTab() {
   BrowserWindowInterface* const browser =
       GetLastActiveBrowserWindowInterfaceWithAnyProfile();
   if (IsBrowserActiveForProfile(browser)) {
-    active_tab = GetActiveTabInterface(browser);
+    active_tab = TabListInterface::From(browser)->GetActiveTab();
   }
 
   if (last_notified_tab_.WasInvalidated() ||

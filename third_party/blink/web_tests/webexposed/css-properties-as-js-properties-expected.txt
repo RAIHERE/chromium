@@ -143,6 +143,8 @@ columnRuleEdgeInset
 columnRuleEdgeInsetEnd
 columnRuleEdgeInsetStart
 columnRuleInset
+columnRuleInsetEnd
+columnRuleInsetStart
 columnRuleInteriorInset
 columnRuleInteriorInsetEnd
 columnRuleInteriorInsetStart
@@ -242,8 +244,8 @@ fontVariantPosition
 fontVariationSettings
 fontWeight
 forcedColorAdjust
+frameSizing
 gap
-gapRuleOverlap
 getPropertyPriority
 getPropertyValue
 grid
@@ -273,6 +275,7 @@ hostname
 hyphenateCharacter
 hyphenateLimitChars
 hyphens
+imageAnimation
 imageOrientation
 imageRendering
 inherits
@@ -319,6 +322,7 @@ marginInlineStart
 marginLeft
 marginRight
 marginTop
+marginTrim
 marker
 markerEnd
 markerMid
@@ -437,6 +441,8 @@ rowRuleEdgeInset
 rowRuleEdgeInsetEnd
 rowRuleEdgeInsetStart
 rowRuleInset
+rowRuleInsetEnd
+rowRuleInsetStart
 rowRuleInteriorInset
 rowRuleInteriorInsetEnd
 rowRuleInteriorInsetStart
@@ -451,8 +457,12 @@ ruleBreak
 ruleColor
 ruleEdgeInset
 ruleInset
+ruleInsetEnd
+ruleInsetStart
 ruleInteriorInset
+ruleOverlap
 ruleStyle
+ruleVisibilityItems
 ruleWidth
 rx
 ry
@@ -555,12 +565,12 @@ textWrapMode
 textWrapStyle
 timelineScope
 timelineTrigger
+timelineTriggerActivationRange
+timelineTriggerActivationRangeEnd
+timelineTriggerActivationRangeStart
 timelineTriggerActiveRange
 timelineTriggerActiveRangeEnd
 timelineTriggerActiveRangeStart
-timelineTriggerEntryRange
-timelineTriggerEntryRangeEnd
-timelineTriggerEntryRangeStart
 timelineTriggerName
 timelineTriggerSource
 top

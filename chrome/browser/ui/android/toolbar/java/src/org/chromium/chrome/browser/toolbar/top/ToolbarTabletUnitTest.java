@@ -66,7 +66,6 @@ import org.mockito.junit.MockitoRule;
 import org.mockito.stubbing.Answer;
 import org.robolectric.Robolectric;
 import org.robolectric.Shadows;
-import org.robolectric.annotation.LooperMode;
 import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.supplier.ObservableSuppliers;
@@ -75,6 +74,7 @@ import org.chromium.base.test.BaseRobolectricTestRunner;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.layouts.toolbar.ToolbarWidthConsumer;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.omnibox.LocationBarCoordinator;
@@ -120,7 +120,6 @@ import java.util.List;
 import java.util.Set;
 
 /** Unit tests for @{@link ToolbarTablet} */
-@LooperMode(LooperMode.Mode.PAUSED)
 @RunWith(BaseRobolectricTestRunner.class)
 @EnableFeatures(ChromeFeatureList.TOOLBAR_TABLET_RESIZE_REFACTOR)
 public final class ToolbarTabletUnitTest {
@@ -341,9 +340,10 @@ public final class ToolbarTabletUnitTest {
                 mToolbarTabletLayout.getChildAt(3));
     }
 
-    @EnableFeatures(ChromeFeatureList.TAB_STRIP_INCOGNITO_MIGRATION)
+    @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     @Test
     public void testButtonPositionIncognito() {
+        IncognitoUtils.setShouldOpenIncognitoAsWindowForTesting(true);
         doAnswer(mAddIncognitoObserverInIncognitoMode)
                 .when(mIncognitoStateProvider)
                 .addIncognitoStateObserverAndTrigger(any());
@@ -361,7 +361,7 @@ public final class ToolbarTabletUnitTest {
                 mReloadButtonCoordinator,
                 mBackButtonCoordinator,
                 mForwardButtonCoordinator,
-                /* homeButtonDisplay= */ null,
+                mHomeButtonCoordinator,
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1);
@@ -445,8 +445,9 @@ public final class ToolbarTabletUnitTest {
     }
 
     @Test
-    @EnableFeatures(ChromeFeatureList.TAB_STRIP_INCOGNITO_MIGRATION)
+    @EnableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
     public void onMeasureIncognito_flipIncognitoVisibility() {
+        IncognitoUtils.setShouldOpenIncognitoAsWindowForTesting(true);
         doAnswer(mAddIncognitoObserverInIncognitoMode)
                 .when(mIncognitoStateProvider)
                 .addIncognitoStateObserverAndTrigger(any());
@@ -464,7 +465,7 @@ public final class ToolbarTabletUnitTest {
                 mReloadButtonCoordinator,
                 mBackButtonCoordinator,
                 mForwardButtonCoordinator,
-                /* homeButtonDisplay= */ null,
+                mHomeButtonCoordinator,
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1);
@@ -581,7 +582,7 @@ public final class ToolbarTabletUnitTest {
                 mReloadButtonCoordinator,
                 mBackButtonCoordinator,
                 mForwardButtonCoordinator,
-                /* homeButtonDisplay= */ null,
+                mHomeButtonCoordinator,
                 mThemeColorProvider,
                 mIncognitoStateProvider,
                 /* incognitoWindowCountSupplier= */ () -> 1);
@@ -861,126 +862,125 @@ public final class ToolbarTabletUnitTest {
         mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(0, EXACTLY), UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(Set.of());
 
-        mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(buttonWidth, EXACTLY), UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(MENU));
+        mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(padding, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING));
 
         mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth, EXACTLY), UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
+                MeasureSpec.makeMeasureSpec(padding + buttonWidth, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU));
 
         mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth + (locationBarMidWidth / 2), EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
-
-        mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth + locationBarMidWidth, EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
+                MeasureSpec.makeMeasureSpec(padding + 2 * buttonWidth, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        2 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 2 * buttonWidth + (locationBarMidWidth / 2), EXACTLY),
                 UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(PADDING, TAB_SWITCHER, MENU));
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
+
+        mToolbarTablet.onMeasure(
+                MeasureSpec.makeMeasureSpec(padding + 2 * buttonWidth + locationBarMidWidth, EXACTLY),
+                UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        3 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 3 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(PADDING, BACK, TAB_SWITCHER, MENU));
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER, BACK));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        6 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 6 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
-                Set.of(PADDING, BACK, INCOGNITO_INDICATOR, TAB_SWITCHER, MENU));
+                Set.of(PADDING, MENU, TAB_SWITCHER, BACK, INCOGNITO_INDICATOR));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        7 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 7 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
-                Set.of(PADDING, BACK, ADAPTIVE_BUTTON, INCOGNITO_INDICATOR, TAB_SWITCHER, MENU));
+                Set.of(PADDING, MENU, TAB_SWITCHER, BACK, INCOGNITO_INDICATOR, ADAPTIVE_BUTTON));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        8 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(
-                Set.of(
-                        PADDING,
-                        BACK,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
-                        MENU));
-
-        mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(
-                        9 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 8 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
-                        MENU));
-
-        mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(
-                        10 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(
-                Set.of(
-                        PADDING,
-                        HOME,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
-                        MENU));
-
-        mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(
-                        11 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(
-                Set.of(
-                        PADDING,
-                        HOME,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
                         MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD));
+
+        mToolbarTablet.onMeasure(
+                MeasureSpec.makeMeasureSpec(
+                        padding + 9 * buttonWidth + locationBarMidWidth, EXACTLY),
+                UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(
+                Set.of(
+                        PADDING,
+                        MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD));
+
+        mToolbarTablet.onMeasure(
+                MeasureSpec.makeMeasureSpec(
+                        padding + 10 * buttonWidth + locationBarMidWidth, EXACTLY),
+                UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(
+                Set.of(
+                        PADDING,
+                        MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD,
+                        HOME));
+
+        mToolbarTablet.onMeasure(
+                MeasureSpec.makeMeasureSpec(
+                        padding + 11 * buttonWidth + locationBarMidWidth, EXACTLY),
+                UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(
+                Set.of(
+                        PADDING,
+                        MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD,
+                        HOME,
                         OMNIBOX_BOOKMARK));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        12 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 12 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        HOME,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
                         MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD,
+                        HOME,
                         OMNIBOX_BOOKMARK,
                         OMNIBOX_ZOOM));
     }
@@ -1008,126 +1008,125 @@ public final class ToolbarTabletUnitTest {
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        12 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 12 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        HOME,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
                         MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD,
+                        HOME,
                         OMNIBOX_BOOKMARK,
                         OMNIBOX_ZOOM));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        11 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 11 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        HOME,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
                         MENU,
+                        TAB_SWITCHER,
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD,
+                        HOME,
                         OMNIBOX_BOOKMARK));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        10 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 10 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        HOME,
+                        MENU,
+                        TAB_SWITCHER,
                         BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
                         FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
-                        TAB_SWITCHER,
-                        MENU));
+                        HOME));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        9 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 9 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        BACK,
-                        FORWARD,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
+                        MENU,
                         TAB_SWITCHER,
-                        MENU));
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD,
+                        FORWARD));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        8 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 8 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
                 Set.of(
                         PADDING,
-                        BACK,
-                        RELOAD,
-                        ADAPTIVE_BUTTON,
-                        INCOGNITO_INDICATOR,
+                        MENU,
                         TAB_SWITCHER,
-                        MENU));
+                        BACK,
+                        INCOGNITO_INDICATOR,
+                        ADAPTIVE_BUTTON,
+                        RELOAD));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        7 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 7 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
-                Set.of(PADDING, BACK, ADAPTIVE_BUTTON, INCOGNITO_INDICATOR, TAB_SWITCHER, MENU));
+                Set.of(PADDING, MENU, TAB_SWITCHER, BACK, INCOGNITO_INDICATOR, ADAPTIVE_BUTTON));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        6 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 6 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(
-                Set.of(PADDING, BACK, INCOGNITO_INDICATOR, TAB_SWITCHER, MENU));
+                Set.of(PADDING, MENU, TAB_SWITCHER, BACK, INCOGNITO_INDICATOR));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        3 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 3 * buttonWidth + locationBarMidWidth, EXACTLY),
                 UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(PADDING, BACK, TAB_SWITCHER, MENU));
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER, BACK));
+
+        mToolbarTablet.onMeasure(
+                MeasureSpec.makeMeasureSpec(padding + 2 * buttonWidth + locationBarMidWidth, EXACTLY),
+                UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
 
         mToolbarTablet.onMeasure(
                 MeasureSpec.makeMeasureSpec(
-                        2 * buttonWidth + locationBarMidWidth + padding, EXACTLY),
+                        padding + 2 * buttonWidth + (locationBarMidWidth / 2), EXACTLY),
                 UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(PADDING, TAB_SWITCHER, MENU));
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
 
         mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth + locationBarMidWidth, EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
+                MeasureSpec.makeMeasureSpec(padding + 2 * buttonWidth, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU, TAB_SWITCHER));
 
         mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth + (locationBarMidWidth / 2), EXACTLY),
-                UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
+                MeasureSpec.makeMeasureSpec(padding + buttonWidth, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING, MENU));
 
-        mToolbarTablet.onMeasure(
-                MeasureSpec.makeMeasureSpec(2 * buttonWidth, EXACTLY), UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(TAB_SWITCHER, MENU));
-
-        mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(buttonWidth, EXACTLY), UNSPECIFIED);
-        assertToolbarComponentsReceivedWidth(Set.of(MENU));
+        mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(padding, EXACTLY), UNSPECIFIED);
+        assertToolbarComponentsReceivedWidth(Set.of(PADDING));
 
         mToolbarTablet.onMeasure(MeasureSpec.makeMeasureSpec(0, EXACTLY), UNSPECIFIED);
         assertToolbarComponentsReceivedWidth(Set.of());

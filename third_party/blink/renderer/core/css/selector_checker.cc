@@ -65,6 +65,7 @@
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
 #include "third_party/blink/renderer/core/html/custom/element_internals.h"
 #include "third_party/blink/renderer/core/html/forms/html_button_element.h"
+#include "third_party/blink/renderer/core/html/forms/html_data_list_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_field_set_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_control_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_form_element.h"
@@ -72,14 +73,16 @@
 #include "third_party/blink/renderer/core/html/forms/html_option_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/html/html_anchor_element.h"
+#include "third_party/blink/renderer/core/html/html_capability_element_base.h"
 #include "third_party/blink/renderer/core/html/html_details_element.h"
 #include "third_party/blink/renderer/core/html/html_dialog_element.h"
 #include "third_party/blink/renderer/core/html/html_document.h"
 #include "third_party/blink/renderer/core/html/html_frame_element_base.h"
+#include "third_party/blink/renderer/core/html/html_image_element.h"
+#include "third_party/blink/renderer/core/html/html_install_element.h"
 #include "third_party/blink/renderer/core/html/html_menu_bar_element.h"
 #include "third_party/blink/renderer/core/html/html_menu_item_element.h"
 #include "third_party/blink/renderer/core/html/html_menu_list_element.h"
-#include "third_party/blink/renderer/core/html/html_permission_element.h"
 #include "third_party/blink/renderer/core/html/html_slot_element.h"
 #include "third_party/blink/renderer/core/html/media/html_audio_element.h"
 #include "third_party/blink/renderer/core/html/media/html_video_element.h"
@@ -683,7 +686,9 @@ SelectorChecker::FeaturelessMatch SelectorChecker::MatchShadowHost(
     case CSSSelector::kPseudoHas:
       return CheckPseudoHas(context, result) ? kFeaturelessMatches
                                              : kFeaturelessFails;
+    case CSSSelector::kPseudoAnimatedImage:
     case CSSSelector::kPseudoActive:
+    case CSSSelector::kPseudoActiveOption:
     case CSSSelector::kPseudoActiveViewTransition:
     case CSSSelector::kPseudoActiveViewTransitionType:
     case CSSSelector::kPseudoAfter:
@@ -818,6 +823,7 @@ SelectorChecker::FeaturelessMatch SelectorChecker::MatchShadowHost(
     case CSSSelector::kPseudoTargetCurrent:
     case CSSSelector::kPseudoTargetBefore:
     case CSSSelector::kPseudoTargetAfter:
+    case CSSSelector::kPseudoTextField:
     case CSSSelector::kPseudoToolFormActive:
     case CSSSelector::kPseudoToolSubmitActive:
     case CSSSelector::kPseudoViewTransition:
@@ -1266,9 +1272,10 @@ static bool AttributeValueMatches(const Attribute& attribute_item,
 
       unsigned start_search_at = 0;
       while (true) {
-        wtf_size_t found_pos = value.Find(
-            selector_value, start_search_at,
-            case_insensitive ? kTextCaseASCIIInsensitive : kTextCaseSensitive);
+        wtf_size_t found_pos =
+            case_insensitive
+                ? value.FindIgnoringAsciiCase(selector_value, start_search_at)
+                : value.find(selector_value, start_search_at);
         if (found_pos == kNotFound) {
           return false;
         }
@@ -1288,30 +1295,27 @@ static bool AttributeValueMatches(const Attribute& attribute_item,
       if (selector_value.empty()) {
         return false;
       }
-      return value.Contains(selector_value, case_insensitive
-                                                ? kTextCaseASCIIInsensitive
-                                                : kTextCaseSensitive);
+      return case_insensitive ? value.ContainsIgnoringAsciiCase(selector_value)
+                              : value.contains(selector_value);
     case CSSSelector::kAttributeBegin:
       if (selector_value.empty()) {
         return false;
       }
-      return value.StartsWith(selector_value, case_insensitive
-                                                  ? kTextCaseASCIIInsensitive
-                                                  : kTextCaseSensitive);
+      return case_insensitive
+                 ? value.StartsWithIgnoringAsciiCase(selector_value)
+                 : value.starts_with(selector_value);
     case CSSSelector::kAttributeEnd:
       if (selector_value.empty()) {
         return false;
       }
-      return value.EndsWith(selector_value, case_insensitive
-                                                ? kTextCaseASCIIInsensitive
-                                                : kTextCaseSensitive);
+      return case_insensitive ? value.EndsWithIgnoringAsciiCase(selector_value)
+                              : value.ends_with(selector_value);
     case CSSSelector::kAttributeHyphen:
       if (value.length() < selector_value.length()) {
         return false;
       }
-      if (!value.StartsWith(selector_value, case_insensitive
-                                                ? kTextCaseASCIIInsensitive
-                                                : kTextCaseSensitive)) {
+      if (case_insensitive ? !value.StartsWithIgnoringAsciiCase(selector_value)
+                           : !value.starts_with(selector_value)) {
         return false;
       }
       // It they start the same, check for exact match or following '-':
@@ -2277,6 +2281,15 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       }
       return is_empty;
     }
+    case CSSSelector::kPseudoAnimatedImage: {
+      CHECK(RuntimeEnabledFeatures::CSSImageAnimationEnabled());
+      if (auto* image_element = DynamicTo<HTMLImageElement>(element)) {
+        if (auto* image = image_element->CachedImage()) {
+          return image->IsAnimatedImage();
+        }
+      }
+      return false;
+    }
     case CSSSelector::kPseudoFirstChild:
       if (mode_ == kResolvingStyle) {
         if (ContainerNode* parent = element.ParentElementOrDocumentFragment()) {
@@ -2532,6 +2545,23 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         return true;
       }
       return element.HasFocusWithin();
+    case CSSSelector::kPseudoActiveOption:
+      if (auto* option = DynamicTo<HTMLOptionElement>(element)) {
+        if (RuntimeEnabledFeatures::CustomizableComboboxEnabled()) {
+          // This will only match for a base appearance combobox because
+          // HTMLDataListElement::ActiveOption will only return an option if the
+          // datalist is being rendered with base appearance.
+          if (HTMLDataListElement* datalist = option->OwnerDataListElement()) {
+            return datalist->ActiveOption() == option;
+          }
+        }
+        if (RuntimeEnabledFeatures::FilterableSelectEnabled()) {
+          if (HTMLSelectElement* select = option->OwnerSelectElement()) {
+            return option == select->ActiveOption();
+          }
+        }
+      }
+      return false;
     case CSSSelector::kPseudoInterestSource:
       DCHECK(RuntimeEnabledFeatures::HTMLInterestForAttributeEnabled());
       return element.GetInterestState() != Element::InterestState::kNoInterest;
@@ -2818,6 +2848,12 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       }
       break;
     }
+    case CSSSelector::kPseudoTextField: {
+      if (auto* input = DynamicTo<HTMLInputElement>(element)) {
+        return input->IsTextField();
+      }
+      return false;
+    }
     case CSSSelector::kPseudoIndeterminate: {
       probe::ForcePseudoState(&element, CSSSelector::kPseudoIndeterminate,
                               &force_pseudo_state);
@@ -2838,8 +2874,7 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       if (!RuntimeEnabledFeatures::CSSLangExtendedRangesEnabled()) {
         DCHECK_EQ(selector.ArgumentList()->size(), 1u);
         const AtomicString& argument = (*selector.ArgumentList())[0];
-        if (value.empty() ||
-            !value.StartsWith(argument, kTextCaseASCIIInsensitive)) {
+        if (value.empty() || !value.StartsWithIgnoringAsciiCase(argument)) {
           break;
         }
         if (value.length() != argument.length() &&
@@ -2900,6 +2935,8 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
         return select->PopupIsVisible();
       } else if (auto* input = DynamicTo<HTMLInputElement>(element)) {
         return input->IsPickerVisible();
+      } else if (auto* menuitem = DynamicTo<HTMLMenuItemElement>(element)) {
+        return menuitem->IsSubmenuOpen();
       }
       return false;
     case CSSSelector::kPseudoMenulistPopoverWithMenubarAnchor:
@@ -2930,13 +2967,13 @@ bool SelectorChecker::CheckPseudoClass(const SelectorCheckingContext& context,
       return media_element && media_element->paused();
     }
     case CSSSelector::kPseudoPermissionGranted: {
-      CHECK(RuntimeEnabledFeatures::PermissionElementEnabled(
-                element.GetExecutionContext()) ||
-            RuntimeEnabledFeatures::GeolocationElementEnabled(
+      CHECK(RuntimeEnabledFeatures::GeolocationElementEnabled(
                 element.GetExecutionContext()) ||
             RuntimeEnabledFeatures::UserMediaElementEnabled(
+                element.GetExecutionContext()) ||
+            RuntimeEnabledFeatures::InstallElementEnabled(
                 element.GetExecutionContext()));
-      auto* permission_element = DynamicTo<HTMLPermissionElement>(element);
+      auto* permission_element = DynamicTo<HTMLCapabilityElementBase>(element);
       return permission_element && permission_element->granted();
     }
     case CSSSelector::kPseudoPictureInPicture:
@@ -3651,17 +3688,8 @@ bool SelectorChecker::MatchesActiveViewTransitionPseudoClass(
 }
 
 bool SelectorChecker::MatchesOverscrollTarget(const Element& element) {
-  if (!RuntimeEnabledFeatures::OverscrollGesturesEnabled()) {
-    return false;
-  }
-
-  const AtomicString& id = element.FastGetAttribute(html_names::kIdAttr);
-  if (id.empty() ||
-      !element.GetDocument().OverscrollCommandTargets().Contains(id)) {
-    return false;
-  }
-
-  return element.GetDocument().getElementById(id) == &element;
+  return RuntimeEnabledFeatures::OverscrollGesturesEnabled() &&
+         element.GetDocument().OverscrollCommandTargets().Contains(&element);
 }
 
 bool SelectorChecker::MatchesFocusPseudoClass(

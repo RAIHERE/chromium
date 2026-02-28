@@ -157,9 +157,6 @@ export interface PageElementTypes {
   shareCandidates: HTMLElement;
   enableShareCandidates: HTMLInputElement;
   unpin: HTMLButtonElement;
-  viewChangedBtn: HTMLButtonElement;
-  viewChangedCurrentView: HTMLSelectElement;
-  viewChangedAutomaticallyAccept: HTMLInputElement;
   mqlsClientIdBtn: HTMLButtonElement;
   additionalContextResult: HTMLTextAreaElement;
   additionalContextImages: HTMLDivElement;
@@ -172,10 +169,19 @@ export interface PageElementTypes {
   textmode: HTMLInputElement;
   audiomode: HTMLInputElement;
   skillIdInput: HTMLInputElement;
+  skillNameInput: HTMLInputElement;
+  skillIconInput: HTMLInputElement;
+  skillSourceSelect: HTMLSelectElement;
   skillPromptInput: HTMLInputElement;
   createSkillBtn: HTMLButtonElement;
   updateSkillBtn: HTMLButtonElement;
   getSkillBtn: HTMLButtonElement;
+  manageSkillsBtn: HTMLButtonElement;
+  skillsList: HTMLUListElement;
+  stressTestEngageBtn: HTMLButtonElement;
+  stressTestEngageRetainBtn: HTMLButtonElement;
+  invocationLog: HTMLDivElement;
+  clearInvocationLog: HTMLButtonElement;
 }
 
 export const $: PageElementTypes = new Proxy({}, {

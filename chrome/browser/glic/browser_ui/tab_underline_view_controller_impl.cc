@@ -82,8 +82,8 @@ void TabUnderlineViewControllerImpl::Initialize(
 
   if (ShouldUseSignalsForContextualTasks()) {
     contextual_tasks::ActiveTaskContextProvider* active_task_context_provider =
-        browser_window_interface_->GetFeatures()
-            .contextual_tasks_active_task_context_provider();
+        contextual_tasks::ActiveTaskContextProvider::From(
+            browser_window_interface_);
     contextual_task_observation_.Observe(active_task_context_provider);
   }
 
@@ -94,6 +94,18 @@ void TabUnderlineViewControllerImpl::Initialize(
     OnIndicatorStatusChanged(
         glic_service_->is_context_access_indicator_enabled());
   }
+}
+
+void TabUnderlineViewControllerImpl::OnViewAddedToWidget() {
+  if (!glic_service_ || !ShouldUseSignalsForGlicUnderlines()) {
+    return;
+  }
+
+  // During cases such as tabstrip attachment, the underline controller consumes
+  // changes in pinned state before the underline view is reconstructed. Check
+  // consistency with pinned state post-construction to ensure the UI state of
+  // the underline is correct.
+  OnPinnedTabsChanged(glic_service_->sharing_manager().GetPinnedTabs());
 }
 
 void TabUnderlineViewControllerImpl::OnFocusedTabChanged(

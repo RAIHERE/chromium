@@ -48,6 +48,7 @@
 #include "third_party/blink/renderer/platform/wtf/std_lib_extras.h"
 #include "third_party/blink/renderer/platform/wtf/text/strcat.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
 
 namespace blink {
 
@@ -226,16 +227,16 @@ const AtomicString& ResourceResponse::HttpHeaderField(
 }
 
 void ResourceResponse::UpdateHeaderParsedState(const AtomicString& name) {
-  if (EqualIgnoringASCIICase(name, http_names::kLowerAge)) {
+  if (EqualIgnoringAsciiCase(name, http_names::kLowerAge)) {
     have_parsed_age_header_ = false;
-  } else if (EqualIgnoringASCIICase(name, http_names::kLowerCacheControl) ||
-             EqualIgnoringASCIICase(name, http_names::kLowerPragma)) {
+  } else if (EqualIgnoringAsciiCase(name, http_names::kLowerCacheControl) ||
+             EqualIgnoringAsciiCase(name, http_names::kLowerPragma)) {
     cache_control_header_ = CacheControlHeader();
-  } else if (EqualIgnoringASCIICase(name, http_names::kLowerDate)) {
+  } else if (EqualIgnoringAsciiCase(name, http_names::kLowerDate)) {
     have_parsed_date_header_ = false;
-  } else if (EqualIgnoringASCIICase(name, http_names::kLowerExpires)) {
+  } else if (EqualIgnoringAsciiCase(name, http_names::kLowerExpires)) {
     have_parsed_expires_header_ = false;
-  } else if (EqualIgnoringASCIICase(name, http_names::kLowerLastModified)) {
+  } else if (EqualIgnoringAsciiCase(name, http_names::kLowerLastModified)) {
     have_parsed_last_modified_header_ = false;
   }
 }
@@ -399,12 +400,11 @@ std::optional<base::TimeDelta> ResourceResponse::Age() const {
   if (!have_parsed_age_header_) {
     const AtomicString& header_value =
         http_header_fields_.Get(http_names::kLowerAge);
-    bool ok;
-    double seconds = header_value.ToDouble(&ok);
-    if (!ok) {
+    auto seconds = StringToDouble(header_value);
+    if (!seconds) {
       age_ = std::nullopt;
     } else {
-      age_ = base::Seconds(seconds);
+      age_ = base::Seconds(*seconds);
     }
     have_parsed_age_header_ = true;
   }
@@ -436,7 +436,7 @@ bool ResourceResponse::IsAttachment() const {
   if (loc != kNotFound)
     value = value.Left(loc);
   value = value.StripWhiteSpace();
-  return EqualIgnoringASCIICase(value, kAttachmentString);
+  return EqualIgnoringAsciiCase(value, kAttachmentString);
 }
 
 AtomicString ResourceResponse::HttpContentType() const {
@@ -457,7 +457,7 @@ AtomicString ResourceResponse::GetFilteredHttpContentEncoding() const {
   if (kSupportedContentEncodingValues.contains(content_encoding.Ascii())) {
     return AtomicString(content_encoding);
   }
-  if (content_encoding.find(',') != kNotFound) {
+  if (content_encoding.contains(',')) {
     return multiple_value;
   }
   return unknown_value;

@@ -27,11 +27,6 @@
 #include "google_apis/gaia/core_account_id.h"
 #include "google_apis/gaia/gaia_id.h"
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-const char kExplicitSigninMigrationHistogramName[] =
-    "Signin.ExplicitSigninMigration";
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
 namespace {
 
 const char kSigingPendingResolutionTimeBaseHistogram[] =
@@ -191,6 +186,10 @@ void MaybeRecordWebSigninToChromeSigninTimes(
     case signin_metrics::AccessPoint::kNtpFeaturePromo:
     case signin_metrics::AccessPoint::kEnterpriseDialogAfterSigninInterception:
     case signin_metrics::AccessPoint::kCredentialExchangeImport:
+    case signin_metrics::AccessPoint::kSetSyncConsentFromSyncInternals:
+    case signin_metrics::AccessPoint::kIosChromeWebView:
+    case signin_metrics::AccessPoint::kAshUserSessionManager:
+    case signin_metrics::AccessPoint::kAshChromeSessionManager:
       return;
   }
 
@@ -238,10 +237,6 @@ SigninMetricsService::SigninMetricsService(
       management_type_recorder_(identity_manager) {
   identity_manager_scoped_observation_.Observe(&identity_manager_.get());
 
-#if BUILDFLAG(ENABLE_DICE_SUPPORT)
-  RecordExplicitSigninMigrationStatus();
-#endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
-
   UpdateIsManagedForAllAccounts();
 }
 
@@ -267,7 +262,7 @@ void SigninMetricsService::OnPrimaryAccountChanged(
           event_details.GetSetPrimaryAccountAccessPoint();
       CHECK(access_point.has_value());
 
-      MaybeRecordMetricsForSigninPromoLimitsExperiment(
+      MaybeRecordMetricsForPromoShowCountAtSignin(
           event_details.GetCurrentState().primary_account,
           access_point.value());
 
@@ -280,8 +275,7 @@ void SigninMetricsService::OnPrimaryAccountChanged(
       pref_service_->ClearPref(kWebSigninAccountStartTimesPref);
 
       RecordSigninInterceptionMetrics(
-          event_details.GetCurrentState().primary_account.gaia,
-          access_point.value());
+          event_details.GetCurrentState().primary_account.gaia);
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)
 
       if (active_primary_accounts_metrics_recorder_) {
@@ -425,7 +419,8 @@ void SigninMetricsService::HandleSigninErrors(
     AccountInfo account_info = identity_manager_->FindExtendedAccountInfo(
         identity_manager_->GetPrimaryAccountInfo(
             signin::ConsentLevel::kSignin));
-    if (account_info.access_point != signin_metrics::AccessPoint::kUnknown) {
+    if (account_info.access_point.has_value() &&
+        (account_info.access_point != signin_metrics::AccessPoint::kUnknown)) {
       // Only record `Started` from WEB_SIGNIN, since there is no way to
       // know that a WebSignin resolution has started until it was
       // completed. Other access points are client access points which can
@@ -434,12 +429,11 @@ void SigninMetricsService::HandleSigninErrors(
           signin_metrics::AccessPoint::kWebSignin) {
         base::UmaHistogramEnumeration(
             "Signin.SigninPending.ResolutionSourceStarted",
-            account_info.access_point);
+            account_info.access_point.value());
       }
-
       base::UmaHistogramEnumeration(
           "Signin.SigninPending.ResolutionSourceCompleted",
-          account_info.access_point);
+          account_info.access_point.value());
     }
   }
 }
@@ -480,69 +474,54 @@ void SigninMetricsService::OnRefreshTokensLoaded() {
 
 #if BUILDFLAG(ENABLE_DICE_SUPPORT)
 
-void SigninMetricsService::RecordExplicitSigninMigrationStatus() {
-  ExplicitSigninMigration explicit_signin_migration =
-      ExplicitSigninMigration::kMigratedSignedOut;
-  const bool explicit_signin_pref =
-      pref_service_->GetBoolean(prefs::kExplicitBrowserSignin);
-  if (identity_manager_->HasPrimaryAccount(signin::ConsentLevel::kSync)) {
-    explicit_signin_migration =
-        explicit_signin_pref ? ExplicitSigninMigration::kMigratedSyncing
-                             : ExplicitSigninMigration::kNotMigratedSyncing;
-  } else if (identity_manager_->HasPrimaryAccount(
-                 signin::ConsentLevel::kSignin)) {
-    explicit_signin_migration =
-        explicit_signin_pref ? ExplicitSigninMigration::kMigratedSignedIn
-                             : ExplicitSigninMigration::kNotMigratedSignedIn;
-  }
-
-  base::UmaHistogramEnumeration(kExplicitSigninMigrationHistogramName,
-                                explicit_signin_migration);
-}
-
-void SigninMetricsService::MaybeRecordMetricsForSigninPromoLimitsExperiment(
+void SigninMetricsService::MaybeRecordMetricsForPromoShowCountAtSignin(
     const CoreAccountInfo& account_info,
     signin_metrics::AccessPoint access_point) {
   bool is_from_web_signin =
       GetTimeOfWebSignin(account_info.account_id).has_value();
   switch (access_point) {
     case signin_metrics::AccessPoint::kAddressBubble:
-      base::UmaHistogramBoolean(
+      base::UmaHistogramCustomCounts(
           "Signin.ShowCountAtSignin.AddressSigninPromo",
           is_from_web_signin
               ? SigninPrefs(pref_service_.get())
                     .GetAddressSigninPromoImpressionCount(account_info.gaia)
               : pref_service_->GetInteger(
                     prefs::
-                        kAddressSignInPromoShownCountPerProfileForLimitsExperiment));
+                        kAddressSignInPromoShownCountPerProfileForLimitsExperiment),
+          /*min=*/1, /*exclusive_max=*/10, /*buckets=*/10);
       break;
     case signin_metrics::AccessPoint::kPasswordBubble:
-      base::UmaHistogramBoolean(
+      base::UmaHistogramCustomCounts(
           "Signin.ShowCountAtSignin.PasswordSigninPromo",
           is_from_web_signin
               ? SigninPrefs(pref_service_.get())
                     .GetPasswordSigninPromoImpressionCount(account_info.gaia)
               : pref_service_->GetInteger(
                     prefs::
-                        kPasswordSignInPromoShownCountPerProfileForLimitsExperiment));
+                        kPasswordSignInPromoShownCountPerProfileForLimitsExperiment),
+          /*min=*/1, /*exclusive_max=*/10, /*buckets=*/10);
       break;
     case signin_metrics::AccessPoint::kBookmarkBubble:
-      base::UmaHistogramBoolean(
+      base::UmaHistogramCustomCounts(
           "Signin.ShowCountAtSignin.BookmarkSigninPromo",
           is_from_web_signin
               ? SigninPrefs(pref_service_.get())
                     .GetBookmarkSigninPromoImpressionCount(account_info.gaia)
               : pref_service_->GetInteger(
                     prefs::
-                        kBookmarkSignInPromoShownCountPerProfileForLimitsExperiment));
+                        kBookmarkSignInPromoShownCountPerProfileForLimitsExperiment),
+          /*min=*/1, /*exclusive_max=*/10, /*buckets=*/10);
       break;
     case signin_metrics::AccessPoint::kChromeSigninInterceptBubble: {
       const int uno_bubble_reprompt_count =
           SigninPrefs(pref_service_.get())
               .GetChromeSigninBubbleRepromptCount(account_info.gaia);
       if (uno_bubble_reprompt_count > 0) {
-        base::UmaHistogramBoolean("Signin.ShowCountAtSignin.UnoBubbleReprompt",
-                                  uno_bubble_reprompt_count);
+        base::UmaHistogramCustomCounts(
+            "Signin.ShowCountAtSignin.UnoBubbleReprompt",
+            uno_bubble_reprompt_count,
+            /*min=*/1, /*exclusive_max=*/10, /*buckets=*/10);
       }
       break;
     }
@@ -583,18 +562,12 @@ void SigninMetricsService::MaybeRecordWebSigninToChromeSigninMetrics(
 }
 
 void SigninMetricsService::RecordSigninInterceptionMetrics(
-    const GaiaId& gaia_id,
-    signin_metrics::AccessPoint access_point) {
+    const GaiaId& gaia_id) {
   ChromeSigninUserChoice signin_choice =
       SigninPrefs(pref_service_.get())
           .GetChromeSigninInterceptionUserChoice(gaia_id);
   base::UmaHistogramEnumeration("Signin.Settings.ChromeSignin.OnSignin",
                                 signin_choice);
-  if (signin_choice == ChromeSigninUserChoice::kDoNotSignin) {
-    base::UmaHistogramEnumeration(
-        "Signin.Settings.ChromeSignin.AccessPointWithDoNotSignin",
-        access_point);
-  }
 }
 
 #endif  // BUILDFLAG(ENABLE_DICE_SUPPORT)

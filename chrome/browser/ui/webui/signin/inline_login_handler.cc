@@ -96,9 +96,8 @@ void InlineLoginHandler::HandleInitializeMessage(const base::ListValue& args) {
             current_url, signin::kSignInPromoQueryKeyForceKeepData, &value) ||
         value == "0") {
       partition->ClearData(
-          content::StoragePartition::REMOVE_DATA_MASK_ALL,
-          content::StoragePartition::QUOTA_MANAGED_STORAGE_MASK_ALL,
-          blink::StorageKey(), base::Time(), base::Time::Max(),
+          content::StoragePartition::REMOVE_DATA_MASK_ALL, blink::StorageKey(),
+          base::Time(), base::Time::Max(),
           base::BindOnce(&InlineLoginHandler::ContinueHandleInitializeMessage,
                          weak_ptr_factory_.GetWeakPtr()));
     } else {
@@ -117,17 +116,19 @@ void InlineLoginHandler::ContinueHandleInitializeMessage() {
   params.Set("authMode", InlineLoginHandler::kDesktopAuthMode);
 
   const GURL& current_url = web_ui()->GetWebContents()->GetLastCommittedURL();
-  signin_metrics::AccessPoint access_point =
+  std::optional<signin_metrics::AccessPoint> access_point =
       signin::GetAccessPointForEmbeddedPromoURL(current_url);
   signin_metrics::Reason reason =
       signin::GetSigninReasonForEmbeddedPromoURL(current_url);
 
   if (reason != signin_metrics::Reason::kReauthentication &&
       reason != signin_metrics::Reason::kAddSecondaryAccount) {
-    signin_metrics::LogSigninAccessPointStarted(
-        access_point,
-        signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO);
-    signin_metrics::RecordSigninUserActionForAccessPoint(access_point);
+    if (access_point) {
+      signin_metrics::LogSigninAccessPointStarted(
+          *access_point,
+          signin_metrics::PromoAction::PROMO_ACTION_NO_SIGNIN_PROMO);
+      signin_metrics::RecordSigninUserActionForAccessPoint(*access_point);
+    }
     base::RecordAction(base::UserMetricsAction("Signin_SigninPage_Loading"));
     params.Set("isLoginPrimaryAccount", true);
   }

@@ -241,7 +241,10 @@ class BrowserActivityObserver : public BrowserCollectionObserver {
     ForEachCurrentBrowserWindowInterfaceOrderedByActivation(
         [&browser_hidden](BrowserWindowInterface* browser_window_interface) {
           if (!browser_window_interface->GetWindow()->IsMinimized() &&
-#if !BUILDFLAG(IS_ANDROID)  // NEEDS_ANDROID_IMPL
+#if !BUILDFLAG(IS_ANDROID)
+              // BrowserActiveState is only used for metrics.
+              // `IsVisibleOnScreen()` is not available on Android, and we're
+              // not bothering to add it.
               browser_window_interface->capabilities()->IsVisibleOnScreen() &&
 #endif
               browser_window_interface->GetWindow()->IsVisible()) {
@@ -580,8 +583,7 @@ void GlicMetrics::OnRecordUseCounter(uint16_t counter) {
 
 void GlicMetrics::OnGlicWindowStartedOpening(bool attached,
                                              mojom::InvocationSource source) {
-  if (GlicEnabling::IsTrustFirstOnboardingEnabled() &&
-      !enabling_->HasConsentedForProfile(profile_)) {
+  if (GlicEnabling::IsTrustFirstOnboardingEnabledForProfile(profile_)) {
     OnTrustFirstOnboardingShown();
   }
 
@@ -825,10 +827,10 @@ void GlicMetrics::LogGetContextForActorFromTabError(
 
 void GlicMetrics::OnActivateTabFromInstance(tabs::TabInterface* tab) {
 #if !BUILDFLAG(IS_ANDROID)
-  actor::TaskId task_id =
+  const actor::ActorTask* task =
       actor::ActorKeyedService::Get(profile_)->GetTaskFromTab(*tab);
   // Record user action if the tab is associated with an ActorTask.
-  if (!task_id.is_null()) {
+  if (task) {
     base::RecordAction(
         base::UserMetricsAction("Glic.Instance.TaskTabForegrounded"));
   }
@@ -855,9 +857,9 @@ void GlicMetrics::SetDelegateForTesting(std::unique_ptr<Delegate> delegate) {
   delegate_ = std::move(delegate);
 }
 
-void GlicMetrics::DidRequestContextFromTab(content::WebContents& web_contents) {
+void GlicMetrics::DidRequestContextFromTab(tabs::TabInterface& tab) {
   last_tab_context_source_id_ =
-      web_contents.GetPrimaryMainFrame()->GetPageUkmSourceId();
+      tab.GetContents()->GetPrimaryMainFrame()->GetPageUkmSourceId();
 }
 
 void GlicMetrics::SetWebClientMode(mojom::WebClientMode mode) {

@@ -69,6 +69,7 @@ class POLICY_EXPORT DesktopCloudPolicyStore : public UserCloudPolicyStoreBase {
   DesktopCloudPolicyStore(
       const base::FilePath& policy_file,
       const base::FilePath& key_file,
+      const std::string& policy_type,
       PolicyLoadFilter policy_load_filter,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner,
       PolicyScope policy_scope);
@@ -135,9 +136,11 @@ class POLICY_EXPORT DesktopCloudPolicyStore : public UserCloudPolicyStoreBase {
 
   // Callback invoked to install a just-loaded policy after validation has
   // finished.
-  void InstallLoadedPolicyAfterValidation(bool doing_key_rotation,
-                                          const std::string& signing_key,
-                                          UserCloudPolicyValidator* validator);
+  template <typename PayloadProto>
+  void InstallLoadedPolicyAfterValidation(
+      bool doing_key_rotation,
+      const std::string& signing_key,
+      CloudPolicyValidator<PayloadProto>* validator);
 
   // Callback invoked to store the policy after validation has finished.
   void OnPolicyToStoreValidated(UserCloudPolicyValidator* validator);
@@ -197,6 +200,7 @@ class POLICY_EXPORT UserCloudPolicyStore : public DesktopCloudPolicyStore {
   UserCloudPolicyStore(
       const base::FilePath& policy_file,
       const base::FilePath& key_file,
+      const std::string& policy_type,
       scoped_refptr<base::SequencedTaskRunner> background_task_runner);
   UserCloudPolicyStore(const UserCloudPolicyStore&) = delete;
   UserCloudPolicyStore& operator=(const UserCloudPolicyStore&) = delete;

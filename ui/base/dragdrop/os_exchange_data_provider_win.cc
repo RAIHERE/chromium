@@ -695,7 +695,7 @@ OSExchangeDataProviderWin::GetVirtualFilenames() const {
 
   // On dragenter scenarios, need a placeholder file path for drag metadata
   // checks without actually creating the temp file.
-  base::FilePath temp_path(FILE_PATH_LITERAL("temp.tmp"));
+  const base::FilePath temp_path(kVirtualFileTempPlaceholderPath);
 
   std::vector<FileInfo> result;
   for (const auto& display_name : display_names.value()) {
@@ -794,17 +794,9 @@ bool OSExchangeDataProviderWin::HasCustomFormat(
 
 void OSExchangeDataProviderWin::SetDownloadFileInfo(
     DownloadFileInfo* download) {
-  // If the filename is not provided, set storage to NULL to indicate that
-  // the delay rendering will be used.
-  // TODO(dcheng): Is it actually possible for filename to be empty here? I
-  // think we always synthesize one in WebContentsDragWin.
-  STGMEDIUM storage = kNullStorageMedium;
-  if (!download->filename.empty()) {
-    clipboard_util::CreateStorageForFileNames(
-        {FileInfo(download->filename, base::FilePath())});
-  }
-
   // Add CF_HDROP.
+  // Set storage to NULL to indicate that the delay rendering will be used.
+  STGMEDIUM storage = kNullStorageMedium;
   auto info = DataObjectImpl::StoredDataInfo::TakeStorageMedium(
       ClipboardFormatType::CFHDropType().ToFormatEtc(), storage);
   info->downloader = std::move(download->downloader);
@@ -1034,12 +1026,22 @@ HRESULT DataObjectImpl::GetData(FORMATETC* format_etc, STGMEDIUM* medium) {
 
       bool wait_for_data = false;
 
-      // In async mode, we do not want to start waiting for the data before
-      // the async operation is started. This is because we want to postpone
-      // until Shell kicks off a background thread to do the work so that
-      // we do not block the UI thread.
-      if (!in_async_mode_ || async_operation_started_)
+      // Determine whether to wait for data generation based on async state.
+      //
+      // ASYNC MODE: Wait only if StartOperation() was called, indicating
+      // the target (Explorer) has created a background thread. This
+      // ensures GetData() runs on the target's background thread, not its UI
+      // thread, preventing UI freezes during long operations (e.g., file
+      // downloads).
+      //
+      // SYNC MODE: Always wait immediately since the entire DoDragDrop()
+      // call blocks both source and target UI threads anyway (no async
+      // support from target).
+      if (in_async_mode_) {
+        wait_for_data = async_operation_started_;
+      } else {
         wait_for_data = true;
+      }
 
       if (!wait_for_data)
         return DV_E_FORMATETC;

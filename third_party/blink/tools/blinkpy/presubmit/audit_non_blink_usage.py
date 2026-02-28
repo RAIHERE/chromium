@@ -136,6 +136,8 @@ _CONFIG = [
             'base::OptionalToPtr',
             'base::PassKey',
             'base::PersistentHash',
+            'base::Pickle',
+            'base::PickleIterator',
             'base::PlatformThread',
             'base::PlatformThreadId',
             'base::PostJob',
@@ -342,7 +344,7 @@ _CONFIG = [
             'base::RandBytesAsString',
             'base::RandDouble',
             'base::RandGenerator',
-            'base::RandInt',
+            'base::RandIntInclusive',
             'base::RandUint64',
 
             # Feature list checking.
@@ -660,6 +662,7 @@ _CONFIG = [
             'gfx::SelectionBound',
 
             # cc::Layers.
+            'cc::HeadsUpDisplayLayer',
             'cc::Layer',
             'cc::LayerClient',
             'cc::LayerTreeDebugState',
@@ -688,6 +691,7 @@ _CONFIG = [
             'cc::EventListenerClass',
             'cc::EventListenerProperties',
             'cc::HitTestOpaqueness',
+            'cc::WebVitalMetricType',
             'cc::HORIZONTAL',
             'cc::THUMB',
             'cc::TRACK_BUTTONS_TICKMARKS',
@@ -699,6 +703,7 @@ _CONFIG = [
             "cc::AnimationHost",
             "cc::AnimationIdProvider",
             "cc::AnimationTrigger",
+            "cc::AnimationTriggerDelegate",
             "cc::AnimationTimeline",
             "cc::FilterKeyframe",
             "cc::KeyframedFilterAnimationCurve",
@@ -761,9 +766,6 @@ _CONFIG = [
             # Common display structs across display <-> Blink.
             'display::ScreenInfo',
             'display::ScreenInfos',
-
-            # html-in-canvas
-            'cc::AllCanvasDrawElementIds',
 
             # Terminal value for display id's used across display <-> Blink.
             'display::kInvalidDisplayId',
@@ -852,10 +854,7 @@ _CONFIG = [
             'net::CookiePriority',
             'net::CookieSameSite',
             'net::CookieSourceScheme',
-
-            # Cookie prefix feature flags.
-            'net::features::kPrefixCookieHttp',
-            'net::features::kPrefixCookieHostHttp',
+            'net::cookie_util::GetCookieDomainWithString',
 
             # Net error codes
             'net::OK',
@@ -968,6 +967,7 @@ _CONFIG = [
             'ui::IsLandmark',
             'ui::IsPlatformDocument',
             'ui::IsPresentational',
+            'ui::IsReadOnlySupported',
             'ui::IsSelectRequiredOrImplicit',
             'ui::IsStructure',
             'ui::IsTableLike',
@@ -975,6 +975,7 @@ _CONFIG = [
             'ui::IsTableHeader',
             'ui::IsText',
             'ui::IsTextField',
+            'ui::SupportsRequired',
 
             # Blink uses UKM for logging e.g. always-on leak detection (crbug/757374)
             'ukm::.+',
@@ -1597,8 +1598,19 @@ _CONFIG = [
     },
     {
         'paths': [
-            'third_party/blink/renderer/core/css/properties/css_parsing_utils.cc',
-            'third_party/blink/renderer/core/html/html_permission_element.cc',
+            'third_party/blink/renderer/core/html/html_credential_element.cc',
+            'third_party/blink/renderer/core/html/html_credential_element.h',
+            'third_party/blink/renderer/core/html/html_login_element.cc',
+            'third_party/blink/renderer/core/html/html_login_element.h',
+        ],
+        'allowed': [
+            'base::Value',
+        ],
+    },
+    {
+        'paths': [
+            'third_party/blink/renderer/core/css/style_color.cc',
+            'third_party/blink/renderer/core/html/html_capability_element_base.cc',
             'third_party/blink/renderer/core/paint/box_border_painter.cc',
         ],
         'allowed': [
@@ -1822,6 +1834,18 @@ _CONFIG = [
     },
     {
         'paths': [
+            'third_party/blink/renderer/core/html/media/media_fragment_uri_parser.cc',
+        ],
+        'allowed': [
+            'base::NoDestructor',
+            'base::StringToDouble',
+            'base::StringToInt',
+            're2::RE2',
+            're2::StringPiece',
+        ]
+    },
+    {
+        'paths': [
             'third_party/blink/renderer/core/timing/background_tracing_helper.cc',
             'third_party/blink/renderer/core/timing/background_tracing_helper.h',
         ],
@@ -1900,6 +1924,7 @@ _CONFIG = [
             'third_party/blink/renderer/modules/imagecapture/',
         ],
         'allowed': [
+            'gpu::SHARED_IMAGE_USAGE_DISPLAY_READ',
             'libyuv::.+',
             'media::.+',
             'viz::SkColorTypeToSinglePlaneSharedImageFormat',
@@ -2019,6 +2044,14 @@ _CONFIG = [
         'allowed': [
             'gin::.+',
         ],
+    },
+    {
+        'paths': [
+            'third_party/blink/renderer/modules/speech/',
+        ],
+        'allowed': [
+            'media::AudioParameters',
+        ]
     },
     {
         'paths': [
@@ -2615,6 +2648,7 @@ _CONFIG = [
         'paths': ['third_party/blink/renderer/modules/clipboard/'],
         'allowed': [
             'net::ParseMimeTypeWithoutParameter',
+            'ui::kWebClipboardFormatPrefix',
         ],
     },
     {

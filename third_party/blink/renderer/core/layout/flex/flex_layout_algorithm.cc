@@ -1779,6 +1779,9 @@ LayoutResult::EStatus FlexLayoutAlgorithm::GiveItemsFinalPositionAndSize(
     const wtf_size_t line_items_size = flex_line.item_indices.size();
     LayoutUnitDiffuser space_between_items = ContentDistributionSpace(
         justify_content, main_axis_free_space, line_items_size);
+
+    bool need_to_set_effective_gap_size = true;
+
     LayoutUnit main_axis_offset =
         (is_column_ ? BorderScrollbarPadding().block_start
                     : BorderScrollbarPadding().inline_start) +
@@ -1934,8 +1937,17 @@ LayoutResult::EStatus FlexLayoutAlgorithm::GiveItemsFinalPositionAndSize(
           is_column_ ? LogicalOffset(cross_axis_offset, main_axis_offset)
                      : LogicalOffset(main_axis_offset, cross_axis_offset);
 
+      LayoutUnit current_space_between = space_between_items.Next();
       main_axis_offset += item.FlexedBorderBoxSize() + margin.MainEnd() +
-                          space_between_items.Next() + gap_between_items_;
+                          current_space_between + gap_between_items_;
+
+      // For gap decoration purposes, we only need to set the effective gap size
+      // once per line.
+      if (need_to_set_effective_gap_size && item_index_in_line > 0) {
+        flex_line.effective_gap_between_items =
+            current_space_between + gap_between_items_;
+        need_to_set_effective_gap_size = false;
+      }
 
       const BoxStrut logical_margins =
           physical_margins.ConvertToLogical(writing_direction);
@@ -2552,7 +2564,14 @@ FlexLayoutAlgorithm::GiveItemsFinalPositionAndSizeForFragmentation(
     }
     baseline_accumulator.AccumulateItem(fragment, offset.block_offset,
                                         is_first_line, is_last_line);
-    if (is_last_item_in_line) {
+
+    // In a row container, an item may complete layout before an earlier
+    // item in the same line because that item fragmented. In such cases, we
+    // also need to check if the next item to be processed is in the same line,
+    // as well, to tell it if is the last item in the line in the current
+    // fragmentainer.
+    if (is_last_item_in_line ||
+        (!is_column_ && !item_iterator.HasNextItemInLine(flex_line_idx))) {
       if (!has_inflow_child_break_inside_line[flex_line_idx])
         flex_line.has_seen_all_children = true;
       if (!has_processed_first_line_)
@@ -2579,7 +2598,11 @@ FlexLayoutAlgorithm::GiveItemsFinalPositionAndSizeForFragmentation(
     return LayoutResult::kNeedsEarlierBreak;
   }
 
-  if (!row_cross_size_updates_.empty()) {
+  // The cross size of a definite single flex line is based on the size of the
+  // container rather than the items. Don't expand the cross size and relayout
+  // in this case.
+  if (!row_cross_size_updates_.empty() &&
+      (is_multi_line_ || !IsContainerCrossSizeDefinite())) {
     DCHECK(!is_column_);
     return LayoutResult::kNeedsRelayoutWithRowCrossSizeChanges;
   }

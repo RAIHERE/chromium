@@ -12,6 +12,7 @@
 #include <string>
 #include <vector>
 
+#include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/test/test_future.h"
 #include "net/base/completion_once_callback.h"
@@ -25,6 +26,7 @@
 #include "net/http/http_stream_pool_job.h"
 #include "net/socket/socket_test_util.h"
 #include "net/socket/stream_socket.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 #include "url/scheme_host_port.h"
 
@@ -52,7 +54,6 @@ class FakeServiceEndpointResolution {
 
   // These setters return `this&` to allow chaining.
   FakeServiceEndpointResolution& CompleteStartSynchronously(int rv);
-  FakeServiceEndpointResolution& set_start_result(int start_result);
   FakeServiceEndpointResolution& set_endpoints(
       std::vector<ServiceEndpoint> endpoints);
   FakeServiceEndpointResolution& add_endpoint(ServiceEndpoint endpoint);
@@ -89,12 +90,24 @@ class FakeServiceEndpointRequest : public HostResolver::ServiceEndpointRequest {
       ResolveErrorInfo resolve_error_info);
   FakeServiceEndpointRequest& set_priority(RequestPriority priority);
 
+  // Sets a callback that will be invoked asynchronously after Start() is
+  // invoked. It's async so that CallOnServiceEndpointsUpdated() and
+  // CallOnServiceEndpointRequestFinished() may be safely invoked from the
+  // callback. May not be used with CompleteStartSynchronously().
+  FakeServiceEndpointRequest& set_start_callback(
+      base::OnceClosure start_callback);
+
   // Make `this` complete synchronously when ServiceEndpointRequest::Start()
   // is called.
   FakeServiceEndpointRequest& CompleteStartSynchronously(int rv);
 
+  // Make `this` call CallOnServiceEndpointRequestFinished() asynchronously when
+  // ServiceEndpointRequest::Start() is called. May not be used with
+  // set_start_callback() or CompleteStartSynchronously();
+  FakeServiceEndpointRequest& CompleteStartAsynchronously(int rv);
+
   // Calls `delegate_->OnServiceEndpointsUpdated()`. Must not be used after
-  // calling CompleteStartSynchronously() or
+  // calling CompleteStartSynchronously(), CompleteStartAsynchronously(), or
   // CallOnServiceEndpointRequestFinished()
   FakeServiceEndpointRequest& CallOnServiceEndpointsUpdated();
 
@@ -117,9 +130,13 @@ class FakeServiceEndpointRequest : public HostResolver::ServiceEndpointRequest {
  private:
   friend class FakeServiceEndpointResolver;
 
+  void CompleteAsync(int rv);
+
   raw_ptr<Delegate> delegate_;
 
   FakeServiceEndpointResolution resolution_;
+
+  base::OnceClosure start_callback_;
 
   base::WeakPtrFactory<FakeServiceEndpointRequest> weak_ptr_factory_{this};
 };
@@ -201,6 +218,11 @@ class ServiceEndpointBuilder {
   ServiceEndpointBuilder& add_ip_endpoint(IPEndPoint ip_endpoint);
 
   ServiceEndpointBuilder& set_alpns(std::vector<std::string> alpns);
+
+  // Helper that looks up the alpn string for `quic_version`, and sets the list
+  // of alpns to contain only that value. Clears any other pre-existing ALPNs
+  // already set.
+  ServiceEndpointBuilder& set_alpn(quic::ParsedQuicVersion quic_version);
 
   ServiceEndpointBuilder& set_ech_config_list(
       std::vector<uint8_t> ech_config_list);

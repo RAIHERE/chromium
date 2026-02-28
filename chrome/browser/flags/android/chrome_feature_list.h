@@ -7,6 +7,8 @@
 
 #include <jni.h>
 
+#include <string>
+
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
 #include "base/time/time.h"
@@ -42,12 +44,9 @@ BASE_DECLARE_FEATURE(kAndroidDataImporterService);
 BASE_DECLARE_FEATURE(kAndroidDesktopDensity);
 BASE_DECLARE_FEATURE(kAndroidElegantTextHeight);
 BASE_DECLARE_FEATURE(kAndroidFirstRunLaunchBounds);
-BASE_DECLARE_FEATURE(kAndroidLogoViewRefactor);
 BASE_DECLARE_FEATURE(kAndroidNewMediaPicker);
 BASE_DECLARE_FEATURE(kAndroidNoVisibleHintForDifferentTLD);
 BASE_DECLARE_FEATURE(kAndroidOmniboxFocusedNewTabPage);
-BASE_DECLARE_FEATURE(kAndroidPbDisablePulseAnimation);
-BASE_DECLARE_FEATURE(kAndroidPbDisableSmoothAnimation);
 BASE_DECLARE_FEATURE(kAndroidPinnedTabs);
 BASE_DECLARE_FEATURE(kAndroidPinnedTabsTabletTabStrip);
 BASE_DECLARE_FEATURE(kAndroidProgressBarVisualUpdate);
@@ -82,10 +81,12 @@ BASE_DECLARE_FEATURE(kAvoidRelayoutDuringFocusAnimation);
 BASE_DECLARE_FEATURE(kBackgroundThreadPool);
 BASE_DECLARE_FEATURE(kBlockIntentsWhileLocked);
 BASE_DECLARE_FEATURE(kBookmarkPaneAndroid);
+BASE_DECLARE_FEATURE(kBottomSheetAsBrowserControls);
 BASE_DECLARE_FEATURE(kBrowserControlsDebugging);
 BASE_DECLARE_FEATURE(kBrowserControlsEarlyResize);
 BASE_DECLARE_FEATURE(kBrowserControlsPersistsOnCvh);
 BASE_DECLARE_FEATURE(kBrowserControlsRenderDrivenShowConstraint);
+BASE_DECLARE_FEATURE(kBrowserWindowInterfaceMobile);
 BASE_DECLARE_FEATURE(kCCTAdaptiveButton);
 BASE_DECLARE_FEATURE(kCCTAdaptiveButtonTestSwitch);
 BASE_DECLARE_FEATURE(kCCTAuthTab);
@@ -112,6 +113,7 @@ BASE_DECLARE_FEATURE(kCCTOpenInBrowserButtonIfEnabledByEmbedder);
 BASE_DECLARE_FEATURE(kCCTRealtimeEngagementEventsInBackground);
 BASE_DECLARE_FEATURE(kCCTReportParallelRequestStatus);
 BASE_DECLARE_FEATURE(kCCTReportPrerenderEvents);
+BASE_DECLARE_FEATURE(kCCTResetTimeoutAllowed);
 BASE_DECLARE_FEATURE(kCCTResetTimeoutEnabled);
 BASE_DECLARE_FEATURE(kCCTResizableForThirdParties);
 BASE_DECLARE_FEATURE(kCCTRetainingStateInMemory);
@@ -123,6 +125,7 @@ BASE_DECLARE_FEATURE(kCacheDeprecatedSystemLocationSetting);
 BASE_DECLARE_FEATURE(kCacheIsMultiInstanceApi31Enabled);
 BASE_DECLARE_FEATURE(kCastDeviceFilter);
 BASE_DECLARE_FEATURE(kChangeUnfocusedPriority);
+BASE_DECLARE_FEATURE(kChromeFinds);
 BASE_DECLARE_FEATURE(kChromeItemPickerUi);
 BASE_DECLARE_FEATURE(kChromeNativeUrlOverriding);
 BASE_DECLARE_FEATURE(kChromeShareScreenshot);
@@ -133,6 +136,7 @@ BASE_DECLARE_FEATURE(kClankStartupLatencyInjection);
 BASE_DECLARE_FEATURE(kClankWhatsNew);
 BASE_DECLARE_FEATURE(kClearIntentWhenRecreated);
 BASE_DECLARE_FEATURE(kCommandLineOnNonRooted);
+BASE_DECLARE_FEATURE(kCompositorViewHolderObscuring);
 BASE_DECLARE_FEATURE(kContextMenuTranslateWithGoogleLens);
 BASE_DECLARE_FEATURE(kContextualSearchDisableOnlineDetection);
 BASE_DECLARE_FEATURE(kContextualSearchSuppressShortView);
@@ -140,10 +144,10 @@ BASE_DECLARE_FEATURE(kControlsVisibilityFromNavigations);
 BASE_DECLARE_FEATURE(kCrossDeviceTabPaneAndroid);
 BASE_DECLARE_FEATURE(kDefaultBrowserPromoAndroid2);
 BASE_DECLARE_FEATURE(kDefaultBrowserPromoEntryPoint);
+BASE_DECLARE_FEATURE(kDefaultBrowserPromoFre);
 BASE_DECLARE_FEATURE(kDesktopAndroidLinkCapturing);
 BASE_DECLARE_FEATURE(kDesktopUAOnConnectedDisplay);
 BASE_DECLARE_FEATURE(kDeviceAuthenticatorAndroidx);
-BASE_DECLARE_FEATURE(kDisableInstanceLimit);
 BASE_DECLARE_FEATURE(kDiscardPageWithCrashedSubframePolicy);
 BASE_DECLARE_FEATURE(kDiscardPageWithCrashedSubframeRelaxedEligibility);
 BASE_DECLARE_FEATURE(kDontAutoHideBrowserControls);
@@ -151,14 +155,17 @@ BASE_DECLARE_FEATURE(kDontPrefetchLibraries);
 BASE_DECLARE_FEATURE(kDrawChromePagesEdgeToEdge);
 BASE_DECLARE_FEATURE(kEdgeToEdgeBottomChin);
 BASE_DECLARE_FEATURE(kEdgeToEdgeEverywhere);
+BASE_DECLARE_FEATURE(kEdgeToEdgeExtraLogs);
 BASE_DECLARE_FEATURE(kEdgeToEdgeMonitorConfigurations);
 BASE_DECLARE_FEATURE(kEdgeToEdgeTablet);
 BASE_DECLARE_FEATURE(kEdgeToEdgeUseBackupNavbarInsets);
 BASE_DECLARE_FEATURE(kEducationalTipDefaultBrowserPromoCard);
 BASE_DECLARE_FEATURE(kEmptyTabListAnimationKillSwitch);
 BASE_DECLARE_FEATURE(kEnableAndroidSidePanel);
+BASE_DECLARE_FEATURE(kEnableContextMenuForPreviewTab);
 BASE_DECLARE_FEATURE(kEnableEscapeHandlingForSecondaryActivities);
 BASE_DECLARE_FEATURE(kEnableSwipeToSwitchPane);
+BASE_DECLARE_FEATURE(kEnableToolbarPositioningInResizeMode);
 BASE_DECLARE_FEATURE(kEnableXAxisActivityTransition);
 BASE_DECLARE_FEATURE(kEscCancelDrag);
 BASE_DECLARE_FEATURE(kExperimentsForAgsa);
@@ -166,15 +173,14 @@ BASE_DECLARE_FEATURE(kForceTranslucentNotificationTrampoline);
 BASE_DECLARE_FEATURE(kFullscreenInsetsApiMigration);
 BASE_DECLARE_FEATURE(kFullscreenInsetsApiMigrationOnAutomotive);
 BASE_DECLARE_FEATURE(kGridTabSwitcherSurfaceColorUpdate);
-BASE_DECLARE_FEATURE(kGridTabSwitcherUpdate);
 BASE_DECLARE_FEATURE(kGroupNewTabWithParent);
-BASE_DECLARE_FEATURE(kHeadlessTabModel);
 BASE_DECLARE_FEATURE(kHistoryPaneAndroid);
 BASE_DECLARE_FEATURE(kHomeModulePrefRefactor);
 BASE_DECLARE_FEATURE(kImprovedA2HS);
 BASE_DECLARE_FEATURE(kIncognitoNtpSmallIcon);
 BASE_DECLARE_FEATURE(kIncognitoScreenshot);
 BASE_DECLARE_FEATURE(kIncognitoThemeOverlayTesting);
+BASE_DECLARE_FEATURE(kInlinePdfV2);
 BASE_DECLARE_FEATURE(kKeyboardEscBackNavigation);
 BASE_DECLARE_FEATURE(kLanguagesPreference);
 BASE_DECLARE_FEATURE(kLaunchCauseScreenOffFix);
@@ -192,22 +198,25 @@ BASE_DECLARE_FEATURE(kMediaIndicatorsAndroid);
 BASE_DECLARE_FEATURE(kMostVisitedTilesCustomization);
 BASE_DECLARE_FEATURE(kMostVisitedTilesReselect);
 BASE_DECLARE_FEATURE(kMoveToFrontInLaunchIntentDispatcher);
+BASE_DECLARE_FEATURE(kMultiInstanceSharedPrefsMigration);
 BASE_DECLARE_FEATURE(kMvcUpdateViewWhenModelChanged);
 BASE_DECLARE_FEATURE(kNavBarColorAnimation);
-BASE_DECLARE_FEATURE(kNewTabPageCustomization);
 BASE_DECLARE_FEATURE(kNewTabPageCustomizationForMvt);
-BASE_DECLARE_FEATURE(kNewTabPageCustomizationToolbarButton);
 BASE_DECLARE_FEATURE(kNewTabPageCustomizationV2);
-BASE_DECLARE_FEATURE(kNotificationPermissionBottomSheet);
 BASE_DECLARE_FEATURE(kNotificationPermissionVariant);
 BASE_DECLARE_FEATURE(kNotificationTrampoline);
+BASE_DECLARE_FEATURE(kNotificationTrampolineNoNewTask);
+BASE_DECLARE_FEATURE(kNtpMvcRefactor);
+BASE_DECLARE_FEATURE(kNtpSimplification);
 BASE_DECLARE_FEATURE(kOmahaMinSdkVersionAndroid);
+BASE_DECLARE_FEATURE(kOnDemandBackgroundTabContextCapture);
 BASE_DECLARE_FEATURE(kOptimizeGeolocationHeaderGeneration);
 BASE_DECLARE_FEATURE(kPCCTMinimumHeight);
 BASE_DECLARE_FEATURE(kPageAnnotationsService);
 BASE_DECLARE_FEATURE(kPageContentProvider);
 BASE_DECLARE_FEATURE(kPartnerCustomizationsUma);
 BASE_DECLARE_FEATURE(kPersistAcrossReboots);
+BASE_DECLARE_FEATURE(kPersistAcrossRebootsDebugLogs);
 BASE_DECLARE_FEATURE(kPowerSavingModeBroadcastReceiverInBackground);
 BASE_DECLARE_FEATURE(kPreconnectOnTabCreation);
 BASE_DECLARE_FEATURE(kPriceChangeModule);
@@ -219,7 +228,6 @@ BASE_DECLARE_FEATURE(kPwaRestoreUiAtStartup);
 BASE_DECLARE_FEATURE(kReadAloud);
 BASE_DECLARE_FEATURE(kReadAloudAudioOverviews);
 BASE_DECLARE_FEATURE(kReadAloudAudioOverviewsFeedback);
-BASE_DECLARE_FEATURE(kReadAloudAudioOverviewsSkipDisclaimerWhenPossible);
 BASE_DECLARE_FEATURE(kReadAloudIPHMenuButtonHighlightCCT);
 BASE_DECLARE_FEATURE(kReadAloudPlayback);
 BASE_DECLARE_FEATURE(kReadAloudServerExperiments);
@@ -245,7 +253,6 @@ BASE_DECLARE_FEATURE(kShareCustomActionsInCCT);
 BASE_DECLARE_FEATURE(kSharingHubLinkToggle);
 BASE_DECLARE_FEATURE(kShortCircuitUnfocusAnimation);
 BASE_DECLARE_FEATURE(kShowCloseAllIncognitoTabsButton);
-BASE_DECLARE_FEATURE(kShowNewTabAnimations);
 BASE_DECLARE_FEATURE(kShowTabListAnimations);
 BASE_DECLARE_FEATURE(kSmallerTabStripTitleLimit);
 BASE_DECLARE_FEATURE(kStartSurfaceReturnTime);
@@ -254,14 +261,12 @@ BASE_DECLARE_FEATURE(kSubmenusTabContextMenuLffTabStrip);
 BASE_DECLARE_FEATURE(kSuppressToolbarCapturesAtGestureEnd);
 BASE_DECLARE_FEATURE(kTabBottomSheet);
 BASE_DECLARE_FEATURE(kTabClosureMethodRefactor);
-BASE_DECLARE_FEATURE(kTabFreezingUsesDiscard);
 BASE_DECLARE_FEATURE(kTabModelInitFixes);
 BASE_DECLARE_FEATURE(kTabStorageSqlitePrototype);
 BASE_DECLARE_FEATURE(kTabStripAutoSelectOnCloseChange);
 BASE_DECLARE_FEATURE(kTabStripCloseRefactorAndroid);
 BASE_DECLARE_FEATURE(kTabStripDensityChangeAndroid);
 BASE_DECLARE_FEATURE(kTabStripEmptySpaceContextMenuAndroid);
-BASE_DECLARE_FEATURE(kTabStripIncognitoMigration);
 BASE_DECLARE_FEATURE(kTabSwitcherDragDropAndroid);
 BASE_DECLARE_FEATURE(kTabSwitcherGroupSuggestionsAndroid);
 BASE_DECLARE_FEATURE(kTabSwitcherGroupSuggestionsTestModeAndroid);
@@ -360,6 +365,12 @@ inline constexpr base::FeatureParam<int>
         &kReadAloud,
         "read_aloud_readability_delay_ms_after_page_load",
         /* default_value=*/500);
+
+inline constexpr base::FeatureParam<std::string>
+    kReadAloudAudioOverviewsSupportedLanguages(
+        &kReadAloudAudioOverviews,
+        "read_aloud_audio_overviews_supported_languages",
+        /* default_value=*/"en");
 
 inline constexpr base::FeatureParam<bool> kTouchToSearchCalloutIph(
     &kTouchToSearchCallout,

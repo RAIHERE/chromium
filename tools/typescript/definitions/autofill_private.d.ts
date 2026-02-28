@@ -157,6 +157,14 @@ declare global {
         FLIGHT_RESERVATION_DEPARTURE_AIRPORT,
         FLIGHT_RESERVATION_ARRIVAL_AIRPORT,
         FLIGHT_RESERVATION_DEPARTURE_DATE,
+        ADDRESS_HOME_ZIP_AND_CITY,
+        ORDER_ID,
+        ORDER_DATE,
+        ORDER_MERCHANT_NAME,
+        ORDER_MERCHANT_DOMAIN,
+        ORDER_PRODUCT_NAMES,
+        ORDER_ACCOUNT,
+        ORDER_GRAND_TOTAL,
       }
 
       export enum AddressRecordType {
@@ -274,6 +282,7 @@ declare global {
         guid: string;
         nickname: string;
         shouldAuthenticateToView?: boolean;
+        storedInWallet?: boolean;
       }
 
       export interface EntityInstanceWithLabels {
@@ -321,7 +330,7 @@ declare global {
       export function bulkDeleteAllCvcs(): void;
       export function setAutofillSyncToggleEnabled(enabled: boolean): void;
       export function addOrUpdateEntityInstance(entityInstance: EntityInstance):
-          void;
+          Promise<void>;
       export function removeEntityInstance(guid: string): void;
       export function loadEntityInstances():
           Promise<EntityInstanceWithLabels[]>;

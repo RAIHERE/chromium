@@ -39,7 +39,6 @@
 #include "components/services/app_service/public/cpp/file_handler.h"
 #include "components/services/app_service/public/cpp/protocol_handler_info.h"
 #include "components/webapps/common/web_app_id.h"
-#include "services/network/public/cpp/permissions_policy/permissions_policy_declaration.h"
 #include "third_party/blink/public/mojom/installedapp/related_application.mojom.h"
 #include "third_party/skia/include/core/SkColor.h"
 
@@ -57,7 +56,7 @@ class StoragePartitionConfig;
 
 namespace webapps {
 enum class WebappInstallSource;
-}
+}  // namespace webapps
 
 namespace web_app {
 namespace proto {
@@ -93,6 +92,26 @@ using AppsHavingNoTrustedIconsCount =
     base::StrongAlias<class AppsHavingNoTrustedIconsCountTag, int>;
 using AppsHavingTrustedIconsCount =
     base::StrongAlias<class AppsHavingTrustedIconsCountTag, int>;
+
+struct FindBestAppInScopeOptions {
+  // Sets the `filter` applied to the best match only.
+  explicit FindBestAppInScopeOptions(WebAppFilter filter);
+  ~FindBestAppInScopeOptions();
+
+  // Only apps that pass this filter are considered when ranking apps for scope
+  // control over a URL.
+  WebAppFilter eligibility_filter = WebAppFilter::InstalledInChrome();
+
+  // Options passed to the scope scoring algorithm, used to determine the 'best'
+  // app.
+  WebAppScopeScoreOptions scope_score_options = {};
+
+  // After determining the best app to control a given url, this filter is
+  // checked with the final app. If it does not pass, then std::nullopt is
+  // returned. This is a nice shortcut as most callers also have a specific set
+  // of constraints the app needs to satisfy, like having OS integration, etc.
+  WebAppFilter filter;
+};
 
 // Enabling this will force all apps that are exclusively preinstalled and open
 // in a browser tab to have the default navigation capturing setting be 'on'.
@@ -161,8 +180,8 @@ class WebAppRegistrar {
       const webapps::AppId& app_id,
       std::initializer_list<proto::InstallState> allowed_states) const;
 
-  // Returns true if an app exists in the registry with `app_id` and matches the
-  // filter provided.
+  // Returns true if an app exists in the registry with `app_id`, isn't a stub
+  // (i.e. is not being uninstalled) and matches the filter provided.
   //
   // Example usage:
   //     AppMatches(app_id, WebAppFilter::OpensInBrowserTab())
@@ -171,6 +190,8 @@ class WebAppRegistrar {
 
   // Returns the AppId of an app that best matches the specified filter.
   // 'Best' is determined by the longest scope that is a prefix of `url`.
+  // Note that this method doesn't consider suggested apps (from migration or
+  // from another device).
   //
   // Example usage:
   //    std::optional<webapps::AppId> app_ip = FindBestAppWithUrlInScope(
@@ -179,6 +200,12 @@ class WebAppRegistrar {
       const GURL& url,
       const WebAppFilter& filter,
       WebAppScopeScoreOptions scope_score_options = {}) const;
+
+  // A more granular overload of the function above: allows the caller to
+  // include suggested apps, for instance.
+  std::optional<webapps::AppId> FindBestAppWithUrlInScope(
+      const GURL& url,
+      const FindBestAppInScopeOptions& options) const;
 
   // Finds all apps that have scopes that are nested within the given
   // `outer_scope`, and match the specified filter.
@@ -198,30 +225,9 @@ class WebAppRegistrar {
   // have completed. It will return false after uninstallation has completed.
   bool IsUninstalling(const webapps::AppId& app_id) const;
 
-  // Returns the permissions policy declared as declared in the manifest for
-  // the app with |app_id|. This permissions policy is not yet parsed by the
-  // PermissionsPolicyParser, and thus may contain invalid permissions and/or
-  // origin allowlists.
-  network::ParsedPermissionsPolicy GetPermissionsPolicy(
-      const webapps::AppId& app_id) const;
-
-  // Returns true if there exists a currently installed app that has been
-  // installed by PreinstalledWebAppManager.
-  bool IsInstalledByDefaultManagement(const webapps::AppId& app_id) const;
-
   // Returns true if an installed app was installed via policy, regardless of
   // other install sources.
   bool IsInstalledByPolicy(const webapps::AppId& app_id) const;
-
-  // Returns true if the app was installed by user, false if default installed.
-  bool WasInstalledByUser(const webapps::AppId& app_id) const;
-
-  // Returns true if the app was installed by the device OEM. Always false on
-  // on non-Chrome OS.
-  bool WasInstalledByOem(const webapps::AppId& app_id) const;
-
-  // Returns true if the app was installed by the SubApp API.
-  bool WasInstalledBySubApp(const webapps::AppId& app_id) const;
 
   // Returns true if the app exists and is allowed to be uninstalled by the user
   // e.g. it is not policy installed.
@@ -238,13 +244,9 @@ class WebAppRegistrar {
   // Returns the app id for |install_url| if the WebAppRegistrar is aware of an
   // externally installed app for it. Note that the |install_url| is the URL
   // that the app was installed from, which may not necessarily match the app's
-  // current start URL.
+  // app's current start URL.
   std::optional<webapps::AppId> LookupExternalAppId(
       const GURL& install_url) const;
-
-  // Returns whether the WebAppRegistrar has an externally installed app with
-  // |app_id| from any |install_source|.
-  bool HasExternalApp(const webapps::AppId& app_id) const;
 
   // Returns whether the WebAppRegistrar has an externally installed app with
   // |app_id| from |install_source|.
@@ -471,8 +473,9 @@ class WebAppRegistrar {
   GetAppCurrentOsIntegrationState(const webapps::AppId& app_id) const;
 
   // Returns the StoragePartitionConfig of all StoragePartitions used by
-  // |isolated_web_app_id|. Both the primary and any <controlledframe>
-  // StoragePartitions will be returned.
+  // `app_id` if `app_id` is an Isolated Web App; both the primary and any
+  // <controlledframe> StoragePartitions will be returned. Returns an empty
+  // vector if the app is not an Isolated Web App.
   std::vector<content::StoragePartitionConfig>
   GetIsolatedWebAppStoragePartitionConfigs(const webapps::AppId& app_id) const;
 
@@ -530,8 +533,6 @@ class WebAppRegistrar {
   base::flat_map<webapps::AppId, std::string> GetAllAppsControllingUrl(
       const GURL& url,
       WebAppScopeScoreOptions scope_score_options = {}) const;
-
-  bool IsDiyApp(const webapps::AppId& app_id) const;
 
   std::vector<blink::Manifest::RelatedApplication> GetRelatedApplications(
       const webapps::AppId& app_id) const;
@@ -705,8 +706,12 @@ class WebAppRegistrar {
   std::vector<webapps::AppId> GetAppIdsForAppSet(const AppSet& app_set) const;
 
  private:
+  bool AppMatches(const webapps::AppId& app_id,
+                  const WebAppFilter::LeafFilter& filter) const;
+
   bool IsIsolatedApp(const webapps::AppId& app_id) const;
-  bool IsIsolatedSubApp(const webapps::AppId& app_id) const;
+  bool IsIsolatedAppInDevMode(const webapps::AppId& app_id) const;
+
   // Returns if the given app_id is the most recently installed application of
   // the set of other apps with matching scopes, AND no other app has user link
   // capturing explicitly turned on. Note that this doesn't consider the link

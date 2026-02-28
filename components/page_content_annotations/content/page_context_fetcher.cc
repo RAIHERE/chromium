@@ -51,17 +51,6 @@ namespace page_content_annotations {
 
 namespace {
 
-template <typename T, typename E>
-// Conditionally emits to a given timing histogram, given the start_time.
-base::expected<T, E> EmitTimingHistogram(const std::string& histogram_name,
-                                         base::ElapsedTimer timer,
-                                         base::expected<T, E> result) {
-  if (result.has_value()) {
-    base::UmaHistogramTimes(histogram_name, timer.Elapsed());
-  }
-  return std::move(result);
-}
-
 gfx::Size GetScreenshotSize(const gfx::Size& original_size) {
   // By default, no scaling.
   if (!base::FeatureList::IsEnabled(kGlicTabScreenshotExperiment)) {
@@ -184,8 +173,9 @@ base::expected<paint_preview::RedactionParams, std::string> GetRedactionParams(
 
 SkBitmap RedactScreenshotOnWorkerThread(
     const SkBitmap& bitmap,
-    std::vector<gfx::Rect> visible_bounding_boxes_for_password_redaction) {
-  if (visible_bounding_boxes_for_password_redaction.empty()) {
+    std::vector<gfx::Rect> visible_bounding_boxes_for_redaction,
+    SkColor4f redaction_color) {
+  if (visible_bounding_boxes_for_redaction.empty()) {
     return bitmap;
   }
 
@@ -194,10 +184,10 @@ SkBitmap RedactScreenshotOnWorkerThread(
   redacted_bitmap.allocPixels();
 
   SkCanvas canvas(redacted_bitmap);
-  SkPaint black;
-  black.setColor(SkColors::kBlack);
-  for (const auto& rect : visible_bounding_boxes_for_password_redaction) {
-    canvas.drawRect(RectToSkRect(rect), black);
+  SkPaint color;
+  color.setColor(redaction_color);
+  for (const auto& rect : visible_bounding_boxes_for_redaction) {
+    canvas.drawRect(RectToSkRect(rect), color);
   }
 
   return redacted_bitmap;
@@ -322,6 +312,10 @@ void PageContextFetcher::FetchStart(content::WebContents& aweb_contents,
         base::FeatureList::IsEnabled(kGlicScreenshotPasswordRedaction);
     screenshot_needs_password_redaction_ =
         ai_page_content_options->include_passwords_for_redaction;
+    ai_page_content_options->include_sensitive_payments_for_redaction =
+        base::FeatureList::IsEnabled(kGlicScreenshotSensitivePaymentRedaction);
+    screenshot_needs_sensitive_payment_redaction_ =
+        ai_page_content_options->include_sensitive_payments_for_redaction;
     optimization_guide::GetAIPageContent(
         web_contents(), std::move(ai_page_content_options),
         base::BindOnce(&PageContextFetcher::ReceivedAnnotatedPageContent,
@@ -376,6 +370,8 @@ void PageContextFetcher::GetTabScreenshot(
     return;
   }
 
+  screenshot_redaction_color_ = screenshot_options.redaction_color();
+
   gfx::Size view_size = view->GetViewBounds().size();
 
   if (screenshot_options.use_paint_preview()) {
@@ -422,12 +418,8 @@ void PageContextFetcher::GetTabScreenshot(
     };
     service->RequestScreenshot(
         &web_contents, std::move(request_params),
-        base::BindOnce(EmitTimingHistogram<const SkBitmap*, std::string>,
-                       "Glic.PageContextFetcher.GetScreenshot.TimeoutAgnostic",
-                       elapsed_timer_)
-            .Then(base::BindOnce(
-                &PageContextFetcher::ReceivedViewportBitmapOrError,
-                GetWeakPtr())));
+        base::BindOnce(&PageContextFetcher::ReceivedViewportBitmapOrError,
+                       GetWeakPtr()));
   } else {
     SetCaptureCountLock(web_contents);
     ScheduleScreenshotTimeout();
@@ -490,17 +482,17 @@ void PageContextFetcher::ReceivedViewportBitmapOrError(
 }
 
 void PageContextFetcher::RedactAndEncodeScreenshot(
-    std::vector<gfx::Rect> visible_bounding_boxes_for_password_redaction) {
+    std::vector<gfx::Rect> visible_bounding_boxes_for_redaction) {
   CHECK(screenshot_bitmap_);
 
   base::ThreadPool::PostTaskAndReplyWithResult(
       FROM_HERE, {base::MayBlock(), base::TaskPriority::USER_VISIBLE},
       base::BindOnce(
           [](const SkBitmap& bitmap,
-             std::vector<gfx::Rect>
-                 visible_bounding_boxes_for_password_redaction) {
+             std::vector<gfx::Rect> visible_bounding_boxes_for_redaction,
+             SkColor4f redaction_color) {
             SkBitmap redacted_bitmap = RedactScreenshotOnWorkerThread(
-                bitmap, visible_bounding_boxes_for_password_redaction);
+                bitmap, visible_bounding_boxes_for_redaction, redaction_color);
             std::optional<std::vector<uint8_t>> encoded;
             switch (GetScreenshotImageType()) {
               case ScreenshotImageType::kJpeg:
@@ -531,14 +523,10 @@ void PageContextFetcher::RedactAndEncodeScreenshot(
             }
             return reply;
           },
-          *screenshot_bitmap_,
-          std::move(visible_bounding_boxes_for_password_redaction)),
-      base::BindOnce(
-          EmitTimingHistogram<std::vector<uint8_t>, std::string>,
-          "Glic.PageContextFetcher.GetEncodedScreenshot.TimeoutAgnostic",
-          elapsed_timer_)
-          .Then(base::BindOnce(&PageContextFetcher::ReceivedEncodedScreenshot,
-                               GetWeakPtr())));
+          *screenshot_bitmap_, std::move(visible_bounding_boxes_for_redaction),
+          screenshot_redaction_color_),
+      base::BindOnce(&PageContextFetcher::ReceivedEncodedScreenshot,
+                     GetWeakPtr()));
   screenshot_bitmap_.reset();
 }
 
@@ -547,7 +535,8 @@ void PageContextFetcher::RedactAndEncodeScreenshotIfNeeded() {
     return;
   }
 
-  if (!screenshot_needs_password_redaction_) {
+  if (!screenshot_needs_password_redaction_ &&
+      !screenshot_needs_sensitive_payment_redaction_) {
     RedactAndEncodeScreenshot({});
     return;
   }
@@ -557,13 +546,22 @@ void PageContextFetcher::RedactAndEncodeScreenshotIfNeeded() {
     return;
   }
 
-  // If APC extraction is done and we've determined password redaction is
-  // needed, it implies we have a result with bounding boxes to redact.
+  // If APC extraction is done and we've determined password/sensitive payment
+  // redaction is needed, it implies we have a result with bounding boxes to
+  // redact.
   CHECK(pending_result_);
   CHECK(pending_result_->annotated_page_content_result.has_value());
-  RedactAndEncodeScreenshot(
+
+  std::vector<gfx::Rect> visible_bounding_boxes_for_redaction =
       pending_result_->annotated_page_content_result
-          ->visible_bounding_boxes_for_password_redaction);
+          ->visible_bounding_boxes_for_password_redaction;
+  visible_bounding_boxes_for_redaction.insert(
+      visible_bounding_boxes_for_redaction.end(),
+      pending_result_->annotated_page_content_result
+          ->visible_bounding_boxes_for_sensitive_payment_redaction.begin(),
+      pending_result_->annotated_page_content_result
+          ->visible_bounding_boxes_for_sensitive_payment_redaction.end());
+  RedactAndEncodeScreenshot(std::move(visible_bounding_boxes_for_redaction));
 }
 
 // content::WebContentsObserver impl.
@@ -573,8 +571,8 @@ void PageContextFetcher::PrimaryPageChanged(content::Page& page) {
 }
 
 void PageContextFetcher::OnScreenshotTimeout() {
-  // When password redaction is enabled, the screenshot must wait for APC to
-  // finish before it can be encoded.
+  // When password/sensitive payment redaction is enabled, the screenshot must
+  // wait for APC to finish before it can be encoded.
   //
   // The screenshot timer is intended to catch hangs during the initial bitmap
   // capture. If we have already received the bitmap, we should ignore this
@@ -669,10 +667,14 @@ void PageContextFetcher::ReceivedAnnotatedPageContent(
     screenshot_needs_password_redaction_ =
         !pending_result_->annotated_page_content_result
              ->visible_bounding_boxes_for_password_redaction.empty();
+    screenshot_needs_sensitive_payment_redaction_ =
+        !pending_result_->annotated_page_content_result
+             ->visible_bounding_boxes_for_sensitive_payment_redaction.empty();
   } else {
     pending_result_->annotated_page_content_result =
         base::unexpected(content.error());
     screenshot_needs_password_redaction_ = false;
+    screenshot_needs_sensitive_payment_redaction_ = false;
   }
   annotated_page_content_done_ = true;
   base::UmaHistogramTimes("Glic.PageContextFetcher.GetAnnotatedPageContent",
@@ -706,8 +708,14 @@ void PageContextFetcher::RunCallbackIfComplete() {
   base::UmaHistogramTimes("Glic.PageContextFetcher.Total",
                           elapsed_timer_.Elapsed());
 
-  if (primary_page_changed_ || !web_contents() ||
-      !web_contents()->GetPrimaryMainFrame()) {
+  if (!web_contents() || !web_contents()->GetPrimaryMainFrame()) {
+    std::move(callback_).Run(base::unexpected(FetchPageContextErrorDetails{
+        FetchPageContextError::kWebContentsWentAway,
+        "web contents went away"}));
+    return;
+  }
+
+  if (primary_page_changed_) {
     std::move(callback_).Run(base::unexpected(FetchPageContextErrorDetails{
         FetchPageContextError::kWebContentsChanged, "web contents changed"}));
     return;
@@ -728,6 +736,8 @@ std::string ToString(FetchPageContextError error) {
       return "kWebContentsChanged";
     case FetchPageContextError::kPageContextNotEligible:
       return "kPageContextNotEligible";
+    case FetchPageContextError::kWebContentsWentAway:
+      return "kWebContentsWentAway";
   }
 }
 
@@ -735,6 +745,9 @@ BASE_FEATURE(kGlicTabScreenshotExperiment, base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kGlicScreenshotPasswordRedaction,
              base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kGlicScreenshotSensitivePaymentRedaction,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 const base::FeatureParam<int> kMaxScreenshotWidthParam{
     &kGlicTabScreenshotExperiment, "max_screenshot_width", 0};

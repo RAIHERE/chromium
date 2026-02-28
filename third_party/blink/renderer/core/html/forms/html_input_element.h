@@ -44,6 +44,7 @@ class ComputedStyleBuilder;
 class DragData;
 class ExceptionState;
 class FileList;
+class OpaqueRange;
 class HTMLDataListElement;
 class HTMLImageLoader;
 class InputType;
@@ -288,6 +289,9 @@ class CORE_EXPORT HTMLInputElement
   // Associated <datalist> options which match to the current INPUT value.
   HeapVector<Member<HTMLOptionElement>> FilteredDataListOptions() const;
 
+  // Returns the select element associated via the filter attribute, if any.
+  HTMLSelectElement* FilterTarget() const;
+
   // Functions for InputType classes.
   void SetNonAttributeValue(const String&);
   void SetNonAttributeValueByUserEdit(const String&);
@@ -334,6 +338,10 @@ class CORE_EXPORT HTMLInputElement
                     unsigned end,
                     const V8SelectionMode& selection_mode,
                     ExceptionState&) final;
+
+  OpaqueRange* createValueRange(unsigned start_offset,
+                                unsigned end_offset,
+                                ExceptionState&) final;
 
   HTMLImageLoader* ImageLoader() const { return image_loader_.Get(); }
   HTMLImageLoader& EnsureImageLoader();
@@ -388,10 +396,6 @@ class CORE_EXPORT HTMLInputElement
 
   bool IsBaseAppearanceCombobox() const;
 
-  // Used for the (experimental) declarative WebMCP prototype.
-  bool SupportsWebMCP() const override { return true; }
-  void FillWebMCPData(JSONValue& data) override;
-
  protected:
   void DefaultEventHandler(Event&) override;
   bool IsInnerEditorValueEmpty() const final;
@@ -413,6 +417,7 @@ class CORE_EXPORT HTMLInputElement
   bool IsEnumeratable() const final;
   bool IsInteractiveContent() const final;
   bool IsLabelable() const final;
+  FocusgroupFlags NativeArrowKeyAxes() const final;
   bool MatchesDefaultPseudoClass() const override;
   bool IsTextControl() const final { return IsTextField(); }
   int scrollWidth() override;

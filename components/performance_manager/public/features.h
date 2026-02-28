@@ -222,7 +222,7 @@ BASE_DECLARE_FEATURE(kBoostClosingTabs);
 // A feature to force foreground priority for all frames and workers. Intended
 // for ad-hoc debugging, to determine if a background tab issue is caused
 // specifically by low priority.
-BASE_DECLARE_FEATURE(kForceForegroundPriority);
+BASE_DECLARE_FEATURE(kForceForegroundPriorityForAllTabs);
 
 BASE_DECLARE_FEATURE(kTransientKeepAlivePolicy);
 
@@ -233,6 +233,12 @@ BASE_DECLARE_FEATURE_PARAM(size_t, kTransientKeepAlivePolicyMaxCount);
 // A feature to set the the priority of extension service worker processes to
 // USER_BLOCKING.
 BASE_DECLARE_FEATURE(kExtensionServiceWorkerVoter);
+
+#if BUILDFLAG(IS_WIN)
+BASE_DECLARE_FEATURE(kBrowserProcessAboveNormalPriority);
+#endif
+
+BASE_DECLARE_FEATURE(kDisableTabDiscarding);
 
 }  // namespace performance_manager::features
 

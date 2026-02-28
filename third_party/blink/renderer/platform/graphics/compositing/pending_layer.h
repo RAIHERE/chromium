@@ -8,7 +8,6 @@
 #include "base/check_op.h"
 #include "cc/input/layer_selection_bound.h"
 #include "third_party/blink/renderer/platform/graphics/compositing/content_layer_client_impl.h"
-#include "third_party/blink/renderer/platform/graphics/compositor_element_id.h"
 #include "third_party/blink/renderer/platform/graphics/lcd_text_preference.h"
 #include "third_party/blink/renderer/platform/graphics/paint/paint_chunk_subset.h"
 #include "third_party/blink/renderer/platform/graphics/paint/property_tree_state.h"
@@ -71,6 +70,8 @@ class PLATFORM_EXPORT PendingLayer {
   }
   bool HasText() const { return has_text_; }
 
+  bool HasVideo() const;
+
   void SetCompositingTypeToOverlap() {
     DCHECK_EQ(compositing_type_, kOther);
     compositing_type_ = kOverlap;
@@ -79,6 +80,8 @@ class PLATFORM_EXPORT PendingLayer {
   void SetPaintArtifact(const PaintArtifact& paint_artifact) {
     chunks_.SetPaintArtifact(paint_artifact);
   }
+
+  std::optional<CanvasChildPaintRecord> GetCanvasChildPaintRecord() const;
 
   using IsCompositedScrollFunction =
       PropertyTreeState::IsCompositedScrollFunction;
@@ -159,14 +162,17 @@ class PLATFORM_EXPORT PendingLayer {
   // one in |old_pending_layer|, and updates the layer according to the current
   // contents and properties of this PendingLayer.
   void UpdateCompositedLayer(PendingLayer* old_pending_layer,
+                             PropertyTreeState property_state_for_paint,
                              cc::LayerSelection&,
                              bool tracks_raster_invalidations,
                              cc::LayerTreeHost*);
 
   // A lighter version of UpdateCompositedLayer(). Called when the existing
   // composited layer has only repainted since the last update
-  void UpdateCompositedLayerForRepaint(const PaintArtifact& repainted_artifact,
-                                       cc::LayerSelection&);
+  void UpdateCompositedLayerForRepaint(
+      const PaintArtifact& repainted_artifact,
+      PropertyTreeState property_state_for_paint,
+      cc::LayerSelection&);
 
   // Another lighter version of UpdateCompositedLayers(). Called after
   // raster-inducing scrolls that don't need repaint or PaintArtifactCompositor
@@ -178,8 +184,6 @@ class PLATFORM_EXPORT PendingLayer {
   // True if a solid color chunk exists that makes this entire layer
   // draw a solid color (see comment above `solid_color_chunk_index_`).
   bool IsSolidColor() const { return solid_color_chunk_index_ != kNotFound; }
-
-  CompositorElementId canvas_subtree_id() const { return canvas_subtree_id_; }
 
  private:
   // Checks basic merge-ability with `guest` and calls
@@ -212,6 +216,7 @@ class PLATFORM_EXPORT PendingLayer {
   void UpdateScrollHitTestLayer(PendingLayer* old_pending_layer);
   void UpdateScrollbarLayer(PendingLayer* old_pending_layer);
   void UpdateContentLayer(PendingLayer* old_pending_layer,
+                          PropertyTreeState property_state_for_paint,
                           bool tracks_raster_invalidations);
   void UpdateSolidColorLayer(PendingLayer* old_pending_layer);
 
@@ -230,7 +235,6 @@ class PLATFORM_EXPORT PendingLayer {
       non_composited_scroll_translations_;
   gfx::RectF bounds_;
   gfx::RectF rect_known_to_be_opaque_;
-  CompositorElementId canvas_subtree_id_;
   // If not kNotFound, this is the index of the chunk that makes this layer
   // solid color. The solid color chunk must be the last drawable chunk and
   // must draw a solid color that fully covers this pending layer.

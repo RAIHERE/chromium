@@ -185,4 +185,85 @@ TEST_F(TipsNotificationsRankerTest, ExecuteModelWithInputForNewFeatures) {
   ExpectClassifierResults(input6, {kBottomOmnibox});
 }
 
+TEST_F(TipsNotificationsRankerTest, ExecuteModelWithInputForV2Features) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  // Assume the Essential arm as the default one.
+  scoped_feature_list.InitWithFeaturesAndParameters(
+      /*enabled_features=*/
+      {{features::kAndroidTipsNotifications,
+        {{
+            {"essential", "true"},
+        }}},
+       {features::kAndroidTipsNotificationsV2, {}}},
+      /*disabled_features=*/{});
+
+  ExpectInitAndFetchModel();
+  ASSERT_TRUE(fetched_metadata_);
+
+  EXPECT_FALSE(ExecuteWithInput(/*inputs=*/{}));
+
+  // Test PasswordAutofill with all features not being used.
+  std::vector<float> input1(TipsFeature::kFeatureCount, 0);
+  ExpectClassifierResults(input1, {kPasswordAutofill});
+
+  // Test Signin with PasswordAutofill being used.
+  std::vector<float> input2(TipsFeature::kFeatureCount, 0);
+  input2[TipsFeature::kPasswordAutofillAccountPasswordsCountIdx] = 1;
+  input2[TipsFeature::kPasswordAutofillLocalPasswordsCountIdx] = 1;
+  ExpectClassifierResults(input2, {kSignin});
+
+  // Test Create Tab Groups with PasswordAutofill and Signin being used.
+  std::vector<float> input3(TipsFeature::kFeatureCount, 0);
+  input3[TipsFeature::kPasswordAutofillAccountPasswordsCountIdx] = 1;
+  input3[TipsFeature::kPasswordAutofillLocalPasswordsCountIdx] = 1;
+  input3[TipsFeature::kIsUserSignedInIdx] = 1;
+  input3[TipsFeature::kSigninMagicStackShownCountIdx] = 1;
+  ExpectClassifierResults(input3, {kCreateTabGroups});
+
+  // Test Customize MVT with PasswordAutofill, Signin and Create Tab Groups
+  // being used.
+  std::vector<float> input4(TipsFeature::kFeatureCount, 0);
+  input4[TipsFeature::kPasswordAutofillAccountPasswordsCountIdx] = 1;
+  input4[TipsFeature::kPasswordAutofillLocalPasswordsCountIdx] = 1;
+  input4[TipsFeature::kIsUserSignedInIdx] = 1;
+  input4[TipsFeature::kSigninMagicStackShownCountIdx] = 1;
+  input4[TipsFeature::kTabGroupsCreatedCountIdx] = 1;
+  input4[TipsFeature::kNTPShownCountIdx] = 6;
+  ExpectClassifierResults(input4, {kCustomizeMVT});
+
+  // Test Recent Tabs with PasswordAutofill, Signin, Create Tab Groups and
+  // Customize MVT being used.
+  std::vector<float> input5(TipsFeature::kFeatureCount, 0);
+  input5[TipsFeature::kPasswordAutofillAccountPasswordsCountIdx] = 1;
+  input5[TipsFeature::kPasswordAutofillLocalPasswordsCountIdx] = 1;
+  input5[TipsFeature::kIsUserSignedInIdx] = 1;
+  input5[TipsFeature::kSigninMagicStackShownCountIdx] = 1;
+  input5[TipsFeature::kTabGroupsCreatedCountIdx] = 1;
+  input5[TipsFeature::kNTPShownCountIdx] = 6;
+  input5[TipsFeature::kMVTPinnedCountIdx] = 1;
+  ExpectClassifierResults(input5, {kRecentTabs});
+
+  // Test QuickDelete from V1 with V2 features being used.
+  std::vector<float> input6(TipsFeature::kFeatureCount, 0);
+  input6[TipsFeature::kPasswordAutofillAccountPasswordsCountIdx] = 1;
+  input6[TipsFeature::kPasswordAutofillLocalPasswordsCountIdx] = 1;
+  input6[TipsFeature::kIsUserSignedInIdx] = 1;
+  input6[TipsFeature::kSigninMagicStackShownCountIdx] = 1;
+  input6[TipsFeature::kTabGroupsCreatedCountIdx] = 1;
+  input6[TipsFeature::kNTPShownCountIdx] = 6;
+  input6[TipsFeature::kMVTPinnedCountIdx] = 1;
+  input6[TipsFeature::kRecentTabsUsedCountIdx] = 1;
+  ExpectClassifierResults(input6, {kQuickDelete});
+
+  // Test AllFeatureTipsShownCount blocks scheduling notifications.
+  std::vector<float> input7(TipsFeature::kFeatureCount, 0);
+  input7[TipsFeature::kAllFeatureTipsShownCountIdx] = 1;
+  ExpectClassifierResults(input7, {});
+
+  // Test TipShown blocks scheduling PasswordAutofill as first eligible.
+  std::vector<float> input8(TipsFeature::kFeatureCount, 0);
+  input8[TipsFeature::kPasswordAutofillTipShownIdx] = 1;
+  ExpectClassifierResults(input8, {kSignin});
+}
+
 }  // namespace segmentation_platform

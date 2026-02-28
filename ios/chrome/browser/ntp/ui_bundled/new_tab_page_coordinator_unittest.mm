@@ -334,7 +334,7 @@ class NewTabPageCoordinatorTest : public PlatformTest {
             GetApplicationContext()->GetSystemIdentityManager());
     system_identity_manager->AddIdentity(fake_identity);
     AuthenticationServiceFactory::GetForProfile(GetProfile())
-        ->SignIn(fake_identity, signin_metrics::AccessPoint::kUnknown);
+        ->SignIn(fake_identity, signin_metrics::AccessPoint::kStartPage);
   }
 
   web::WebTaskEnvironment task_environment_;
@@ -583,8 +583,6 @@ TEST_F(NewTabPageCoordinatorTest, ProxiesNTPViewControllerMethods) {
   [coordinator_ start];
   [coordinator_ didNavigateToNTPInWebState:web_state_];
 
-  ExpectMethodToProxyToVC(@selector(isScrolledToTop),
-                          @selector(isNTPScrolledToTop));
   ExpectMethodToProxyToVC(@selector(willUpdateSnapshot),
                           @selector(willUpdateSnapshot));
   if (!IsComposeboxIOSEnabled()) {

@@ -127,9 +127,9 @@ suite('ContextMenuEntrypoint', () => {
         assertEquals('Tab 1', items[0]!.getAttribute('title'));
         assertEquals('Tab 2', items[1]!.getAttribute('title'));
         assertEquals(
-            'Most recent tabs, Tab 1', items[0]!.getAttribute('aria-label'));
+            'Add recent tabs, Tab 1', items[0]!.getAttribute('aria-label'));
         assertEquals(
-            'Most recent tabs, Tab 2', items[1]!.getAttribute('aria-label'));
+            'Add recent tabs, Tab 2', items[1]!.getAttribute('aria-label'));
         assertEquals('imageUpload', items[2]!.id);
         assertEquals('fileUpload', items[3]!.id);
       });
@@ -343,7 +343,7 @@ suite('ContextMenuEntrypoint', () => {
     // Simulate parent component behavior of listening for event and changing
     // property.
     entrypoint.addEventListener('deep-search-click', () => {
-      entrypoint.inputsDisabled = !entrypoint.inputsDisabled;
+      entrypoint.uploadButtonDisabled = !entrypoint.uploadButtonDisabled;
     });
     await entrypoint.updateComplete;
 
@@ -352,7 +352,7 @@ suite('ContextMenuEntrypoint', () => {
     // Assert entrypoint is enabled initially.
     const deepSearchButton = $$<HTMLButtonElement>(entrypoint, '#deepSearch');
     assertTrue(!!deepSearchButton);
-    assertFalse(entrypoint.inputsDisabled);
+    assertFalse(entrypoint.uploadButtonDisabled);
 
     // Click deep search button.
     const eventFired = eventToPromise('deep-search-click', entrypoint);
@@ -362,14 +362,14 @@ suite('ContextMenuEntrypoint', () => {
 
     // Assert menu is closed and entrypoint is disabled.
     assertFalse(entrypoint.$.menu.open);
-    assertTrue(entrypoint.inputsDisabled);
+    assertTrue(entrypoint.uploadButtonDisabled);
 
     // Toggle deep search button.
     entrypoint['onDeepSearchClick_']();
     await entrypoint.updateComplete;
 
     // Assert entrypoint is enabled again.
-    assertFalse(entrypoint.inputsDisabled);
+    assertFalse(entrypoint.uploadButtonDisabled);
   });
 
   test('image upload is disabled based on state', async () => {
@@ -563,8 +563,8 @@ suite('ContextMenuEntrypoint', () => {
             entrypoint.shadowRoot.querySelectorAll<HTMLElement>(
                 '.multi-tab-icon');
         assertEquals(2, tabSelectors.length);
-        assertEquals('cr:add', tabSelectors[0]!.getAttribute('icon'));
-        assertEquals('cr:add', tabSelectors[1]!.getAttribute('icon'));
+        assertEquals('composebox:addCircle', tabSelectors[0]!.getAttribute('icon'));
+        assertEquals('composebox:addCircle', tabSelectors[1]!.getAttribute('icon'));
 
         // Act by adding tab 1 as context.
         entrypoint.disabledTabIds = new Map([[1, '1']]);
@@ -575,8 +575,8 @@ suite('ContextMenuEntrypoint', () => {
             entrypoint.shadowRoot.querySelectorAll<HTMLElement>(
                 '.multi-tab-icon');
         assertEquals(2, tabSelectors.length);
-        assertEquals('cr:check', tabSelectors[0]!.getAttribute('icon'));
-        assertEquals('cr:add', tabSelectors[1]!.getAttribute('icon'));
+        assertEquals('composebox:checkCircle', tabSelectors[0]!.getAttribute('icon'));
+        assertEquals('composebox:addCircle', tabSelectors[1]!.getAttribute('icon'));
       });
 
   test('multi-tab enabled does not close context menu', async () => {

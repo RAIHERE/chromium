@@ -8,20 +8,15 @@ import "chromeos/components/in_session_auth/mojom/in_session_auth.mojom";
 import "chromeos/components/payments/mojom/payment_app.mojom";
 import "chromeos/components/sensors/mojom/cros_sensor_service.mojom";
 import "chromeos/crosapi/mojom/account_manager.mojom";
-import "chromeos/crosapi/mojom/guest_os_sk_forwarder.mojom";
 import "chromeos/crosapi/mojom/cros_display_config.mojom";
-import "chromeos/crosapi/mojom/diagnostics_service.mojom";
 import "chromeos/crosapi/mojom/document_scan.mojom";
-import "chromeos/crosapi/mojom/keystore_service.mojom";
 import "chromeos/crosapi/mojom/local_printer.mojom";
-import "chromeos/crosapi/mojom/print_preview_cros.mojom";
 import "chromeos/crosapi/mojom/probe_service.mojom";
 import "chromeos/crosapi/mojom/telemetry_diagnostic_routine_service.mojom";
 import "chromeos/crosapi/mojom/telemetry_event_service.mojom";
 import "chromeos/crosapi/mojom/telemetry_management_service.mojom";
 import "chromeos/services/chromebox_for_meetings/public/mojom/cfm_service_manager.mojom";
 import "chromeos/services/machine_learning/public/mojom/machine_learning_service.mojom";
-import "chromeos/crosapi/mojom/video_capture.mojom";
 import "mojo/public/mojom/base/generic_pending_receiver.mojom";
 import "services/device/public/mojom/hid.mojom";
 import "services/media_session/public/mojom/audio_focus.mojom";
@@ -91,13 +86,7 @@ interface Crosapi {
   // BindDeviceAttributes@17 was removed.
   // BindDeviceOAuth2TokenService@95 was removed.
   // BindDeviceSettingsService@59 was removed.
-
-  // Binds the diagnostics service to allow Lacros to initiate diagnostics
-  // routines from Ash.
-  // Added in M106.
-  [MinVersion=95] BindDiagnosticsService@99(
-    pending_receiver<crosapi.mojom.DiagnosticsService> receiver);
-
+  // BindDiagnosticsService@99 was removed.
   // BindDigitalGoodsFactory@79 was removed.
   // BindDlp@64 was removed.
 
@@ -250,12 +239,7 @@ interface Crosapi {
   // BindTimeZoneService@65 was removed.
   // BindTts@58 was removed.
   // BindUrlHandler@18 was removed.
-
-  // Binds the device factory in video capture service.
-  // Added in M90.
-  [MinVersion=20] BindVideoCaptureDeviceFactory@25(
-      pending_receiver<crosapi.mojom.VideoCaptureDeviceFactory> receiver);
-
+  // BindVideoCaptureDeviceFactory@25 was removed.
   // BindVideoConferenceManager@102 was removed.
   // BindVirtualKeyboard@91 was removed.
   // BindVpnExtensionObserver@78 was removed.
@@ -269,12 +253,7 @@ interface Crosapi {
   // BindWebPageInfoFactory@39 was removed.
   // BindWebAppPublisher@27 was removed.
   // BindWebAppService@72 was removed.
-
-  // Binds the GuestOS security key forwarding service.
-  // Added in M120.
-  [MinVersion=121] BindGuestOsSkForwarderFactory@123(
-      pending_receiver<GuestOsSkForwarderFactory> receiver);
-
+  // BindGuestOsSkForwarderFactory@123 was removed.
   // OnBrowserStartup@6 was removed.
   // BindInputMethods@139 was removed.
 };

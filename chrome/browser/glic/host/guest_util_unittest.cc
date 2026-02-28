@@ -27,28 +27,27 @@ class GuestUtilMultiInstanceTest : public testing::TestWithParam<bool> {
  public:
   GuestUtilMultiInstanceTest()
       : profile_manager_(TestingBrowserProcess::GetGlobal()) {
+    std::vector<base::test::FeatureRefAndParams> enabled_features;
+    std::vector<base::test::FeatureRef> disabled_features;
+
+    enabled_features.push_back(
+        {features::kGlicURLConfig,
+         {{features::kGlicGuestURL.name,
+           IsMultiInstanceEnabled() ? "https://www.example.com/glic"
+                                    : "https://www.example.org/glic"}}});
+
     if (IsMultiInstanceEnabled()) {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          /*enabled_features=*/
-          {
-              {features::kGlicMultiInstance, {}},
-              {features::kGlicMultitabUnderlines, {}},
-              {mojom::features::kGlicMultiTab, {}},
-              {features::kGlicURLConfig,
-               {{features::kGlicGuestURL.name,
-                 "https://www.example.com/glic"}}},
-          },
-          /*disabled_features=*/{});
+      enabled_features.push_back({features::kGlicMultiInstance, {}});
+      enabled_features.push_back({features::kGlicMultitabUnderlines, {}});
+      enabled_features.push_back({mojom::features::kGlicMultiTab, {}});
     } else {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          /*enabled_features=*/
-          {
-              {features::kGlicURLConfig,
-               {{features::kGlicGuestURL.name,
-                 "https://www.example.org/glic"}}},
-          },
-          /*disabled_features=*/{});
+      disabled_features.push_back(features::kGlicMultiInstance);
+      disabled_features.push_back(features::kGlicMultitabUnderlines);
+      disabled_features.push_back(mojom::features::kGlicMultiTab);
     }
+
+    scoped_feature_list_.InitWithFeaturesAndParameters(enabled_features,
+                                                       disabled_features);
   }
 
   void SetUp() override { ASSERT_TRUE(profile_manager_.SetUp()); }
@@ -59,9 +58,9 @@ class GuestUtilMultiInstanceTest : public testing::TestWithParam<bool> {
 
  protected:
   bool IsMultiInstanceEnabled() const { return GetParam(); }
+  base::test::ScopedFeatureList scoped_feature_list_;
 
  private:
-  base::test::ScopedFeatureList scoped_feature_list_;
   content::BrowserTaskEnvironment task_environment_;
   TestingProfileManager profile_manager_;
 };
@@ -132,11 +131,11 @@ TEST_P(GuestUtilMultiInstanceTest, GetGlicGuestURLs) {
   TestingProfile* profile = CreateTestingProfile();
   if (IsMultiInstanceEnabled()) {
     EXPECT_EQ(GURL("https://www.example.com/glic?mode=mi&hl=en"),
-              GetGuestURL(profile));
+              GetGuestURL());
     EXPECT_TRUE(
         net::GetValueForKeyInQuery(GetFreURL(profile), "mode", nullptr));
   } else {
-    EXPECT_EQ(GURL("https://www.example.org/glic?hl=en"), GetGuestURL(profile));
+    EXPECT_EQ(GURL("https://www.example.org/glic?hl=en"), GetGuestURL());
     EXPECT_FALSE(
         net::GetValueForKeyInQuery(GetFreURL(profile), "mode", nullptr));
   }
@@ -146,11 +145,10 @@ TEST_P(GuestUtilMultiInstanceTest, MaybeAddMultiInstanceParameterDisabled) {
   // Test that disabling the feature does not add any multi-instance params.
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndDisableFeature(kGlicGuestUrlMultiInstanceParam);
-  TestingProfile* profile = CreateTestingProfile();
   if (IsMultiInstanceEnabled()) {
-    EXPECT_EQ(GURL("https://www.example.com/glic?hl=en"), GetGuestURL(profile));
+    EXPECT_EQ(GURL("https://www.example.com/glic?hl=en"), GetGuestURL());
   } else {
-    EXPECT_EQ(GURL("https://www.example.org/glic?hl=en"), GetGuestURL(profile));
+    EXPECT_EQ(GURL("https://www.example.org/glic?hl=en"), GetGuestURL());
   }
 }
 

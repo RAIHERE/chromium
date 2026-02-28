@@ -144,42 +144,6 @@ ComputeAudioOutputBufferSize(const AudioParameters& parameters);
 
 MEDIA_EXPORT uint32_t ComputeAudioOutputBufferSize(int channels, int frames);
 
-// Channel count and ChannelLayout pair, with helper methods to enforce safe
-// construction.
-class MEDIA_EXPORT ChannelLayoutConfig {
- public:
-  ChannelLayoutConfig(const ChannelLayoutConfig& other);
-  ChannelLayoutConfig& operator=(const ChannelLayoutConfig& other);
-  ChannelLayoutConfig();
-  ChannelLayoutConfig(ChannelLayout channel_layout, int channels);
-  ~ChannelLayoutConfig();
-
-  template <ChannelLayout layout>
-  static ChannelLayoutConfig FromLayout() {
-    return ChannelLayoutConfig(layout, ChannelLayoutToChannelCount(layout));
-  }
-
-  static ChannelLayoutConfig Mono();
-
-  static ChannelLayoutConfig Stereo();
-
-  static ChannelLayoutConfig Guess(int channels);
-
-  ChannelLayout channel_layout() const { return channel_layout_; }
-
-  int channels() const { return channels_; }
-
- private:
-  ChannelLayout channel_layout_;  // Order of surround sound channels.
-  int channels_;                  // Number of channels.
-};
-
-// For |CHANNEL_LAYOUT_DISCRETE|, we have to explicitly set the number of
-// channels, so we need to use the normal constructor.
-template <>
-ChannelLayoutConfig ChannelLayoutConfig::FromLayout<CHANNEL_LAYOUT_DISCRETE>() =
-    delete;
-
 class MEDIA_EXPORT AudioParameters {
  public:
   // GENERATED_JAVA_ENUM_PACKAGE: org.chromium.media
@@ -332,12 +296,6 @@ class MEDIA_EXPORT AudioParameters {
   // Returns the number of bytes representing a frame of audio when using |fmt|
   // for samples.
   int GetBytesPerFrame(SampleFormat fmt) const;
-
-  // Returns the number of microseconds per frame of audio. Intentionally
-  // reported as a double to surface of partial microseconds per frame, which
-  // is common for many sample rates. Failing to account for these nanoseconds
-  // can lead to audio/video sync drift.
-  double GetMicrosecondsPerFrame() const;
 
   // Returns the duration of this buffer as calculated from frames_per_buffer()
   // and sample_rate().

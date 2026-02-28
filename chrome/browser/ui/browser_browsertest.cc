@@ -253,8 +253,7 @@ class TabClosingObserver : public TabStripModelObserver {
 
     auto* remove = change.GetRemove();
     for (const auto& contents : remove->contents) {
-      if (contents.remove_reason ==
-          TabStripModelChange::RemoveReason::kDeleted) {
+      if (contents.remove_reason == TabRemovedReason::kDeleted) {
         closing_count_ += 1;
       }
     }
@@ -1356,9 +1355,11 @@ IN_PROC_BROWSER_TEST_F(BrowserTest, ReattachDevToolsWindow) {
   ASSERT_EQ(2u, chrome::GetBrowserCount(browser()->profile()));
 
   // Re-attach the dev tools window. This resets its Browser*.
+  ui_test_utils::BrowserDestroyedObserver observer(
+      chrome::FindBrowserWithTab(devtools_main_web_contents));
   devtools_delegate->SetIsDocked(true);
   // Wait until the browser actually gets closed.
-  ui_test_utils::WaitForBrowserToClose();
+  observer.Wait();
   ASSERT_EQ(1u, chrome::GetBrowserCount(browser()->profile()));
 
   // Do something that will make SearchTabHelper access its OmniboxView. This
@@ -1417,7 +1418,7 @@ IN_PROC_BROWSER_TEST_F(BrowserTest, RestorePinnedTabs) {
                 /*restore_tabbed_browser=*/true);
 
   // The launch should have created a new browser.
-  ASSERT_EQ(2u, chrome::GetBrowserCount(browser()->profile()));
+  ASSERT_EQ(1u, chrome::GetBrowserCount(browser()->profile()));
 
   // Find the new browser.
   Browser* const new_browser = ui_test_utils::GetBrowserNotInSet({browser()});
@@ -1526,7 +1527,7 @@ IN_PROC_BROWSER_TEST_F(BrowserTest, StartMinimized) {
   });
   for (auto& param : params) {
     param.initial_show_state = ui::mojom::WindowShowState::kMinimized;
-    AddBlankTabAndShow(Browser::Create(param));
+    AddBlankTabAndShow(Browser::Create(param), /*wait_for_activation=*/false);
   }
 }
 
@@ -3228,6 +3229,21 @@ IN_PROC_BROWSER_TEST_F(BrowserTest,
   EXPECT_EQ(2u, chrome::GetTotalBrowserCount());
   new_browser->SynchronouslyDestroyBrowser();
   EXPECT_EQ(1u, chrome::GetTotalBrowserCount());
+}
+
+IN_PROC_BROWSER_TEST_F(BrowserTest, ClosedBrowsersShouldNotShow) {
+  // Create a new browser but do not show it yet.
+  BrowserWindowInterface* const new_browser =
+      Browser::Create(Browser::CreateParams(GetProfile(), true));
+  ui::BaseWindow* const new_window = new_browser->GetWindow();
+  EXPECT_FALSE(new_window->IsVisible());
+
+  // Close the browser before Show() is called.
+  new_window->Close();
+
+  // Attempts to show a closed browser should no-op.
+  new_window->Show();
+  EXPECT_FALSE(new_window->IsVisible());
 }
 
 class GuestSessionBrowserTest : public BrowserTest {

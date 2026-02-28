@@ -105,7 +105,7 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
 
   if (features::IsImmersiveReadAnythingEnabled()) {
     auto read_anything_immersive_overlay_view =
-        std::make_unique<ReadAnythingImmersiveOverlayView>();
+        std::make_unique<ReadAnythingImmersiveOverlayView>(contents_view_);
     read_anything_immersive_overlay_view_ =
         AddChildView(std::move(read_anything_immersive_overlay_view));
   }
@@ -113,7 +113,8 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   contents_scrim_view_ = AddChildView(std::make_unique<ScrimView>());
   contents_scrim_view_->layer()->SetName("ContentsScrimView");
 
-  if (features::kGlicActorUiOverlay.Get()) {
+  if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
+      features::kGlicActorUiOverlay.Get()) {
     auto actor_overlay_web_view =
         std::make_unique<ActorOverlayWebView>(browser_view->browser());
     actor_overlay_web_view->SetID(VIEW_ID_ACTOR_OVERLAY);
@@ -121,6 +122,17 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   }
 
 #if BUILDFLAG(ENABLE_GLIC)
+  if (base::FeatureList::IsEnabled(features::kGlicRegionSelectionNew)) {
+    auto glic_selection_overlay_view = std::make_unique<views::WebView>();
+    glic_selection_overlay_view->SetProperty(
+        views::kElementIdentifierKey, kGlicSelectionOverlayViewElementId);
+    glic_selection_overlay_view->SetVisible(false);
+    glic_selection_overlay_view->SetLayoutManager(
+        std::make_unique<views::FillLayout>());
+    glic_selection_overlay_view_ =
+        AddChildView(std::move(glic_selection_overlay_view));
+  }
+
   if (glic::GlicEnabling::IsProfileEligible(browser_view->GetProfile())) {
     glic_border_ = AddChildView(
         views::Builder<glic::ContextSharingBorderView>(
@@ -143,7 +155,15 @@ ContentsContainerView::ContentsContainerView(BrowserView* browser_view)
   view_bounds_observer_.Observe(contents_view_);
 }
 
-ContentsContainerView::~ContentsContainerView() = default;
+ContentsContainerView::~ContentsContainerView() {
+  // read_anything_immersive_overlay_view_ holds a raw_ptr to
+  // contents_view_. We need to make sure we destroy
+  // read_anything_immersive_overlay_view_ first to avoid a dangling pointer.
+  if (read_anything_immersive_overlay_view_) {
+    auto overlay_view = RemoveChildViewT(read_anything_immersive_overlay_view_);
+    read_anything_immersive_overlay_view_ = nullptr;
+  }
+}
 
 std::vector<views::View*> ContentsContainerView::GetAccessiblePanes() {
   std::vector<views::View*> accessible_panes;
@@ -162,36 +182,47 @@ std::vector<views::View*> ContentsContainerView::GetAccessiblePanes() {
 void ContentsContainerView::UpdateBorderAndOverlay(bool is_in_split,
                                                    bool is_active,
                                                    bool is_highlighted) {
+  const bool split_changed = is_in_split != is_in_split_;
   is_in_split_ = is_in_split;
 
-  // The border, mini toolbar, and scrim should not be visible if not in a
-  // split.
   if (!is_in_split) {
-    SetBorder(nullptr);
-    ClearBorderRoundedCorners();
-    mini_toolbar_->SetVisible(false);
-    container_outline_->SetVisible(false);
+    if (split_changed) {
+      SetBorder(nullptr);
+      ClearBorderRoundedCorners();
+
+      mini_toolbar_->SetVisible(false);
+      container_outline_->SetVisible(false);
+      if (capture_contents_border_widget_) {
+        static_cast<ContentsCaptureBorderView*>(
+            capture_contents_border_widget_->GetContentsView())
+            ->SetIsInSplit(false);
+      }
+    }
+  } else {
+    if (split_changed) {
+      SetBorder(views::CreateEmptyBorder(gfx::Insets(
+          kSplitViewContentPadding + ContentsContainerOutline::kThickness)));
+      UpdateBorderRoundedCorners();
+    }
+
+    container_outline_->UpdateState(is_active, is_highlighted);
+    // Mini toolbar should only be visible for the inactive contents
+    // container view or both depending on configuration.
+    mini_toolbar_->UpdateState(is_active, is_highlighted);
     if (capture_contents_border_widget_) {
       static_cast<ContentsCaptureBorderView*>(
           capture_contents_border_widget_->GetContentsView())
-          ->SetIsInSplit(false);
+          ->SetIsInSplit(true);
     }
-    return;
   }
 
-  SetBorder(views::CreateEmptyBorder(gfx::Insets(
-      kSplitViewContentPadding + ContentsContainerOutline::kThickness)));
-  UpdateBorderRoundedCorners();
-
-  container_outline_->UpdateState(is_active, is_highlighted);
-  // Mini toolbar should only be visible for the inactive contents
-  // container view or both depending on configuration.
-  mini_toolbar_->UpdateState(is_active, is_highlighted);
-  if (capture_contents_border_widget_) {
-    static_cast<ContentsCaptureBorderView*>(
-        capture_contents_border_widget_->GetContentsView())
-        ->SetIsInSplit(true);
+#if BUILDFLAG(IS_CHROMEOS)
+  if (split_changed) {
+    // Ensures correct window rounded corners after updating contents rounded
+    // corners in UpdateBorderRoundedCorners()/ClearBorderRoundedCorners().
+    GetWidget()->non_client_view()->frame_view()->UpdateWindowRoundedCorners();
   }
+#endif  //  BUILDFLAG(IS_CHROMEOS)
 }
 
 void ContentsContainerView::UpdateBorderRoundedCorners() {
@@ -249,6 +280,10 @@ void ContentsContainerView::UpdateBorderRoundedCorners() {
   }
 
 #if BUILDFLAG(ENABLE_GLIC)
+  if (glic_selection_overlay_view_) {
+    glic_selection_overlay_view_->holder()->SetCornerRadii(radii);
+  }
+
   if (glic_border_) {
     glic_border_->SetRoundedCorners(content_rounded_corners);
   }
@@ -275,6 +310,10 @@ void ContentsContainerView::ClearBorderRoundedCorners() {
   }
 
 #if BUILDFLAG(ENABLE_GLIC)
+  if (glic_selection_overlay_view_) {
+    glic_selection_overlay_view_->holder()->SetCornerRadii(kNoRoundedCorners);
+  }
+
   if (glic_border_) {
     glic_border_->SetRoundedCorners(kNoRoundedCorners);
   }
@@ -294,6 +333,8 @@ void ContentsContainerView::Layout(PassKey pass_key) {
   if (capture_contents_border_widget_) {
     UpdateCaptureContentsBorderLocation();
   }
+
+  UpdateContentsClip();
 }
 
 void ContentsContainerView::OnViewBoundsChanged(View* observed_view) {
@@ -391,6 +432,16 @@ gfx::Rect ContentsContainerView::GetContentsViewBounds() const {
   return contents_view_bounds;
 }
 
+void ContentsContainerView::SetTargetContentBounds(
+    std::optional<gfx::Outsets> target_content_bounds) {
+  if (target_content_bounds_ == target_content_bounds) {
+    return;
+  }
+
+  target_content_bounds_ = target_content_bounds;
+  InvalidateLayout(/*avoid_propagate_during_layout=*/true);
+}
+
 void ContentsContainerView::CreateCaptureContentsBorder() {
   capture_contents_border_widget_ = std::make_unique<views::Widget>();
   views::Widget::InitParams params(
@@ -465,6 +516,25 @@ void ContentsContainerView::UpdateCaptureContentsBorderLocation() {
 #endif  // BUILDFLAG(IS_MAC)
 
   capture_contents_border_widget_->SetBounds(rect);
+}
+
+void ContentsContainerView::UpdateContentsClip() {
+  bool changed = false;
+  if (auto* const layer = contents_view_->holder()->GetUILayer()) {
+    if (layer->clip_rect() != contents_clip_rect_) {
+      layer->SetClipRect(contents_clip_rect_);
+      changed = true;
+    }
+  }
+  if (auto* const layer = contents_view_->layer()) {
+    if (layer->clip_rect() != contents_clip_rect_) {
+      layer->SetClipRect(contents_clip_rect_);
+      changed = true;
+    }
+  }
+  if (changed) {
+    contents_view_->SchedulePaint();
+  }
 }
 
 views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
@@ -559,6 +629,15 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
         non_devtools_contents_bounds, size_bounds);
   }
 
+#if BUILDFLAG(ENABLE_GLIC)
+  if (glic_selection_overlay_view_) {
+    layouts.child_layouts.emplace_back(
+        glic_selection_overlay_view_.get(),
+        glic_selection_overlay_view_->GetVisible(),
+        non_devtools_contents_bounds, size_bounds);
+  }
+#endif
+
   // Reading Mode overlay view bounds are the same as the contents view.
   if (features::IsImmersiveReadAnythingEnabled() &&
       read_anything_immersive_overlay_view_) {
@@ -590,6 +669,16 @@ views::ProposedLayout ContentsContainerView::CalculateProposedLayout(
     layouts.child_layouts.emplace_back(container_outline_.get(),
                                        container_outline_->GetVisible(),
                                        gfx::Rect(0, 0, width, height));
+  }
+
+  auto* const content_layout = layouts.GetLayoutFor(contents_view_);
+  if (target_content_bounds_) {
+    content_layout->bounds.Outset(*target_content_bounds_);
+    contents_clip_rect_ =
+        gfx::Rect(gfx::Point(), content_layout->bounds.size());
+    contents_clip_rect_.Inset(-target_content_bounds_->ToInsets());
+  } else {
+    contents_clip_rect_ = gfx::Rect();
   }
 
   layouts.host_size = gfx::Size(width, height);

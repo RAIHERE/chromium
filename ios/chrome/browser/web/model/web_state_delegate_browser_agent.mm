@@ -12,6 +12,8 @@
 #import "ios/chrome/browser/context_menu/ui_bundled/context_menu_configuration_provider.h"
 #import "ios/chrome/browser/dialogs/ui_bundled/nsurl_protection_space_util.h"
 #import "ios/chrome/browser/enterprise/data_controls/model/data_controls_tab_helper.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
+#import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_callback_manager.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_modality.h"
 #import "ios/chrome/browser/overlays/model/public/overlay_request.h"
@@ -21,6 +23,8 @@
 #import "ios/chrome/browser/overlays/model/public/web_content_area/insecure_form_overlay.h"
 #import "ios/chrome/browser/permissions/model/permissions_tab_helper.h"
 #import "ios/chrome/browser/shared/model/profile/profile_ios.h"
+#import "ios/chrome/browser/shared/public/commands/bwg_commands.h"
+#import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_capabilities.h"
 #import "ios/chrome/browser/tab_insertion/model/tab_insertion_browser_agent.h"
@@ -30,6 +34,7 @@
 #import "ios/chrome/browser/web/model/repost_form_tab_helper.h"
 #import "ios/chrome/browser/web/model/web_state_container_view_provider.h"
 #import "ios/components/security_interstitials/ios_blocking_page_tab_helper.h"
+#import "ios/public/provider/chrome/browser/context_menu/context_menu_api.h"
 #import "ios/web/public/permissions/permissions.h"
 #import "ios/web/public/ui/context_menu_params.h"
 #import "ios/web/public/ui/crw_web_view_proxy.h"
@@ -104,7 +109,7 @@ WebStateDelegateBrowserAgent::WebStateDelegateBrowserAgent(Browser* browser)
       << "WebStateDelegateBrowserAgent created for a Browser with a non-empty "
          "WebStateList.";
 
-  StartObserving(browser, Policy::kOnlyRealized);
+  StartObserving(browser);
 }
 
 WebStateDelegateBrowserAgent::~WebStateDelegateBrowserAgent() {
@@ -169,7 +174,7 @@ web::WebState* WebStateDelegateBrowserAgent::CreateNewWebState(
 
   // Check if requested web state is a popup and block it if necessary.
   if (!initiated_by_user) {
-    auto* helper = BlockedPopupTabHelper::GetOrCreateForWebState(source);
+    auto* helper = BlockedPopupTabHelper::FromWebState(source);
     if (helper->ShouldBlockPopup(opener_url)) {
       // It's possible for a page to inject a popup into a window created via
       // window.open before its initial load is committed.  Rather than relying
@@ -321,10 +326,29 @@ void WebStateDelegateBrowserAgent::ContextMenuConfiguration(
     web::WebState* source,
     const web::ContextMenuParams& params,
     void (^completion_handler)(UIContextMenuConfiguration*)) {
+  if (IsGeminiCopresenceEnabled()) {
+    id<BWGCommands> geminiHandler =
+        HandlerForProtocol(browser_->GetCommandDispatcher(), BWGCommands);
+    [geminiHandler
+        hideFloatyIfInvokedAnimated:YES
+                         fromSource:gemini::FloatyUpdateSource::WebContextMenu];
+  }
+
   UIContextMenuConfiguration* configuration =
       [context_menu_provider_ contextMenuConfigurationForWebState:source
                                                            params:params];
   completion_handler(configuration);
+}
+
+UIContextMenuConfiguration*
+WebStateDelegateBrowserAgent::GetCustomContextMenuConfiguration() {
+  return ios::provider::GetDefaultContextMenuConfiguration();
+}
+
+void WebStateDelegateBrowserAgent::ContextMenuConfigurationLoaded(
+    UIContextMenuConfiguration* configuration,
+    UIContextMenuConfiguration* update) {
+  ios::provider::UpdateContextMenuConfiguration(configuration, update);
 }
 
 void WebStateDelegateBrowserAgent::ContextMenuWillCommitWithAnimator(
@@ -353,27 +377,27 @@ void WebStateDelegateBrowserAgent::OnNewWebViewCreated(web::WebState* source) {
 void WebStateDelegateBrowserAgent::ShouldAllowCopy(
     web::WebState* source,
     base::OnceCallback<void(bool)> callback) {
-  data_controls::DataControlsTabHelper::GetOrCreateForWebState(source)
-      ->ShouldAllowCopy(std::move(callback));
+  data_controls::DataControlsTabHelper::FromWebState(source)->ShouldAllowCopy(
+      std::move(callback));
 }
 
 void WebStateDelegateBrowserAgent::ShouldAllowPaste(
     web::WebState* source,
     base::OnceCallback<void(bool)> callback) {
-  data_controls::DataControlsTabHelper::GetOrCreateForWebState(source)
-      ->ShouldAllowPaste(std::move(callback));
+  data_controls::DataControlsTabHelper::FromWebState(source)->ShouldAllowPaste(
+      std::move(callback));
 }
 
 void WebStateDelegateBrowserAgent::ShouldAllowCut(
     web::WebState* source,
     base::OnceCallback<void(bool)> callback) {
-  data_controls::DataControlsTabHelper::GetOrCreateForWebState(source)
-      ->ShouldAllowCut(std::move(callback));
+  data_controls::DataControlsTabHelper::FromWebState(source)->ShouldAllowCut(
+      std::move(callback));
 }
 
 void WebStateDelegateBrowserAgent::DidFinishClipboardRead(
     web::WebState* source) {
-  data_controls::DataControlsTabHelper::GetOrCreateForWebState(source)
+  data_controls::DataControlsTabHelper::FromWebState(source)
       ->DidFinishClipboardRead();
 }
 

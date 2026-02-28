@@ -192,19 +192,17 @@ public class ArchivedTabsMessageService
             layoutStateProvider.addObserver(mLayoutStateObserver);
         }
 
-        mTabListCoordinatorSupplier.addObserver(
+        mTabListCoordinatorSupplier.addSyncObserverAndPostIfNonNull(
                 (tabListCoordinator) -> {
                     if (tabListCoordinator == null) return;
                     tabListCoordinator.addTabListItemSizeChangedObserver(
                             mTabListItemSizeChangedObserver);
-
                     tabListCoordinator.setOnDropOnArchivalMessageCardEventListener(
                             tabId -> {
                                 TabGroupModelFilter tabGroupModelFilter =
                                         currentTabGroupModelFilterSupplier.get();
                                 assumeNonNull(tabGroupModelFilter);
                                 Tab tab = tabGroupModelFilter.getTabModel().getTabById(tabId);
-
                                 mArchivedTabModelOrchestrator
                                         .getTabArchiver()
                                         .archiveAndRemoveTabs(tabGroupModelFilter, List.of(tab));
@@ -238,7 +236,7 @@ public class ArchivedTabsMessageService
         assert mTabArchiveSettings != null;
 
         mArchivedTabModel = archivedTabModel;
-        mTabCountSupplier.addObserver(mTabCountObserver);
+        mTabCountSupplier.addSyncObserverAndPostIfNonNull(mTabCountObserver);
 
         mModel.set(ICON_HIGHLIGHTED, mShowTwoStepIph);
     }

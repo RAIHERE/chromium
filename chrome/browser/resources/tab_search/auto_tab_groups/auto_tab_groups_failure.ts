@@ -13,16 +13,18 @@ import {TabOrganizationError} from '../tab_search.mojom-webui.js';
 import {getCss} from './auto_tab_groups_failure.css.js';
 import {getHtml} from './auto_tab_groups_failure.html.js';
 
-export interface AutoTabGroupsFailureElement {
-  $: {
-    header: HTMLElement,
-  };
-}
-
 // Failure state for the auto tab groups UI.
 export class AutoTabGroupsFailureElement extends CrLitElement {
   static get is() {
     return 'auto-tab-groups-failure';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
   }
 
   static override get properties() {
@@ -35,14 +37,6 @@ export class AutoTabGroupsFailureElement extends CrLitElement {
   accessor error: TabOrganizationError = TabOrganizationError.kNone;
   accessor showFre: boolean = false;
 
-  static override get styles() {
-    return getCss();
-  }
-
-  override render() {
-    return getHtml.bind(this)();
-  }
-
   protected getBody_(): string {
     switch (this.error) {
       case TabOrganizationError.kGrouping:
@@ -54,7 +48,7 @@ export class AutoTabGroupsFailureElement extends CrLitElement {
     }
   }
 
-  protected onCheckNow_(e: CustomEvent<{event: Event}>) {
+  protected onLinkClicked_(e: CustomEvent<{event: Event}>) {
     // A place holder href with the value "#" is used to have a compliant link.
     // This prevents the browser from navigating the window to "#"
     e.detail.event.preventDefault();
@@ -66,7 +60,7 @@ export class AutoTabGroupsFailureElement extends CrLitElement {
     this.fire('tip-click');
   }
 
-  protected onTipKeyDown_(event: KeyboardEvent) {
+  protected onTipKeydown_(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       this.onTipClick_();
     }

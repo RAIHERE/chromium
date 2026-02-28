@@ -22,6 +22,7 @@
 #include "ash/shell.h"
 #include "ash/system/session/logout_confirmation_controller.h"
 #include "ash/system/session/logout_confirmation_dialog.h"
+#include "base/check_deref.h"
 #include "base/command_line.h"
 #include "base/compiler_specific.h"
 #include "base/files/file_path.h"
@@ -80,13 +81,11 @@
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/chromeos/extensions/external_loader/device_local_account_external_policy_loader.h"
-#include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/extension_service.h"
 #include "chrome/browser/extensions/scoped_test_mv2_enabler.h"
 #include "chrome/browser/extensions/updater/chromeos_extension_cache_delegate.h"
 #include "chrome/browser/extensions/updater/extension_cache_impl.h"
 #include "chrome/browser/extensions/updater/local_extension_cache.h"
-#include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/metrics/chrome_metrics_service_accessor.h"
 #include "chrome/browser/net/profile_network_context_service.h"
 #include "chrome/browser/net/profile_network_context_service_test_utils.h"
@@ -151,6 +150,7 @@
 #include "extensions/browser/app_window/app_window.h"
 #include "extensions/browser/app_window/app_window_registry.h"
 #include "extensions/browser/app_window/native_app_window.h"
+#include "extensions/browser/crx_installer.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_system.h"
 #include "extensions/browser/management_policy.h"
@@ -401,7 +401,8 @@ DeviceLocalAccountPolicyBroker* GetDeviceLocalAccountPolicyBroker(
 
 bool IsFullManagementDisclosureNeeded(AccountId account) {
   auto* broker = GetDeviceLocalAccountPolicyBroker(account);
-  return ash::login::IsFullManagementDisclosureNeeded(broker);
+  return ash::login::IsFullManagementDisclosureNeeded(
+      CHECK_DEREF(g_browser_process->local_state()), broker);
 }
 
 ukm::UkmService* GetUkmService() {
@@ -505,11 +506,13 @@ class DeviceLocalAccountTest : public DevicePolicyCrosBrowserTest,
     }
   }
 
-  // Waits for the Browser to close and its NativeWidget to be destroyed.
-  void WaitForBrowserDestruction(Browser* browser) {
+  // Closes the Browser and waits for it to be destroyed.
+  void CloseBrowserAndVerifyDestruction(BrowserWindowInterface* browser) {
+    ui_test_utils::BrowserDestroyedObserver observer(browser);
     aura::test::WindowDestroyedWaiter waiter(
-        browser->window()->GetNativeWindow());
-    ui_test_utils::WaitForBrowserToClose(browser);
+        browser->GetWindow()->GetNativeWindow());
+    browser->GetWindow()->Close();
+    observer.Wait();
     waiter.Wait();
   }
 
@@ -859,28 +862,24 @@ class ExtensionInstallObserver : public ProfileManagerObserver,
   bool observed_;
 };
 
-// Fake implementation to advance the clock for SessionLengthLimiter.
-class FakeDelegateImpl : public ash::SessionLengthLimiter::Delegate {
+class TestSessionManagerObserver
+    : public session_manager::SessionManagerObserver {
  public:
-  FakeDelegateImpl() { clock_.SetNow(base::Time::Now()); }
-
-  FakeDelegateImpl(const FakeDelegateImpl&) = delete;
-  FakeDelegateImpl& operator=(const FakeDelegateImpl&) = delete;
-
-  ~FakeDelegateImpl() override = default;
-
-  const base::Clock* GetClock() const override { return &clock_; }
-  void StopSession() override {
-    chrome::AttemptUserExit();
-    session_stopped_ = true;
+  explicit TestSessionManagerObserver(
+      session_manager::SessionManager* session_manager) {
+    observation_.Observe(session_manager);
   }
+  ~TestSessionManagerObserver() override = default;
 
-  void AdvanceClock(base::TimeDelta delta) { clock_.Advance(delta); }
-  bool session_stopped() const { return session_stopped_; }
+  void OnSignOutRequested() override { ++sign_out_requested_count_; }
+
+  size_t sign_out_requested_count() const { return sign_out_requested_count_; }
 
  private:
-  base::SimpleTestClock clock_;
-  bool session_stopped_ = false;
+  base::ScopedObservation<session_manager::SessionManager,
+                          session_manager::SessionManagerObserver>
+      observation_{this};
+  size_t sign_out_requested_count_ = 0;
 };
 
 // Tests that the data associated with a device local account is removed when
@@ -1607,11 +1606,8 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, LastWindowClosedLogoutReminder) {
   BrowserWindowInterface* browser =
       GetLastActiveBrowserWindowInterfaceWithAnyProfile();
   ASSERT_TRUE(browser);
-  ui::BaseWindow* browser_window = browser->GetWindow();
-  ASSERT_TRUE(browser_window);
-  browser_window->Close();
-  WaitForBrowserDestruction(browser->GetBrowserForMigrationOnly());
-  browser_window = nullptr;
+  CloseBrowserAndVerifyDestruction(browser);
+  browser = nullptr;
   EXPECT_FALSE(GetLastActiveBrowserWindowInterfaceWithAnyProfile());
 
   // Verify that the logout confirmation dialog is not showing because an app
@@ -1638,11 +1634,7 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, LastWindowClosedLogoutReminder) {
   EXPECT_EQ(2U, chrome::GetTotalBrowserCount());
 
   // Close the first browser window.
-  browser_window = first_browser->GetWindow();
-  ASSERT_TRUE(browser_window);
-  browser_window->Close();
-  WaitForBrowserDestruction(first_browser->GetBrowserForMigrationOnly());
-  browser_window = nullptr;
+  CloseBrowserAndVerifyDestruction(first_browser);
   first_browser = nullptr;
   EXPECT_EQ(1U, chrome::GetTotalBrowserCount());
 
@@ -1651,11 +1643,7 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, LastWindowClosedLogoutReminder) {
   EXPECT_FALSE(IsLogoutConfirmationDialogShowing());
 
   // Close the second browser window.
-  browser_window = second_browser->GetWindow();
-  ASSERT_TRUE(browser_window);
-  browser_window->Close();
-  WaitForBrowserDestruction(second_browser->GetBrowserForMigrationOnly());
-  browser_window = nullptr;
+  CloseBrowserAndVerifyDestruction(second_browser);
   second_browser = nullptr;
   EXPECT_FALSE(GetLastActiveBrowserWindowInterfaceWithAnyProfile());
 
@@ -1673,11 +1661,7 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, LastWindowClosedLogoutReminder) {
   EXPECT_EQ(1U, chrome::GetTotalBrowserCount());
 
   // Close the browser window.
-  browser_window = browser->GetWindow();
-  ASSERT_TRUE(browser_window);
-  browser_window->Close();
-  WaitForBrowserDestruction(browser->GetBrowserForMigrationOnly());
-  browser_window = nullptr;
+  CloseBrowserAndVerifyDestruction(browser);
   browser = nullptr;
   EXPECT_FALSE(GetLastActiveBrowserWindowInterfaceWithAnyProfile());
 
@@ -2158,6 +2142,9 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, SessionLengthLimit) {
 
   PolicyTestAppTerminationObserver observer;
 
+  TestSessionManagerObserver session_manager_observer(
+      session_manager::SessionManager::Get());
+
   // Install and refresh the device policy now. This will also fetch the initial
   // user policy for the device-local account now.
   SetSessionLengthLimitPolicy(kThreeHoursInMs);
@@ -2166,12 +2153,12 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, SessionLengthLimit) {
   WaitForSessionStart();
 
   // Setup a fake delegate to advance clock.
-  auto delegate_ptr = std::make_unique<FakeDelegateImpl>();
-  auto* delegate = delegate_ptr.get();
-  g_browser_process->platform_part()
-      ->chrome_session_manager()
-      ->GetSessionLengthLimiterForTesting()
-      ->SetDelegateForTesting(std::move(delegate_ptr));
+  base::SimpleTestClock clock;
+  clock.SetNow(base::Time::Now());
+  auto clock_resetter = g_browser_process->platform_part()
+                            ->chrome_session_manager()
+                            ->GetSessionLengthLimiterForTesting()
+                            ->SetClockForTesting(&clock);
 
   // Ensure the SessionLengthLimit is updated.
   LocalStateValueWaiter(prefs::kSessionLengthLimit,
@@ -2180,10 +2167,10 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, SessionLengthLimit) {
 
   // The session is not terminated.
   EXPECT_FALSE(observer.WasAppTerminated());
-  EXPECT_FALSE(delegate->session_stopped());
+  EXPECT_EQ(0u, session_manager_observer.sign_out_requested_count());
 
   // Advance the clock by 3 hours.
-  delegate->AdvanceClock(base::Hours(3));
+  clock.Advance(base::Hours(3));
 
   // Update the SessionLengthLimit policy to limit the session by two hours.
   // The session is expected to be terminated asap, because the current time is
@@ -2203,7 +2190,7 @@ IN_PROC_BROWSER_TEST_F(DeviceLocalAccountTest, SessionLengthLimit) {
 
   // The session is terminated.
   EXPECT_TRUE(observer.WasAppTerminated());
-  EXPECT_TRUE(delegate->session_stopped());
+  EXPECT_EQ(1u, session_manager_observer.sign_out_requested_count());
 }
 
 struct FeaturesTestParam {

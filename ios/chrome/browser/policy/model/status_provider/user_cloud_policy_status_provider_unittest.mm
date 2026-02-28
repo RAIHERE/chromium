@@ -62,11 +62,11 @@ class UserCloudPolicyStatusProviderTest
   void SetUp() override {
     RegisterLocalStatePrefs(local_state_.registry());
 
-    user_store_ = std::make_unique<policy::MockUserCloudPolicyStore>();
+    user_store_ = std::make_unique<policy::MockUserCloudPolicyStore>(
+        policy::dm_protocol::GetChromeUserPolicyType());
     user_core_ = std::make_unique<policy::CloudPolicyCore>(
         policy::dm_protocol::GetChromeUserPolicyType(), std::string(),
-        user_store_.get(), /*extension_install_store=*/nullptr,
-        base::SingleThreadTaskRunner::GetCurrentDefault(),
+        user_store_.get(), base::SingleThreadTaskRunner::GetCurrentDefault(),
         network::TestNetworkConnectionTracker::CreateGetter());
 
     user_client_ = ConnectNewMockClient(user_core_.get());

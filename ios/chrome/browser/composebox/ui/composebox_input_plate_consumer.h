@@ -7,10 +7,13 @@
 
 #import <UIKit/UIKit.h>
 
+#import <unordered_set>
+
 #import "ios/chrome/browser/composebox/ui/composebox_input_item.h"
 
 enum class ComposeboxInputPlateControls : unsigned int;
 enum class ComposeboxModelOption;
+@class ComposeboxServerStrings;
 
 // Consumer for the composebox composebox.
 @protocol ComposeboxInputPlateConsumer
@@ -33,6 +36,9 @@ enum class ComposeboxModelOption;
 
 // Sets whether Canvas mode is enabled.
 - (void)setCanvasEnabled:(BOOL)enabled;
+
+// Sets whether Deep Search mode is enabled.
+- (void)setDeepSearchEnabled:(BOOL)enabled;
 
 // Sets whether the model picker is enabled.
 - (void)allowModelPicker:(BOOL)allowed;
@@ -61,8 +67,17 @@ enum class ComposeboxModelOption;
 // Sets whether the create image actions are hidden.
 - (void)hideCreateImageActions:(BOOL)hidden;
 
+// Sets whether the canvas actions are disabled.
+- (void)disableCanvasActions:(BOOL)disabled;
+
 // Sets whether the canvas actions are hidden.
 - (void)hideCanvasActions:(BOOL)hidden;
+
+// Sets whether the deep search actions are hidden.
+- (void)hideDeepSearchActions:(BOOL)hidden;
+
+// Sets whether the deep search actions are disabled.
+- (void)disableDeepSearchActions:(BOOL)disabled;
 
 // Sets whether the create image actions are disabled.
 - (void)disableCreateImageActions:(BOOL)disabled;
@@ -79,11 +94,24 @@ enum class ComposeboxModelOption;
 // Sets whether the gallery actions are disabled.
 - (void)disableGalleryActions:(BOOL)disabled;
 
+// Sets the list of allowed models.
+- (void)setAllowedModels:
+    (std::unordered_set<ComposeboxModelOption>)allowedModels;
+// Sets the list of disabled models.
+- (void)setDisabledModels:
+    (std::unordered_set<ComposeboxModelOption>)disabledModels;
+
+// Sets the server strings.
+- (void)setServerStrings:(ComposeboxServerStrings*)serverStrings;
+
 // Sets the remaining capacity for attachments.
 - (void)setRemainingAttachmentCapacity:(NSUInteger)capacity;
 
 // Called when the model option is updated.
 - (void)setModelOption:(ComposeboxModelOption)modelOption;
+
+// Called when the text field height changes.
+- (void)updatePreferredContentSizeForNewTextFieldHeight;
 
 @end
 

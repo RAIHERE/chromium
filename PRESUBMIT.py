@@ -282,16 +282,17 @@ _BANNED_JAVA_FUNCTIONS: Sequence[BanRule] = (
          ),
         explanation=
         ('Usage of IS_DESKTOP_ANDROID build flag or DeviceInfo.isDesktop() '
-         'is discouraged. Use system affordances to determine feature '
-         'availablility. Refer to https://chromium.googlesource.com/chromium/src/+/HEAD/docs/ui/android/device_form_factor.md for guidelines. '
+         'is discouraged. Use system affordances (see guidelines link below) to determine feature '
+         'availablility. '
          'To request an exception, file a bug at '
          'https://b.corp.google.com/issues/new?component=1753515&template=2172655'
-         'Once approved, use centralized util DeviceInfo.isDesktop() '
+         ' . Once approved, use centralized util DeviceInfo.isDesktop() '
          'instead of direct build flag or PackageManager.FEATURE_PC checks. '
          'Allowances may be granted to only the directories below: '
          '[build/, chrome/, components/, extensions/, infra/, tools/] '
          'Note: in particular we need to avoid components shared with '
-         'WebView.', ),
+         'WebView. Refer to https://chromium.googlesource.com/chromium/src/+/HEAD/docs/ui/android/device_form_factor.md for guidelines. ',
+         ),
         treat_as_error=False,
         surface_as_gerrit_lint=True,
     ),
@@ -586,6 +587,19 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
         (),
     ),
     BanRule(
+        r'/\bMemoryPressureListener\b',
+        (
+            'base::MemoryPressureListener is deprecated. Use base::MemoryConsumer ',
+            'instead.',
+        ),
+        False,
+        (
+            r'^base/memory/memory_pressure_listener\.(cc|h)$',
+            r'^base/memory/memory_pressure_listener_unittest\.cc$',
+            r'^base/memory/mock_memory_pressure_listener\.(cc|h)$',
+        ),
+    ),
+    BanRule(
         r'/\b(?!(Sequenced|SingleThread))\w*TaskRunner::(GetCurrentDefault|CurrentDefaultHandle)',
         (
             'It is not allowed to call these methods from the subclasses ',
@@ -752,6 +766,7 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
             r'^third_party/blink/renderer/core/typed_arrays/dom_array_buffer\.cc',
             '^third_party/blink/renderer/bindings/core/v8/' +
             'v8_wasm_response_extensions.cc',
+            '^third_party/blink/renderer/bindings/core/v8/pass_as_span.h',
             r'^gin/array_buffer\.(cc|h)',
             r'^gin/per_isolate_data\.(cc|h)',
             '^chrome/services/sharing/nearby/',
@@ -947,7 +962,7 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
             r'base/allocator/partition_allocator/src/partition_alloc/shim/early_zone_registration_utils_apple.h',
 
             # Needed to use QUICHE API.
-            r'components/legion/phosphor/.*',
+            r'components/private_ai/phosphor/.*',
             r'net/third_party/quiche/overrides/quiche_platform_impl/quiche_stack_trace_impl\.*',
             r'services/network/web_transport\.cc',
 
@@ -1114,13 +1129,17 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
             # TODO(https://crbug.com/1364579): Remove usage and exception list
             # entry.
             r'ui/views/controls/focus_ring\.h',
-
             # Various pre-existing uses in //tools that is low-priority to fix.
             r'tools/binary_size/libsupersize/viewer/caspian/diff\.cc',
             r'tools/binary_size/libsupersize/viewer/caspian/model\.cc',
             r'tools/binary_size/libsupersize/viewer/caspian/model\.h',
             r'tools/binary_size/libsupersize/viewer/caspian/tree_builder\.h',
             r'tools/clang/base_bind_rewriters/BaseBindRewriters\.cpp',
+            # Required for C++/Swift interop. std::function is used as a wrapper
+            # to transport base::{Once,Repeating}Callback objects across the
+            # C++/Swift boundary.
+            r'base/apple/swift_callback_helpers\.h',
+            r'.*/swift_interop/.*',
 
             # Not an error in third_party folders.
             _THIRD_PARTY_EXCEPT_BLINK
@@ -2277,7 +2296,7 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
         pattern='PageActionIconView',
         explanation=
         ('PageActionIconView will soon be removed. Use PageActionView instead. '
-         'See chrome/browser/ui/views/page_action/README.md for details.'),
+         'See chrome/browser/ui/views/page_action/README.md for details.', ),
         treat_as_error=False,
     ),
     BanRule(
@@ -2305,6 +2324,41 @@ _BANNED_CPP_FUNCTIONS: Sequence[BanRule] = (
             r'^content/browser/fenced_frame/fenced_frame_browsertest\.cc',
         ],
     ),
+    BanRule(pattern=r"/\bjboolean\b",
+            treat_as_error=False,
+            explanation=("Use bool instead of jboolean", ),
+            excluded_paths=[
+                _THIRD_PARTY_EXCEPT_BLINK, "base/android/jni_array.cc",
+                "base/android/jni_array_unittest.cc"
+            ]),
+    BanRule(pattern=r"/\bjint\b\ (?!JNI_OnLoad)",
+            treat_as_error=False,
+            explanation=("Use int32_t instead of jint", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjlong\b",
+            treat_as_error=False,
+            explanation=("Use int64_t instead of jlong", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjfloat\b",
+            treat_as_error=False,
+            explanation=("Use float instead of jfloat", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjdouble\b",
+            treat_as_error=False,
+            explanation=("Use double instead of jdouble", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjbyte\b",
+            treat_as_error=False,
+            explanation=("Use int8_t instead of jbyte", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjchar\b",
+            treat_as_error=False,
+            explanation=("Use uint16_t instead of jchar", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
+    BanRule(pattern=r"/\bjshort\b",
+            treat_as_error=False,
+            explanation=("Use int16_t instead of jshort", ),
+            excluded_paths=[_THIRD_PARTY_EXCEPT_BLINK]),
 )
 
 _DEPRECATED_SYNC_CONSENT_FUNCTION_WARNING = (
@@ -2522,6 +2576,7 @@ _GENERIC_PYDEPS_FILES = [
     'tools/binary_size/sizes.pydeps',
     'tools/binary_size/supersize.pydeps',
     'tools/cygprofile/generate_orderfile.pydeps',
+    'tools/grit/grit_info.pydeps',
     'tools/grit/grit.pydeps',
     "tools/metrics/histograms/generate_allowlist_from_histograms_file.pydeps",
     'tools/perf/process_perf_results.pydeps',
@@ -3142,16 +3197,8 @@ def CheckNoBannedPatterns(input_api, output_api):
             for ban_rule in _BANNED_CPP_FUNCTIONS:
                 CheckForMatch(f, line_num, line, ban_rule)
 
-    # As of 05/2024, iOS fully migrated ConsentLevel::kSync to kSignin, and
-    # Android is in the process of preventing new users from entering kSync.
-    # So the warning is restricted to those platforms.
-    ios_pattern = input_api.re.compile(r'(^|[\W_])ios[\W_]')
     file_filter = lambda f: (
-        f.LocalPath().endswith(('.cc', '.mm', '.h')) and
-        ('android' in f.LocalPath() or
-         # Simply checking for an 'ios' substring would
-         # catch unrelated cases, use a regex.
-         ios_pattern.search(f.LocalPath())))
+        f.LocalPath().endswith(('.cc', '.mm', '.h')))
     for f in input_api.AffectedFiles(file_filter=file_filter):
         for line_num, line in f.ChangedContents():
             for ban_rule in _DEPRECATED_SYNC_CONSENT_CPP_FUNCTIONS:
@@ -4944,7 +4991,6 @@ def _CheckAndroidCrLogUsage(input_api, output_api):
     tag_length_errors = []
     tag_errors = []
     tag_with_dot_errors = []
-    util_log_errors = []
 
     for f in input_api.AffectedSourceFiles(sources):
         file_content = input_api.ReadFile(f)
@@ -4966,12 +5012,6 @@ def _CheckAndroidCrLogUsage(input_api, output_api):
                     # Make sure it uses "TAG"
                     if not match.group('tag') == 'TAG':
                         tag_errors.append('%s:%d' % (f.LocalPath(), line_num))
-        else:
-            # Report non cr Log function calls in changed lines
-            for line_num, line in f.ChangedContents():
-                if (log_call_pattern.search(line)
-                        or has_some_log_import_pattern.search(line)):
-                    util_log_errors.append('%s:%d' % (f.LocalPath(), line_num))
 
         # Per file checks
         if has_modified_logs:
@@ -5005,12 +5045,6 @@ def _CheckAndroidCrLogUsage(input_api, output_api):
             output_api.PresubmitPromptWarning(
                 'Please use a variable named "TAG" for your log tags.\n' +
                 REF_MSG, tag_errors))
-
-    if util_log_errors:
-        results.append(
-            output_api.PresubmitPromptWarning(
-                'Please use org.chromium.base.Log for new logs.\n' + REF_MSG,
-                util_log_errors))
 
     if tag_with_dot_errors:
         results.append(
@@ -6719,6 +6753,36 @@ def CheckSyslogUseWarningOnUpload(input_api, output_api, src_file_filter=None):
     return []
 
 
+def CheckNoMainLayoutSwitcher(input_api, output_api):
+    """
+    Prevents MainLayoutSwitcher.java (a temporary and deprecated file)
+    from appearing in CLs.
+    """
+
+    # Skip this check if there are no diffs, such as running presubmit with "--all --no_diffs".
+    # Otherwise AffectedFiles() will include MainLayoutSwitcher.java even if it's not changed.
+    if input_api.no_diffs:
+        return []
+
+    git_footers = input_api.change.GitFootersFromDescription()
+    if 'true' in [footer.lower() for footer in git_footers.get(
+            u'Allow-MainLayoutSwitcher-Changes', [])]:
+        return []
+
+    results = []
+    for f in input_api.AffectedFiles(include_deletes=False):
+        if f.UnixLocalPath() == 'chrome/android/java/src/org/chromium/chrome/browser/app/MainLayoutSwitcher.java':
+            results.append(output_api.PresubmitError(
+                'MainLayoutSwitcher.java is a temporary class to support the forked main layout '
+                '(main_forked_with_secondary_ui_container.xml) during Android side panel '
+                'development.\n'
+                'Generally we should not need to change this file except deleting it, but if you '
+                'must, add "Allow-MainLayoutSwitcher-Changes: true" to your commit message '
+                'footers and send the CL to the file owners.',
+                [f]))
+    return results
+
+
 def CheckChangeOnUpload(input_api, output_api):
     if input_api.version < [2, 0, 0]:
         return [
@@ -6730,6 +6794,7 @@ def CheckChangeOnUpload(input_api, output_api):
     results = []
     results.extend(
         input_api.canned_checks.CheckPatchFormatted(input_api, output_api))
+    results.extend(CheckNoMainLayoutSwitcher(input_api, output_api))
     return results
 
 
@@ -6757,6 +6822,7 @@ def CheckChangeOnCommit(input_api, output_api):
     results.extend(
         input_api.canned_checks.CheckChangeHasNoUnwantedTags(
             input_api, output_api))
+    results.extend(CheckNoMainLayoutSwitcher(input_api, output_api))
     return results
 
 
@@ -7603,6 +7669,8 @@ def CheckAndroidTestAnnotations(input_api, output_api):
             files_to_check=[r'.*Test\.java$'])
 
     for f in input_api.AffectedSourceFiles(_FilterFile):
+        if f.Action() != 'A':
+            continue
         batch_matched = None
         do_not_batch_matched = None
         is_instrumentation_test = True
@@ -7646,12 +7714,10 @@ def CheckAndroidTestAnnotations(input_api, output_api):
 
     if missing_annotation_errors:
         results.append(
-            output_api.PresubmitPromptWarning(
+            output_api.PresubmitError(
                 """
-A change was made to an on-device test that has neither been annotated with
-@Batch nor @DoNotBatch. If this is a new test, please add the annotation. If
-this is an existing test, please consider adding it if you are sufficiently
-familiar with the test (but do so as a separate change).
+An on-device test has been added that has neither been annotated with @Batch
+nor @DoNotBatch. Please add the annotation.
 
 See https://source.chromium.org/chromium/chromium/src/+/main:docs/testing/batching_instrumentation_tests.md
 """, missing_annotation_errors))
@@ -8084,13 +8150,195 @@ def CheckAyeAye(input_api, output_api):
     Gerrit. Running them locally should surface any warnings or errors
     earlier.
     """
-    try:
-        command = ['git', 'config', '--get', '--type=bool', 'localayeaye.enable']
-        opted_in = input_api.subprocess.check_output(command)
-        # TODO(crbug.com/467912454): Roll this out by default.
-        if not opted_in:
-            return []
-    except Exception:
-        return []
-    print("User opted-in to AyeAye checks as top-level presubmit...")
     return input_api.canned_checks.CheckAyeAye(input_api, output_api)
+
+
+def CheckSettingsChanges(input_api, output_api):
+    """Checks that Settings UI changes are reflected in the Search Index.
+
+    This check ensures that whenever a developer modifies a Settings Fragment
+    (e.g., dynamic summaries, visibility toggles, or Bundle arguments), they
+    also update the corresponding SearchIndexProvider logic.
+
+    It performs three levels of checks:
+      1. Identification: Uses heuristics (inheritance, methods) to find settings.
+      2. Structure: Ensures a SEARCH_INDEX_DATA_PROVIDER exists and is registered.
+      3. Parity: Scans changed UI code for triggers and verifies mirroring logic
+         exists in the indexing block (stripping comments to avoid false hits).
+    """
+    cc_list = ['jinsukkim@chromium.org', 'adelm@google.com']
+
+    registry_filename = 'SearchIndexProviderRegistry.java'
+
+    # Filter for Java files, excluding the registry file itself.
+    is_java_file = lambda f: (f.LocalPath().endswith('.java') and not
+                              f.LocalPath().endswith(registry_filename))
+    java_files = input_api.AffectedFiles(include_deletes=False,
+                                         file_filter=is_java_file)
+
+    if not java_files:
+        return []
+
+    # java_inheritance_re identifies Settings screens by their class declaration.
+    # It looks for classes extending standard bases (PreferenceFragmentCompat)
+    # or those following the Chromium naming convention (*Settings*Fragment*).
+    # Examples:
+    #   - class MySettings extends ChromeBaseSettingsFragment
+    #   - class PreloadPagesSettingsFragment extends PreloadPagesSettingsFragmentBase
+    #   - class CookieSettings extends BaseSiteSettingsFragment
+    java_inheritance_re = input_api.re.compile(
+        r'class\s+(\w+)\s+extends\s+'
+        r'(?:\w*Settings(?:Base)?Fragment|PreferenceFragmentCompat|SettingsFragment)'
+    )
+    class_name_re = input_api.re.compile(r'class\s+(\w+)')
+    provider_field_re = input_api.re.compile(
+        r'public\s+static\s+final\s+.*SearchIndexProvider\s+SEARCH_INDEX_DATA_PROVIDER'
+    )
+
+    # If a line in ChangedContents() matches a trigger, the provider block must
+    # contain at least one of the satisfying keywords (excluding comments).
+    triggers = [
+        (input_api.re.compile(r'\.setSummary\('),
+         ['updateEntrySummaryForKey', '.setSummary', 'addEntryForKey'],
+         'A dynamic summary was set in the UI. Ensure updateDynamicPreferences mirrors '
+         'this using updateEntrySummaryForKey(), addEntryForKey(), or Entry.Builder.setSummary().'
+         ),
+        (input_api.re.compile(r'\.(?:setVisible|removePreference)\('),
+         ['removeEntry', 'removeEntryForKey', 'addEntry', 'addEntryForKey'],
+         'Preference visibility toggled. Ensure updateDynamicPreferences uses removeEntryForKey()/addEntryForKey().'
+         ),
+        (input_api.re.compile(r'\.addPreference\('),
+         ['addEntry', 'addEntryForKey', 'updateEntry', 'updateEntryForKey'],
+         'Preference added via Java. Ensure it is indexed in updateDynamicPreferences.'
+         ),
+        (input_api.re.compile(r'(?:getArguments\(\)|bundle|extras|savedInstanceState)\.put\w*\('),
+         ['getExtras'],
+         'Bundle extras (arguments) are modified. Ensure getExtras() provides these '
+         'so search results open the fragment correctly.'
+         ),
+        (input_api.re.compile(r'(?:getArguments\(\)\.(?:get\w*|containsKey|is)|(?:bundle|extras|savedInstanceState)\.(?:get\w*|containsKey))'),
+         ['getExtras'],
+         'The Fragment reads mandatory arguments from its Bundle. Ensure getExtras() '
+         'overrides this in the provider to pass these arguments when launched from search.'
+         )
+    ]
+
+    problems = []
+    relevant_files_found = False
+    registry_content = ''
+    registry_repo_path = (
+        'chrome/android/java/src/org/chromium/chrome/browser/settings/search/'
+        'SearchIndexProviderRegistry.java')
+    repo_root = input_api.change.RepositoryRoot()
+    registry_full_path = input_api.os_path.join(repo_root, *registry_repo_path.split('/'))
+
+    registry_files = [f for f in input_api.AffectedFiles(include_deletes=False)
+                      if f.LocalPath().endswith(registry_filename)]
+    registry_file_in_cl = registry_files[0] if registry_files else None
+
+    if registry_file_in_cl:
+        # Read the staged content (what you just wrote in the cl you are uploading).
+        registry_content = input_api.ReadFile(registry_file_in_cl)
+    else:
+        # Fallback to using the absolute path.
+        try:
+            with open(registry_full_path, 'r') as f:
+                registry_content = f.read()
+        except IOError:
+            # If the registry cannot be read (e.g., file has been moved), we default
+            # to an empty string. It is better to skip the registration check than
+            # to block the entire presubmit.
+            pass
+
+    for f in java_files:
+        content = input_api.ReadFile(f)
+
+        inheritance_match = java_inheritance_re.search(content)
+        # Determine if the file is a Settings screen. We use three different checks
+        # to cover the different possible scenarios:
+        #   1. Inheritance: Does it extend a known Settings/Preference base class?
+        #   2. Field existence: Does it already define a SEARCH_INDEX_DATA_PROVIDER?
+        #   3. Signature methods: Does it override onCreatePreferences or
+        #      getPreferenceResource (the standard entry points for settings UIs)?
+        if not (inheritance_match or 'SEARCH_INDEX_DATA_PROVIDER' in content
+                or 'onCreatePreferences' in content):
+            continue
+
+        if 'abstract class' in content:
+            continue
+
+        relevant_files_found = True
+        # Extract class name for registry check
+        name_match = inheritance_match or class_name_re.search(content)
+        class_name = name_match.group(1) if name_match else None
+
+        if not provider_field_re.search(content):
+            problems.append(
+              f'{f.LocalPath()}:0\n'
+              f'    \tIssue:  Missing SEARCH_INDEX_DATA_PROVIDER field.\n'
+              f'    \tAction: Add "public static final SearchIndexProvider SEARCH_INDEX_DATA_PROVIDER" to the class.'
+            )
+
+        if registry_content and class_name:
+            registry_pattern = input_api.re.compile(
+              r'\b' + class_name + r'\s*\.\s*SEARCH_INDEX_DATA_PROVIDER'
+            )
+            if not registry_pattern.search(registry_content):
+                problems.append(
+                    f'{f.LocalPath()}:0\n'
+                    f'    \tIssue:  Fragment not found in SearchIndexProviderRegistry.java.\n'
+                    f'    \tAction: Register "{class_name}.SEARCH_INDEX_DATA_PROVIDER" in the registry file.'
+                )
+
+        provider_body_match = input_api.re.search(
+            r'SEARCH_INDEX_DATA_PROVIDER\s*=\s*new [^{]+{(.*?)};', content,
+            input_api.re.DOTALL)
+        provider_body = provider_body_match[1] if provider_body_match else ""
+
+        # Strip both single-line (//) and multi-line (/* */) comments from the
+        # provider body. This ensures that keywords found only in comments
+        # (e.g., "// TODO: implement getExtras") do not falsely satisfy the
+        # parity check.
+        #   - //.* matches everything after // on a single line.
+        #   - /\*.*?\*/ matches block comments across lines.
+        # We use two passes because we strip multi-line comments first (which
+        # require DOTALL to span lines) and then strip single-line comments
+        # (which cannot use DOTALL as it will match newlines).
+        clean_body = input_api.re.sub(r'/\*.*?\*/',
+                                      '',
+                                      provider_body,
+                                      flags=input_api.re.DOTALL)
+        clean_body = input_api.re.sub(r'//.*', '', clean_body)
+
+        for line_num, line in f.ChangedContents():
+            if line.strip().startswith(('//', '*', '/*')):
+                continue
+
+            for trigger_re, expected_api, msg in triggers:
+                if trigger_re.search(line):
+                    # If UI call found, ensure the provider body contains a mirroring API call.
+                    if not any(s in clean_body for s in expected_api):
+                        problems.append(f'{f.LocalPath()}:{line_num}\n'
+                                        f'    \tUI Code: {line.strip()}\n'
+                                        f'    \tIndexer: {msg}')
+
+    if relevant_files_found:
+        for cc in cc_list:
+            output_api.AppendCC(cc)
+
+    if not problems:
+        return []
+
+    return [
+        output_api.PresubmitPromptWarning(
+            'Potential Settings Search Indexing Issues:\n'
+            '  To ensure settings are searchable and prevent crashes, concrete\n'
+            '  fragments must define a SEARCH_INDEX_DATA_PROVIDER and be registered\n'
+            '  in SearchIndexProviderRegistry.java. UI changes (summaries, \n'
+            '  visibility, and arguments) must be mirrored in the indexer.\n\n'
+            '  Search Indexing API Reference:\n'
+            '  //components/browser_ui/settings/android/java/src/org/chromium/components/browser_ui/settings/search/SearchIndexProvider.java\n\n'
+            '  Detailed issues found in your changes:\n',
+            problems)
+    ]
+

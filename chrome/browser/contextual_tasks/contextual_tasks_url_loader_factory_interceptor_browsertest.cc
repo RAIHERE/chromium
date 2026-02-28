@@ -11,6 +11,7 @@
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
@@ -44,7 +45,12 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
     : public InProcessBrowserTest {
  public:
   ContextualTasksUrlLoaderFactoryInterceptorBrowserTest()
-      : https_server_(net::EmbeddedTestServer::TYPE_HTTPS) {}
+      : https_server_(net::EmbeddedTestServer::TYPE_HTTPS) {
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks,
+         contextual_tasks::kContextualTasksForceEntryPointEligibility},
+        {});
+  }
   ~ContextualTasksUrlLoaderFactoryInterceptorBrowserTest() override = default;
 
   void SetUp() override {
@@ -71,11 +77,6 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
           return response;
         }));
     ASSERT_TRUE(https_server_.InitializeAndListen());
-
-    feature_list_.InitWithFeatures(
-        {contextual_tasks::kContextualTasks,
-         contextual_tasks::kContextualTasksForceEntryPointEligibility},
-        {});
 
     InProcessBrowserTest::SetUp();
   }
@@ -139,13 +140,25 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
     if (request.relative_url.find("/echoheader?Authorization") !=
         std::string::npos) {
       auto it = request.headers.find("Authorization");
+      std::string auth_header_value;
       if (it != request.headers.end()) {
+        auth_header_value = it->second;
+      }
+
+      auto it_ua = request.headers.find("Sec-CH-UA-Full-Version-List");
+      std::string ua_header_value;
+      if (it_ua != request.headers.end()) {
+        ua_header_value = it_ua->second;
+      }
+
+      if (!auth_header_value.empty() || !ua_header_value.empty() ||
+          request.relative_url.find("onegoogle") != std::string::npos) {
         content::GetUIThreadTaskRunner({})->PostTask(
             FROM_HERE,
             base::BindOnce(
                 &ContextualTasksUrlLoaderFactoryInterceptorBrowserTest::
-                    OnAuthHeaderCaptured,
-                base::Unretained(this), it->second));
+                    OnHeadersCaptured,
+                base::Unretained(this), auth_header_value, ua_header_value));
       }
       return std::make_unique<net::test_server::BasicHttpResponse>();
     }
@@ -182,10 +195,12 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
     return nullptr;
   }
 
-  void OnAuthHeaderCaptured(const std::string& header) {
-    captured_auth_header_ = header;
-    if (auth_capture_quit_closure_) {
-      std::move(auth_capture_quit_closure_).Run();
+  void OnHeadersCaptured(const std::string& auth_header,
+                         const std::string& ua_header) {
+    captured_auth_header_ = auth_header;
+    captured_ua_header_ = ua_header;
+    if (header_capture_quit_closure_) {
+      std::move(header_capture_quit_closure_).Run();
     }
   }
 
@@ -197,7 +212,8 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
 
  protected:
   std::string captured_auth_header_;
-  base::OnceClosure auth_capture_quit_closure_;
+  std::string captured_ua_header_;
+  base::OnceClosure header_capture_quit_closure_;
   base::OnceClosure retry_test_success_closure_;
   base::test::ScopedFeatureList feature_list_;
   net::EmbeddedTestServer https_server_;
@@ -210,7 +226,7 @@ class ContextualTasksUrlLoaderFactoryInterceptorBrowserTest
 IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
                        AuthorizationHeaderInjected) {
   base::RunLoop run_loop;
-  auth_capture_quit_closure_ = run_loop.QuitClosure();
+  header_capture_quit_closure_ = run_loop.QuitClosure();
 
   // Navigate to the Contextual Tasks WebUI.
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
@@ -218,7 +234,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
 
   // Wait for the WebUI to load and create the webview.
   content::WebContents* web_ui_contents =
-      browser()->tab_strip_model()->GetActiveWebContents();
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
 
   // Script to find the webview and navigate it.
   // Note: We access the shadowRoot of the app.
@@ -256,6 +272,115 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
               testing::StartsWith("Bearer access_token"));
 }
 
+class
+    ContextualTasksUrlLoaderFactoryInterceptorFullVersionListDisabledBrowserTest
+    : public ContextualTasksUrlLoaderFactoryInterceptorBrowserTest {
+ public:
+  ContextualTasksUrlLoaderFactoryInterceptorFullVersionListDisabledBrowserTest() {
+    feature_list_.Reset();
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks,
+         contextual_tasks::kContextualTasksForceEntryPointEligibility},
+        {kContextualTasksSendFullVersionListEnabled});
+  }
+};
+
+class ContextualTasksUrlLoaderFactoryInterceptorFullVersionListBrowserTest
+    : public ContextualTasksUrlLoaderFactoryInterceptorBrowserTest {
+ public:
+  ContextualTasksUrlLoaderFactoryInterceptorFullVersionListBrowserTest() {
+    feature_list_.Reset();
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks,
+         contextual_tasks::kContextualTasksForceEntryPointEligibility,
+         kContextualTasksSendFullVersionListEnabled},
+        {});
+  }
+};
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksUrlLoaderFactoryInterceptorFullVersionListDisabledBrowserTest,
+    FullVersionListHeaderNotInjected) {
+  base::RunLoop run_loop;
+  header_capture_quit_closure_ = run_loop.QuitClosure();
+
+  // Navigate to the Contextual Tasks WebUI.
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUIContextualTasksURL)));
+
+  content::WebContents* web_ui_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+
+  std::string script = content::JsReplace(
+      R"(
+    (async () => {
+      let app = document.querySelector('contextual-tasks-app');
+      while (!app) {
+        await new Promise(r => setTimeout(r, 100));
+        app = document.querySelector('contextual-tasks-app');
+      }
+      while (!app.shadowRoot) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      let webview = app.shadowRoot.querySelector('#threadFrame');
+      while (!webview) {
+        await new Promise(r => setTimeout(r, 100));
+        webview = app.shadowRoot.querySelector('#threadFrame');
+      }
+      webview.src = $1;
+    })();
+  )",
+      https_server_.GetURL(kTestHost, "/echoheader?Authorization").spec());
+
+  EXPECT_TRUE(content::ExecJs(web_ui_contents, script));
+
+  run_loop.Run();
+
+  EXPECT_TRUE(captured_ua_header_.empty());
+}
+
+IN_PROC_BROWSER_TEST_F(
+    ContextualTasksUrlLoaderFactoryInterceptorFullVersionListBrowserTest,
+    FullVersionListHeaderInjected) {
+  base::RunLoop run_loop;
+  header_capture_quit_closure_ = run_loop.QuitClosure();
+
+  // Navigate to the Contextual Tasks WebUI.
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUIContextualTasksURL)));
+
+  content::WebContents* web_ui_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+
+  std::string script = content::JsReplace(
+      R"(
+    (async () => {
+      let app = document.querySelector('contextual-tasks-app');
+      while (!app) {
+        await new Promise(r => setTimeout(r, 100));
+        app = document.querySelector('contextual-tasks-app');
+      }
+      while (!app.shadowRoot) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      let webview = app.shadowRoot.querySelector('#threadFrame');
+      while (!webview) {
+        await new Promise(r => setTimeout(r, 100));
+        webview = app.shadowRoot.querySelector('#threadFrame');
+      }
+      webview.src = $1;
+    })();
+  )",
+      https_server_.GetURL(kTestHost, "/echoheader?Authorization").spec());
+
+  EXPECT_TRUE(content::ExecJs(web_ui_contents, script));
+
+  run_loop.Run();
+
+  EXPECT_FALSE(captured_ua_header_.empty());
+  EXPECT_THAT(captured_ua_header_, testing::HasSubstr("Chromium"));
+}
+
 IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
                        PreflightRedirectTriggersRetry) {
   base::RunLoop run_loop;
@@ -267,7 +392,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
 
   // Wait for the WebUI to load and create the webview.
   content::WebContents* web_ui_contents =
-      browser()->tab_strip_model()->GetActiveWebContents();
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
 
   // Script to find the webview and perform a cross-origin fetch.
   // We navigate the webview to about:blank (no interception), then
@@ -330,6 +455,54 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
 
   // Wait for the retry request to reach the server.
   run_loop.Run();
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksUrlLoaderFactoryInterceptorBrowserTest,
+                       OneGoogleUrlDoesNotHaveAuthToken) {
+  base::RunLoop run_loop;
+  header_capture_quit_closure_ = run_loop.QuitClosure();
+
+  // Navigate to the Contextual Tasks WebUI.
+  ASSERT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUIContextualTasksURL)));
+
+  // Wait for the WebUI to load and create the webview.
+  content::WebContents* web_ui_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+
+  // Script to find the webview and navigate it.
+  // Note: We access the shadowRoot of the app.
+  std::string script = content::JsReplace(
+      R"(
+    (async () => {
+      let app = document.querySelector('contextual-tasks-app');
+      while (!app) {
+        await new Promise(r => setTimeout(r, 100));
+        app = document.querySelector('contextual-tasks-app');
+      }
+      // Wait for shadow root
+      while (!app.shadowRoot) {
+        await new Promise(r => setTimeout(r, 100));
+      }
+      // Wait for threadFrame
+      let webview = app.shadowRoot.querySelector('#threadFrame');
+      while (!webview) {
+        await new Promise(r => setTimeout(r, 100));
+        webview = app.shadowRoot.querySelector('#threadFrame');
+      }
+      webview.src = $1;
+    })();
+  )",
+      https_server_.GetURL(kTestHost, "/onegoogle/echoheader?Authorization")
+          .spec());
+
+  EXPECT_TRUE(content::ExecJs(web_ui_contents, script));
+
+  // Wait for the request to reach the server.
+  run_loop.Run();
+
+  // Verify the header.
+  EXPECT_TRUE(captured_auth_header_.empty());
 }
 
 }  // namespace contextual_tasks

@@ -9,7 +9,7 @@ import {loadTimeData} from 'chrome://resources/js/load_time_data.js';
 import type {EventListElement} from 'chrome://updater/event_list/event_list.js';
 import type {EventListItemElement} from 'chrome://updater/event_list/event_list_item.js';
 import {assertEquals, assertFalse, assertTrue} from 'chrome://webui-test/chai_assert.js';
-import {microtasksFinished} from 'chrome://webui-test/test_util.js';
+import {microtasksFinished, whenCheck} from 'chrome://webui-test/test_util.js';
 
 suite('EventListElement', () => {
   let element: EventListElement;
@@ -88,6 +88,11 @@ suite('EventListElement', () => {
     const items = element.shadowRoot.querySelectorAll('event-list-item');
     assertEquals(2, items.length);
     assertEquals('INSTALL', items[0]!.event?.eventType);
+
+    assertFalse(
+        !!element.shadowRoot.querySelector('.events-without-dates-label'));
+    assertFalse(
+        !!element.shadowRoot.querySelector('.events-with-parse-errors-label'));
   });
 
   test('handles parse errors', async () => {
@@ -98,8 +103,10 @@ suite('EventListElement', () => {
     element.messages = messages;
     await microtasksFinished();
 
-    assertEquals(
-        1, element.shadowRoot.querySelectorAll('raw-event-details').length);
+    return whenCheck(
+        element,
+        () => element.shadowRoot.querySelector(
+                  '.events-with-parse-errors-label') !== null);
   });
 
   test('handles events without dates', async () => {
@@ -117,8 +124,10 @@ suite('EventListElement', () => {
     element.messages = messages;
     await microtasksFinished();
 
-    assertEquals(
-        1, element.shadowRoot.querySelectorAll('raw-event-details').length);
+    return whenCheck(
+        element,
+        () => element.shadowRoot.querySelector(
+                  '.events-without-dates-label') !== null);
   });
 
   test('filters events', async () => {

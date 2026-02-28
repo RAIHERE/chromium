@@ -41,11 +41,11 @@
 #import "ios/chrome/browser/shared/model/utils/first_run_util.h"
 #import "ios/chrome/browser/shared/public/commands/help_commands.h"
 #import "ios/chrome/browser/shared/public/features/features.h"
+#import "ios/chrome/browser/shared/ui/elements/gradient/gradient_view.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/toolbar/legacy/ui_bundled/public/toolbar_utils.h"
 #import "ios/chrome/common/material_timing.h"
 #import "ios/chrome/common/ui/colors/semantic_color_names.h"
-#import "ios/chrome/common/ui/elements/gradient_view.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
 #import "ios/chrome/common/ui/util/ui_util.h"
 #import "ui/base/device_form_factor.h"
@@ -264,10 +264,10 @@ const CGFloat kBackgroundImageAnimationDuration = 0.2;
 
   self.viewDidFinishLoading = YES;
 
-  NSArray<UITrait>* traits = TraitCollectionSetForTraits(@[
+  NSArray<UITrait>* traits = @[
     UITraitUserInterfaceStyle.class, UITraitHorizontalSizeClass.class,
     UITraitPreferredContentSizeCategory.class
-  ]);
+  ];
   __weak __typeof(self) weakSelf = self;
   UITraitChangeHandler handler = ^(id<UITraitEnvironment> traitEnvironment,
                                    UITraitCollection* previousCollection) {
@@ -346,17 +346,7 @@ const CGFloat kBackgroundImageAnimationDuration = 0.2;
       presentInProductHelpWithType:InProductHelpType::kDiscoverFeedMenu];
 
   if (!IsFirstRunRecent(base::Days(3))) {
-    if (IsNTPBackgroundCustomizationEnabled()) {
-      if (self.engagementTracker &&
-          self.engagementTracker->ShouldTriggerHelpUI(
-              feature_engagement::kIPHiOSPromoBackgroundCustomizationFeature)) {
-        [self.helpHandler presentInProductHelpWithType:
-                              InProductHelpType::kHomeBackgroundCustomization];
-        [self.delegate
-            showCustomizationMenuForUserEducationFromNewTabPageViewController:
-                self];
-      }
-    } else {
+    if (!IsNTPBackgroundCustomizationEnabled()) {
       [self.helpHandler presentInProductHelpWithType:
                             InProductHelpType::kHomeCustomizationMenu];
     }
@@ -1704,6 +1694,7 @@ const CGFloat kBackgroundImageAnimationDuration = 0.2;
   CGFloat scrollPositionToSave = [self scrollPosition];
   scrollPositionToSave -= self.collectionShiftingOffset;
   self.mutator.scrollPositionToSave = scrollPositionToSave;
+  [self.mutator setIsScrolledToTop:[self isNTPScrolledToTop]];
 }
 
 // Updates the feed container's height constraint and z-position.

@@ -255,7 +255,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.ChromeExtensionUpdateIPAddressSpace"
-    units="ServiceWorkerIPAddressSpace" expires_after="2026-02-22">
+    units="ServiceWorkerIPAddressSpace" expires_after="2026-09-22">
   <owner>hchao@chromium.org</owner>
   <owner>cthomp@chromium.org</owner>
   <owner>chrome-secure-web-and-net@google.com</owner>
@@ -490,7 +490,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.FetchEvent.{Resource}.FetchResponseFrom"
-    enum="ServiceWorkerFetchResponseFrom" expires_after="2026-06-07">
+    enum="ServiceWorkerFetchResponseFrom" expires_after="2026-08-09">
   <owner>sisidovski@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -567,7 +567,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ServiceWorker.FetchEvent.{Resource}.RaceNetworkRequest.Redirect"
-    enum="Boolean" expires_after="2026-05-31">
+    enum="Boolean" expires_after="2026-08-02">
   <owner>sisidovski@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -1196,7 +1196,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.MainFrame.MainResource.FetchResult"
-    enum="ServiceWorkerFetchEventResult" expires_after="2026-06-21">
+    enum="ServiceWorkerFetchEventResult" expires_after="2026-08-23">
   <owner>yyanagisawa@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -1234,7 +1234,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="ServiceWorker.MaybeStartWorker.RunningStatusByPurpose_{ServiceWorkerEventType}"
-    enum="EmbeddedWorkerStatus" expires_after="2026-05-31">
+    enum="EmbeddedWorkerStatus" expires_after="2026-08-02">
   <owner>yyanagisawa@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -1334,6 +1334,20 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="ServiceWorker.PaymentHandler.DisconnectTimeout"
+    enum="BooleanTimedOut" expires_after="2026-08-05">
+  <owner>smcgruer@chromium.org</owner>
+  <owner>perryuwang@gmail.com</owner>
+  <owner>chrome-payments-eng@google.com</owner>
+  <summary>
+    Records whether a payment handler connection was disconnected due to a
+    timeout. True indicates the disconnect was due to the 20-minute timeout
+    firing, false indicates an external disconnect (e.g., the payment handler
+    window was closed by the user or the payment was completed). This is
+    recorded each time the payment_handler_connected_ flag is set to false.
+  </summary>
+</histogram>
+
 <histogram name="ServiceWorker.PaymentRequestEvent.Time" units="ms"
     expires_after="2026-08-25">
   <owner>rouslan@chromium.org</owner>
@@ -1379,7 +1393,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.Registration.Delete.Result.{DeleteInitiator}"
-    enum="ServiceWorkerStatusCode" expires_after="2026-05-31">
+    enum="ServiceWorkerStatusCode" expires_after="2026-08-02">
   <owner>yyanagisawa@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -1413,7 +1427,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.ResourceChecksumMatch" enum="Boolean"
-    expires_after="2026-03-31">
+    expires_after="2026-08-09">
   <owner>elkurin@chromium.org</owner>
   <owner>chrome-storage-team-tokyo@google.com</owner>
   <summary>
@@ -1464,7 +1478,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ServiceWorker.RouterEvaluator.MatchedFirstSourceType"
-    enum="ServiceWorkerRouterSourceType" expires_after="2026-06-23">
+    enum="ServiceWorkerRouterSourceType" expires_after="2026-08-23">
   <owner>sisidovski@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -2060,6 +2074,16 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
+<histogram name="ServiceWorker.SyntheticResponse.WriteFallbackBodyResult"
+    enum="MojoResult" expires_after="2026-08-12">
+  <owner>sisidovski@google.com</owner>
+  <owner>chrome-worker@google.com</owner>
+  <summary>
+    Records the MojoResult returned by WriteData() when writing the synthetic
+    response fallback body.
+  </summary>
+</histogram>
+
 <histogram name="ServiceWorker.UpdateResourceSha256ChecksumsResult"
     enum="ServiceWorkerStatusCode" expires_after="2026-02-26">
   <owner>sisidovski@chromium.org</owner>
@@ -2069,6 +2093,19 @@ chromium-metrics-reviews@google.com.
     should have a sha256 cehcksum hash string in the database, and that will be
     updated when there is a change in ServiceWorker scripts, or the field is
     empty.
+  </summary>
+</histogram>
+
+<histogram name="ServiceWorker.WindowClientNavigationIPAddressSpaceMismatch"
+    enum="Boolean" expires_after="2026-09-22">
+  <owner>hchao@chromium.org</owner>
+  <owner>cthomp@chromium.org</owner>
+  <owner>chrome-secure-web-and-net@google.com</owner>
+  <summary>
+    How many times a service worker navigates a WindowClient, and the IP address
+    space of the WindowClient's current page does not match the IP address space
+    of the Service Worker. A value of 'true' indicates that the IP address
+    spaces did not match.
   </summary>
 </histogram>
 

@@ -17,6 +17,9 @@ import android.media.AudioManager;
 import android.view.KeyEvent;
 import android.view.View;
 
+import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.AconfigFlaggedApiDelegate;
 import org.chromium.base.ActivityState;
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.ApplicationStatus;
@@ -99,7 +102,7 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
     private final TabCreatorManager mTabCreatorManager;
     private final Supplier<TabModelSelector> mTabModelSelectorSupplier;
     private final Supplier<@Nullable CompositorViewHolder> mCompositorViewHolderSupplier;
-    private final Supplier<ModalDialogManager> mModalDialogManagerSupplier;
+    private final Supplier<@Nullable ModalDialogManager> mModalDialogManagerSupplier;
     private final TabObserver mTabObserver;
     private final @Nullable ExclusiveAccessManager mExclusiveAccessManager;
 
@@ -113,7 +116,7 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
             TabCreatorManager tabCreatorManager,
             Supplier<TabModelSelector> tabModelSelectorSupplier,
             Supplier<@Nullable CompositorViewHolder> compositorViewHolderSupplier,
-            Supplier<ModalDialogManager> modalDialogManagerSupplier,
+            Supplier<@Nullable ModalDialogManager> modalDialogManagerSupplier,
             @Nullable ExclusiveAccessManager exclusiveAccessManager) {
         mTab = tab;
         mActivity = activity;
@@ -253,6 +256,10 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
         if (ChromeFeatureList.isEnabled(ChromeFeatureList.DOCUMENT_PICTURE_IN_PICTURE_API)
                 && disposition == WindowOpenDisposition.NEW_PICTURE_IN_PICTURE) {
             assertNonNull(pictureInPictureWindowOptions);
+            if (!isDocumentPictureInPictureEnabled()) {
+                return false;
+            }
+
             return PopupCreator.moveWebContentsToNewDocumentPictureInPictureWindow(
                     webContents, pictureInPictureWindowOptions);
         }
@@ -286,7 +293,7 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
         if (disposition == WindowOpenDisposition.NEW_FOREGROUND_TAB) {
             RecordUserAction.record("LinkNavigationOpenedInForegroundTab");
         } else if (disposition == WindowOpenDisposition.NEW_POPUP) {
-            PolicyAuditor auditor = PolicyAuditor.maybeCreate();
+            PolicyAuditor auditor = PolicyAuditor.maybeGetInstance();
             if (auditor != null) {
                 auditor.notifyAuditEvent(
                         ContextUtils.getApplicationContext(),
@@ -631,6 +638,21 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
                 : false;
     }
 
+    /**
+     * Checks if Document Picture-in-Picture is enabled. This is true if we both have the permission
+     * to enter Picture-in-Picture mode and the Android API to go into pinned mode is supported.
+     */
+    @VisibleForTesting(otherwise = VisibleForTesting.PRIVATE)
+    protected boolean isDocumentPictureInPictureEnabled() {
+        final AconfigFlaggedApiDelegate delegate = AconfigFlaggedApiDelegate.getInstance();
+        if (delegate == null) {
+            Log.w(TAG, "isDocumentPictureInPictureEnabled: AconfigFlaggedApiDelegate is null");
+            return false;
+        }
+
+        return isPictureInPictureEnabled() && delegate.isRequestPinnedWindowingLayerSupported();
+    }
+
     @Override
     protected boolean isNightModeEnabled() {
         return mActivity != null ? ColorUtils.inNightMode(mActivity) : false;
@@ -677,7 +699,7 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
             return;
         }
 
-        ModalDialogManager modalDialogManager = mModalDialogManagerSupplier.get();
+        ModalDialogManager modalDialogManager = assertNonNull(mModalDialogManagerSupplier.get());
         ModalDialogProperties.Controller dialogController =
                 new SimpleModalDialogController(
                         modalDialogManager,
@@ -739,12 +761,18 @@ public class ActivityTabWebContentsDelegateAndroid extends TabWebContentsDelegat
     public void requestPointerLock(
             WebContents webContents, boolean userGesture, boolean lastUnlockedByTarget) {
         assert mExclusiveAccessManager != null;
+        if (mExclusiveAccessManager == null) {
+            return;
+        }
         mExclusiveAccessManager.requestPointerLock(webContents, userGesture, lastUnlockedByTarget);
     }
 
     @Override
     public void lostPointerLock() {
         assert mExclusiveAccessManager != null;
+        if (mExclusiveAccessManager == null) {
+            return;
+        }
         mExclusiveAccessManager.lostPointerLock();
     }
 

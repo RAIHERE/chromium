@@ -158,7 +158,6 @@ exempted_from_description_builders = {
         "android-arm64-archive-rel",
         "android-arm64-proguard-rel",
         "android-avd-packager",
-        "android-bfcache-rel",
         "android-binary-size-generator",
         "android-code-coverage",
         "android-code-coverage-native",
@@ -352,7 +351,6 @@ exempted_from_description_builders = {
         "android-12-x64-rel-compilator",
         "android-12l-x64-dbg",
         "android-arm64-rel-compilator",
-        "android-bfcache-rel",
         "android-binary-size",
         "android-clang-tidy-rel",
         "android-clobber-rel",
@@ -728,7 +726,6 @@ exempted_from_contact_builders = {
         "android-12l-x64-dbg",
         "android-arm64-rel",
         "android-arm64-rel-compilator",
-        "android-bfcache-rel",
         "android-binary-size",
         "android-clang-tidy-rel",
         "android-code-coverage",
@@ -1018,7 +1015,6 @@ mega_cq_excluded_builders = [
     # created for them.
     "android-arm64-archive-rel",
     "linux-chromeos-archive-rel",
-    "linux-rel-test-selection",
 ]
 
 mega_cq_excluded_gardener_rotations = [
@@ -1087,6 +1083,10 @@ standalone_trybot_excluded_builders = [
     "linux-utr-tester",
     "mac-utr-tester",
     "win-utr-tester",
+    # The autotest tester doesn't currently support CI-try mirroring.
+    "linux-autotest-tester",
+    "mac-autotest-tester",
+    "win-autotest-tester",
 ]
 
 standalone_trybot_excluded_builder_groups = [

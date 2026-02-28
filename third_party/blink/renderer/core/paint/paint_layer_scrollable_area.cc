@@ -201,7 +201,7 @@ void PaintLayerScrollableArea::DisposeImpl() {
        scroll_marker_group_data_set_) {
     scroll_marker_group->SetNeedsScrollersMapUpdate();
   }
-  if (InResizeMode() && !GetLayoutBox()->DocumentBeingDestroyed()) {
+  if (InResizeMode()) {
     if (LocalFrame* frame = GetLayoutBox()->GetFrame())
       frame->GetEventHandler().ResizeScrollableAreaDestroyed();
   }
@@ -212,9 +212,8 @@ void PaintLayerScrollableArea::DisposeImpl() {
     probe::UpdateScrollableFlag(GetLayoutBox()->GetNode(), false);
   }
 
-  if (!GetLayoutBox()->DocumentBeingDestroyed()) {
-    if (auto* element = DynamicTo<Element>(GetLayoutBox()->GetNode()))
-      element->SetSavedLayerScrollOffset(scroll_offset_);
+  if (auto* element = DynamicTo<Element>(GetLayoutBox()->GetNode())) {
+    element->SetSavedLayerScrollOffset(scroll_offset_);
   }
 
   // Note: it is not safe to call ScrollAnchor::clear if the document is being
@@ -237,8 +236,6 @@ void PaintLayerScrollableArea::DisposeImpl() {
     resizer_->Destroy();
 
   ClearScrollableArea();
-
-  RunScrollCompleteCallbacks(ScrollableArea::ScrollCompletionMode::kFinished);
 
   layer_ = nullptr;
 }
@@ -1041,7 +1038,10 @@ bool PaintLayerScrollableArea::ScrollByPageWithSnap(
   gfx::PointF new_position = GetSnapPositionAndSetTarget(*strategy).value_or(
       current_position + displacement);
 
-  return ScrollToAbsolutePosition(new_position, scroll_behavior);
+  return SetScrollOffset(
+      ScrollOffset(new_position - gfx::PointF(ScrollOrigin())),
+      mojom::blink::ScrollType::kProgrammatic, cc::ScrollSourceType::kNone,
+      scroll_behavior);
 }
 
 void PaintLayerScrollableArea::UpdateAfterLayout() {
@@ -2393,7 +2393,7 @@ void PaintLayerScrollableArea::EnqueueForSnapUpdateIfNeeded() {
     return;
   }
 
-  if (box->IsPseudo(kPseudoIdOverscrollAreaParent)) {
+  if (box->IsOverscrollAreaParent()) {
     // ::-internal-overscroll-area-parent has implicit snap areas and should
     // always be enqueued for pending snap updates.
     box->GetFrameView()->AddPendingSnapUpdate(this);
@@ -2411,8 +2411,8 @@ void PaintLayerScrollableArea::EnqueueForSnapUpdateIfNeeded() {
 
 void PaintLayerScrollableArea::UpdateAllStickyConstraints() {
   for (const auto& fragment : GetLayoutBox()->PhysicalFragments()) {
-    if (auto* sticky_descendants = fragment.StickyDescendants()) {
-      for (auto& sticky_descendant : *sticky_descendants) {
+    for (const auto& item : fragment.StickyDescendants()) {
+      if (auto* sticky_descendant = item.GetIfConsumed()) {
         auto* constraints =
             sticky_descendant->ComputeStickyPositionConstraints();
         constraints->ComputeStickyOffset(ScrollPosition());
@@ -2426,7 +2426,7 @@ void PaintLayerScrollableArea::EnqueueForStickyUpdateIfNeeded() {
   // Enqueue ourselves for a sticky update if we have any sticky descendants.
   const auto* box = GetLayoutBox();
   for (const auto& fragment : box->PhysicalFragments()) {
-    if (fragment.StickyDescendants()) {
+    if (fragment.HasConsumedStickyDescendants()) {
       box->GetFrameView()->AddPendingStickyUpdate(this);
       break;
     }
@@ -2447,8 +2447,8 @@ void PaintLayerScrollableArea::InvalidatePaintForStickyDescendants() {
   }
 
   for (const auto& fragment : GetLayoutBox()->PhysicalFragments()) {
-    if (auto* sticky_descendants = fragment.StickyDescendants()) {
-      for (auto& sticky_descendant : *sticky_descendants) {
+    for (const auto& item : fragment.StickyDescendants()) {
+      if (auto* sticky_descendant = item.GetIfConsumed()) {
         sticky_descendant->SetNeedsPaintPropertyUpdate();
         DCHECK(sticky_descendant->StickyConstraints());
         sticky_descendant->StickyConstraints()->ComputeStickyOffset(
@@ -2531,6 +2531,27 @@ void PaintLayerScrollableArea::Resize(
   // keep the point under the cursor in view.
 }
 
+PhysicalAxes PaintLayerScrollableArea::ScrollableAxes() const {
+  const auto* box = GetLayoutBox();
+
+  // The LayoutView (viewport) always scrolls both axes.
+  if (box->IsLayoutView()) {
+    return kPhysicalAxesBoth;
+  }
+
+  PhysicalAxes axes = kPhysicalAxesNone;
+  const auto& style = box->StyleRef();
+
+  if (style.IsOverflowValueScrollableX()) {
+    axes |= kPhysicalAxesHorizontal;
+  }
+  if (style.IsOverflowValueScrollableY()) {
+    axes |= kPhysicalAxesVertical;
+  }
+
+  return axes;
+}
+
 PhysicalOffset PaintLayerScrollableArea::LocalToScrollOriginOffset() const {
   PhysicalOffset border_origin_to_scroll_origin(-GetLayoutBox()->BorderLeft(),
                                                 -GetLayoutBox()->BorderTop());
@@ -2597,12 +2618,14 @@ PhysicalRect PaintLayerScrollableArea::ScrollIntoView(
       -PhysicalOffset::FromVector2dFRound(scroll_offset_difference));
 
   // Represent the rects in the container's border-box coordinate.
-  PhysicalRect scroll_snapport_rect =
-      VisibleScrollSnapportRect() - LocalToScrollOriginOffset();
-  PhysicalRect intersect =
-      Intersection(scroll_snapport_rect, local_expose_rect);
+  // The adjusted expose rect includes everything that hasn't been clipped
+  // even if it may be in the scroll padding region of the scroller.
+  PhysicalRect scrollport_rect(LayoutContentRect());
+  scrollport_rect.Move(PhysicalOffset(-ScrollOrigin().OffsetFromOrigin()));
+  scrollport_rect.Move(-LocalToScrollOriginOffset());
+  PhysicalRect intersect = Intersection(scrollport_rect, local_expose_rect);
 
-  if (intersect.IsEmpty() && !scroll_snapport_rect.IsEmpty() &&
+  if (intersect.IsEmpty() && !scrollport_rect.IsEmpty() &&
       !local_expose_rect.IsEmpty()) {
     return GetLayoutBox()->LocalToAbsoluteRect(local_expose_rect, flag);
   }
@@ -2798,9 +2821,24 @@ bool PaintLayerScrollableArea::VisualViewportSuppliesScrollbars() const {
   if (!frame || !frame->GetSettings())
     return false;
 
-  // On desktop, we always use the layout viewport's scrollbars.
-  if (!frame->GetSettings()->GetViewportEnabled())
-    return false;
+  // If we are forcing mobile-style scrollbars (can be set by emulation of
+  // overlay scrollbars or mobile emulation), the VisualViewport must supply
+  // them regardless of other settings.
+  if (!frame->GetSettings()->GetForceAndroidOverlayScrollbar()) {
+    // The VisualViewport is distinct from the LayoutViewport only when the
+    // mobile-style viewport logic is enabled. On desktop, the LayoutViewport
+    // handles all scrollbars.
+    if (!frame->GetSettings()->GetViewportEnabled()) {
+      return false;
+    }
+
+    // Even if the mobile viewport is enabled, on "desktop Android" (e.g.
+    // large screen optimizations), we prefer the LayoutViewport to handle
+    // scrollbars for a desktop-like experience.
+    if (ScrollbarTheme::DesktopAndroidScrollbarsEnabled()) {
+      return false;
+    }
+  }
 
   const TopDocumentRootScrollerController& controller =
       GetLayoutBox()->GetDocument().GetPage()->GlobalRootScrollerController();

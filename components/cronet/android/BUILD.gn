@@ -196,6 +196,7 @@ source_set("cronet_static") {
     "//net",
     "//third_party/zlib",
     "//url",
+    "//third_party/boringssl"
   ]
   sources = [
     "//components/cronet/android/completion_once_callback_adapter.cc",
@@ -303,6 +304,7 @@ android_library("cronet_shared_java") {
   # Adding deps here won't include those deps in the cronet_shared_java.jar.
   # Please add to cronet_shared_java_deps_to_package instead.
   deps = [
+           "//base:log_java",
            "//third_party/android_deps:protobuf_lite_runtime_java",
            "//third_party/androidx:androidx_annotation_annotation_java",
          ] + cronet_shared_java_deps_to_package
@@ -452,6 +454,7 @@ android_library("cronet_impl_common_java") {
     ":cronet_api_java",
     ":cronet_shared_java",
     ":impl_version",
+    "//base:log_java",
     "//third_party/android_deps:protobuf_lite_runtime_java",
     "//third_party/androidx:androidx_annotation_annotation_experimental_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
@@ -494,6 +497,7 @@ android_library("cronet_impl_platform_java") {
     ":cronet_impl_java_util_java",
     ":cronet_shared_java",
     ":httpengine_native_provider_java",
+    "//base:log_java",
     "//base:metrics_ScopedSysTraceEvent_java",
     "//net/android:net_thread_stats_uid_java",
     "//third_party/android_deps:com_google_code_findbugs_jsr305_java",
@@ -519,6 +523,7 @@ android_library("cronet_impl_fake_java") {
     ":cronet_impl_common_java",
     ":cronet_impl_java_util_java",
     ":cronet_shared_java",
+    "//base:log_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
   ]
 }
@@ -537,6 +542,7 @@ android_library("cronet_urlconnection_impl_java") {
   ]
   deps = [
     ":cronet_api_java",
+    "//base:log_java",
     "//base:metrics_ScopedSysTraceEvent_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
   ]
@@ -566,6 +572,7 @@ android_library("cronet_impl_native_java") {
     "java/src/org/chromium/net/impl/AndroidOsBuild.java",
     "java/src/org/chromium/net/impl/BidirectionalStreamNetworkException.java",
     "java/src/org/chromium/net/impl/CompletionOnceCallback.java",
+    "java/src/org/chromium/net/impl/CronetAdaptiveNetworkBidirectionalStream.java",
     "java/src/org/chromium/net/impl/CronetBidirectionalStream.java",
     "java/src/org/chromium/net/impl/CronetLibraryLoader.java",
     "java/src/org/chromium/net/impl/CronetRequestCommon.java",
@@ -660,6 +667,7 @@ android_library("httpengine_native_provider_java") {
     ":cronet_api_java",
     ":cronet_impl_common_java",
     ":cronet_shared_java",
+    "//base:log_java",
     "//base:metrics_ScopedSysTraceEvent_java",
     "//build/android:build_java",
     "//third_party/androidx:androidx_annotation_annotation_java",
@@ -1471,6 +1479,7 @@ android_library("cronet_javatests") {
     "test/javatests/src/org/chromium/net/httpflags/HttpFlagsLoaderTest.java",
     "test/javatests/src/org/chromium/net/httpflags/ResolvedFlagsTest.java",
     "test/javatests/src/org/chromium/net/impl/AndroidHttpEngineBuilderWrapperTest.java",
+    "test/javatests/src/org/chromium/net/impl/CronetAdaptiveNetworkBidirectionalStreamTest.java",
     "test/javatests/src/org/chromium/net/impl/CronetLoggerTest.java",
     "test/javatests/src/org/chromium/net/impl/CronetManifestTest.java",
     "test/javatests/src/org/chromium/net/impl/UserAgentIntegrationTest.java",
@@ -1518,6 +1527,7 @@ android_library("cronet_javatests") {
     "//third_party/hamcrest:hamcrest_core_java",
     "//third_party/junit",
     "//third_party/mockito:mockito_java",
+    "//third_party/netty4:netty_all_java",
   ]
   deps += cronet_javatests_deps_to_package
   data = [ "//components/cronet/android/test/test_server/data/" ]
@@ -1618,7 +1628,9 @@ instrumentation_test_apk(
            ":cronet_impl_common_java",
            ":cronet_impl_platform_java",
            ":cronet_test_apk_resources",
+           ":httpengine_native_provider_java",
            "//base:base_java_test_support",
+           "//base:log_java",
            "//third_party/android_sdk:android_test_mock_java",
            "//third_party/google-truth:google_truth_java",
            "//third_party/junit",
@@ -2168,6 +2180,10 @@ group("cronet_package_android") {
     ":cronet_non_test_package",
     ":cronet_test_package",
     ":generate_licenses",
+
+    # Add this here so it's reachable from a GN's root "//*". Otherwise it'll
+    # fail to run in CQ/CI.
+    "//components/cronet/testing:cronet_python_unittests",
   ]
   if (!using_sanitizer && !use_jacoco_coverage) {
     deps += [ ":dependencies_checks" ]

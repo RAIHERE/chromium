@@ -11,6 +11,7 @@
 
 #include "base/byte_count.h"
 #include "base/containers/enum_set.h"
+#include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
@@ -135,9 +136,10 @@ class OnDeviceModelComponentState {
 
 enum class ModelInstallMode {
   // Install the model on-demand (foreground download).
-  kOnDemand,
+  kOnDemand = 0,
   // Install the model on regular schedule (background download).
-  kBackground,
+  kBackground = 1,
+  kMaxValue = kBackground,
 };
 
 // The attributes selected when registering an on-device model component.
@@ -146,7 +148,7 @@ struct OnDeviceModelRegistrationAttributes {
   using Hint = optimization_guide::proto::OnDeviceModelPerformanceHint;
 
   explicit OnDeviceModelRegistrationAttributes(
-      std::vector<Hint> supported_hints);
+      base::flat_set<Hint> supported_hints);
   OnDeviceModelRegistrationAttributes(
       const OnDeviceModelRegistrationAttributes&);
   OnDeviceModelRegistrationAttributes& operator=(
@@ -156,7 +158,7 @@ struct OnDeviceModelRegistrationAttributes {
       OnDeviceModelRegistrationAttributes&&);
   ~OnDeviceModelRegistrationAttributes();
   // The performance hints that are supported by this device.
-  std::vector<Hint> supported_hints;
+  base::flat_set<Hint> supported_hints;
 };
 
 using MaybeOnDeviceModelComponentState =
@@ -196,7 +198,10 @@ class OnDeviceModelComponentStateManager final : public UsageTracker::Observer {
 
     // Request on demand update. Assumes that `RegisterInstaller` has already
     // been called.
-    virtual void RequestUpdate() = 0;
+    virtual void RequestUpdate(bool is_background) = 0;
+
+    // Gets the base model component ID.
+    virtual std::string GetComponentId() = 0;
   };
 
   class Observer : public base::CheckedObserver {
@@ -207,6 +212,13 @@ class OnDeviceModelComponentStateManager final : public UsageTracker::Observer {
   };
 
   struct RegistrationCriteria {
+    RegistrationCriteria();
+    ~RegistrationCriteria();
+    RegistrationCriteria(const RegistrationCriteria&);
+    RegistrationCriteria& operator=(const RegistrationCriteria&);
+    RegistrationCriteria(RegistrationCriteria&&);
+    RegistrationCriteria& operator=(RegistrationCriteria&&);
+
     // Requirements for install. Please update `LogInstallCriteria()` when
     // updating this.
     bool device_capable = false;
@@ -214,6 +226,8 @@ class OnDeviceModelComponentStateManager final : public UsageTracker::Observer {
     bool enabled_by_feature = false;
     bool enabled_by_enterprise_policy = false;
     bool enabled_by_user_setting = false;
+    // Criteria for background download.
+    bool is_on_external_power = false;
 
     // Reasons to uninstall. TODO(302327114): Add UMA for uninstall reason.
     bool out_of_retention = false;
@@ -253,8 +267,15 @@ class OnDeviceModelComponentStateManager final : public UsageTracker::Observer {
       if (on_device_feature_recently_used) {
         return ModelInstallMode::kOnDemand;
       }
-      if (background_download_requested) {
-        return ModelInstallMode::kBackground;
+      if (background_download_requested &&
+          base::FeatureList::IsEnabled(
+              features::kOnDeviceModelBackgroundDownload)) {
+        if (is_on_external_power &&
+            features::
+                IsFreeDiskSpaceSufficientForBackgroundOnDeviceModelInstall(
+                    disk_space_free)) {
+          return ModelInstallMode::kBackground;
+        }
       }
       return std::nullopt;
     }
@@ -271,9 +292,11 @@ class OnDeviceModelComponentStateManager final : public UsageTracker::Observer {
     kNotRegistered,
     // RegisterInstaller called, waiting for completion.
     kRegistering,
-    // Registration completed and waiting for installation in background.
+    // Registration completed, installation may or may not be happening yet.
+    kRegistered,
+    // Registered and requested on demand update with background priority.
     kBackgroundDownloading,
-    // Registered and requested on demand update.
+    // Registered and requested on demand update with foreground priority.
     kOnDemandDownloading,
     // Component is fully installed.
     kInstalled,

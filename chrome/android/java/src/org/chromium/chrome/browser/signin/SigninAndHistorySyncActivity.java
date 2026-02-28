@@ -41,6 +41,7 @@ import org.chromium.chrome.browser.ui.signin.BottomSheetSigninAndHistorySyncCoor
 import org.chromium.chrome.browser.ui.signin.DialogWhenLargeContentLayout;
 import org.chromium.chrome.browser.ui.signin.FullscreenSigninAndHistorySyncConfig;
 import org.chromium.chrome.browser.ui.signin.FullscreenSigninAndHistorySyncCoordinator;
+import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncBundleHelper;
 import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncCoordinator;
 import org.chromium.chrome.browser.ui.signin.SigninUtils;
 import org.chromium.chrome.browser.ui.system.StatusBarColorController;
@@ -174,7 +175,7 @@ public class SigninAndHistorySyncActivity extends FullscreenSigninAndHistorySync
                         DeviceLockActivityLauncherImpl.get(),
                         getProfileProviderSupplier(),
                         getBottomSheetController(containerView),
-                        (Supplier<ModalDialogManager>) getModalDialogManagerSupplier(),
+                        (Supplier<@Nullable ModalDialogManager>) getModalDialogManagerSupplier(),
                         config,
                         signinAccessPoint);
 
@@ -406,7 +407,9 @@ public class SigninAndHistorySyncActivity extends FullscreenSigninAndHistorySync
         ScrimManager scrimManager =
                 new ScrimManager(
                         this, containerView, ScrimClient.SIGNIN_ACCOUNT_PICKER_COORDINATOR);
-        scrimManager.getStatusBarColorSupplier().addObserver(this::setStatusBarColor);
+        scrimManager
+                .getStatusBarColorSupplier()
+                .addSyncObserverAndPostIfNonNull(this::setStatusBarColor);
 
         BottomSheetController bottomSheetController =
                 BottomSheetControllerFactory.createBottomSheetController(

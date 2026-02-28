@@ -28,8 +28,11 @@ export class FakeReadingMode {
   speechRate: number = 1;
   highlightGranularity: number = 0;
 
-  // Current line focus value.
-  lineFocus: number = 0;
+  // The last line focus value used when it was on.
+  lastNonDisabledLineFocus: number = 0;
+  // Whether line focus is currently on. i.e. it is in a mode other than off.
+  // The feature flag check is separate under isLineFocusEnabled.
+  isLineFocusOn: boolean = false;
 
   // Enum values for various visual theme changes.
   standardLineSpacing: number = 0;
@@ -44,9 +47,8 @@ export class FakeReadingMode {
   yellowTheme: number = 9;
   blueTheme: number = 10;
   highContrastTheme: number = 11;
-  lowContrastTheme: number = 12;
-  sepiaLightTheme: number = 13;
-  sepiaDarkTheme: number = 14;
+  lowContrastLightTheme: number = 12;
+  lowContrastDarkTheme: number = 13;
 
   // Enum values for highlight granularity.
   autoHighlighting: number = 0;
@@ -74,6 +76,7 @@ export class FakeReadingMode {
   lineFocusStaticLine: number = 57;
   lineFocusCursorLine: number = 58;
   // Enum values for presentation states.
+  inHiddenPresentationState: number = 1;
   inSidePanelPresentationState: number = 2;
   inImmersiveOverlayPresentationState: number = 3;
 
@@ -81,8 +84,13 @@ export class FakeReadingMode {
   htmlContent: string = '';
   title: string = '';
 
-  // Whether the Read Aloud feature flag is enabled.
-  isReadAloudEnabled: boolean = true;
+  // The constant value representing the Screen2x (AXTree) distillation method.
+  distillationTypeScreen2x: number = 0;
+
+  // The constant value representing the Readability (HTML string) distillation
+  // method.
+  distillationTypeReadability: number = 1;
+
   imagesFeatureEnabled: boolean = false;
 
   // Whether the Immersive Read Anything feature flag is enabled.
@@ -116,6 +124,9 @@ export class FakeReadingMode {
 
   // If the speech tree has been initialized.
   isSpeechTreeInitialized: boolean = false;
+
+  // Defines the distillation method used (screen2x maps to 0).
+  distillationMethod: number = 0;
 
   requiresDistillation: boolean = false;
 
@@ -245,7 +256,7 @@ export class FakeReadingMode {
 
   // Called when the line focus mode is changed via the webui toolbar.
   onLineFocusChanged(value: number) {
-    this.lineFocus = value;
+    this.lastNonDisabledLineFocus = value;
   }
 
   // Called when a user toggles a switch in the language menu
@@ -384,6 +395,9 @@ export class FakeReadingMode {
   // TODO(crbug.com/377697173) Rename `VoicePack` to `Voice`
   sendInstallVoicePackRequest(_language: string) {}
 
+  // Called to get the pin state from the browser.
+  sendPinStateRequest() {}
+
   // Sends an async request to uninstall a Natural voice for a specific
   // language.
   sendUninstallVoiceRequest(_language: string) {}
@@ -408,6 +422,9 @@ export class FakeReadingMode {
   setContentForTesting(_snapshotLite: Object, contentNodeIds: number[]) {
     this.isSpeechTreeInitialized = contentNodeIds.length > 0;
   }
+  // Sets the same structure as setContentForTesting but forces
+  // the processing of the AX Tree Anchors.
+  setAnchorsForTesting(_snapshotLite: Object, _contentNodeIds: number[]) {}
 
   // Set the theme. Used by tests only.
   setThemeForTesting(

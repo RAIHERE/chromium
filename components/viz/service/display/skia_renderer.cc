@@ -88,7 +88,6 @@
 #include "third_party/skia/src/core/SkCanvasPriv.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/color_space.h"
-#include "ui/gfx/color_transform.h"
 #include "ui/gfx/geometry/axis_transform2d.h"
 #include "ui/gfx/geometry/linear_gradient.h"
 #include "ui/gfx/geometry/point_conversions.h"
@@ -604,8 +603,6 @@ struct SkiaRenderer::RenderPassOverlayParams {
   RenderPassBacking render_pass_backing;
   AggregatedRenderPassDrawQuad rpdq;
   SharedQuadState shared_quad_state;
-  cc::FilterOperations filters;
-  cc::FilterOperations backdrop_filters;
 
   // Represents the number of |OverlayLock|s (i.e. number of distinct frames)
   // that reference this.
@@ -1850,9 +1847,7 @@ void SkiaRenderer::DrawQuadParams::ApplyScissor(
     // geometry beyond the quad's visible_rect, so it's not safe to pre-clip.
     // Note: no need to check against the backdrop filters, as they are always
     // restricted to the visible rect of a quad.
-    auto pass_id = quad_pass->render_pass_id;
-    if (const auto* filters = renderer->FiltersForPass(pass_id);
-        filters && filters->HasFilterThatMovesPixels()) {
+    if (quad_pass->filters.HasFilterThatMovesPixels()) {
       return;
     }
   }
@@ -2008,17 +2003,8 @@ std::optional<const DrawQuad*> SkiaRenderer::CanPassBeDrawnDirectly(
       return std::nullopt;
     }
 
-    const auto nested_render_pass_id = render_pass_quad->render_pass_id;
-    auto it =
-        std::ranges::find_if(*current_frame()->render_passes_in_draw_order,
-                             [&nested_render_pass_id](const auto& render_pass) {
-                               return render_pass->id == nested_render_pass_id;
-                             });
-
-    CHECK(it != current_frame()->render_passes_in_draw_order->end());
-    const auto& nested_render_pass = *it;
-    if (!nested_render_pass->filters.IsEmpty() ||
-        !nested_render_pass->backdrop_filters.IsEmpty()) {
+    if (!render_pass_quad->filters.IsEmpty() ||
+        !render_pass_quad->backdrop_filters.IsEmpty()) {
       return std::nullopt;
     }
   }
@@ -3024,11 +3010,8 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
                                     mask_to_quad_matrix);
   }
 
-  const cc::FilterOperations* filters = FiltersForPass(quad->render_pass_id);
-  const cc::FilterOperations* backdrop_filters =
-      BackdropFiltersForPass(quad->render_pass_id);
   // Early out if there are no filters to convert to SkImageFilters
-  if (!filters && !backdrop_filters) {
+  if (quad->filters.IsEmpty() && quad->backdrop_filters.IsEmpty()) {
     return rpdq_params;
   }
 
@@ -3050,9 +3033,9 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
   };
 
   // Convert CC image filters into a SkImageFilter root node
-  if (filters) {
-    DCHECK(!filters->IsEmpty());
-    auto paint_filter = cc::RenderSurfaceFilters::BuildImageFilter(*filters);
+  if (!quad->filters.IsEmpty()) {
+    auto paint_filter =
+        cc::RenderSurfaceFilters::BuildImageFilter(quad->filters);
     rpdq_params.image_filter =
         to_sk_image_filter(std::move(paint_filter), local_matrix);
 
@@ -3074,8 +3057,7 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
   }
 
   // Convert CC image filters for the backdrop into a SkImageFilter root node
-  if (backdrop_filters) {
-    DCHECK(!backdrop_filters->IsEmpty());
+  if (!quad->backdrop_filters.IsEmpty()) {
     rpdq_params.backdrop_filter_quality = quad->backdrop_filter_quality;
 
     // quad->rect represents the layer's bounds *after* any display scale has
@@ -3089,7 +3071,7 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
       SkIRect filter_rect =
           inv_local_matrix.mapRect(gfx::RectToSkRect(quad->rect)).roundOut();
       auto bg_paint_filter = cc::RenderSurfaceFilters::BuildImageFilter(
-          *backdrop_filters, gfx::SkIRectToRect(filter_rect));
+          quad->backdrop_filters, gfx::SkIRectToRect(filter_rect));
 
       rpdq_params.backdrop_filter =
           to_sk_image_filter(std::move(bg_paint_filter), local_matrix);
@@ -3102,49 +3084,54 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
   // |backdrop_filter_bounds|.
   if (rpdq_params.backdrop_filter) {
     SkRect backdrop_rect;
-    std::optional<SkPath> pass_bounds =
-        BackdropFilterBoundsForPass(quad->render_pass_id);
     std::optional<SkPath> backdrop_filter_bounds;
-    if (pass_bounds) {
-      SkRRect backdrop_filter_bounds_as_rrect;
-      SkRect backdrop_filter_bounds_as_rect;
-      SkRRect transformed_filter_bounds;
-      const bool is_rect = pass_bounds->isRect(&backdrop_filter_bounds_as_rect);
-      if (is_rect || pass_bounds->isRRect(&backdrop_filter_bounds_as_rrect)) {
-        if (is_rect) {
-          backdrop_filter_bounds_as_rrect =
-              SkRRect::MakeRect(backdrop_filter_bounds_as_rect);
-        }
-        // Scale by the filter's scale, but don't apply filter origin
-        SkRRect result;
-        backdrop_filter_bounds_as_rrect.transform(local_matrix, &result);
-        backdrop_rect = result.rect();
-        backdrop_filter_bounds = SkPath::RRect(result);
+    if (quad->backdrop_filter_bounds) {
+      backdrop_filter_bounds =
+          quad->backdrop_filter_bounds->makeTransform(local_matrix);
+      bool is_rect = backdrop_filter_bounds->isRect(&backdrop_rect);
 
-        if (transformed_filter_bounds.contains(rpdq_params.filter_bounds)) {
-          // The backdrop filter bounds are a no-op since the quad rect or
-          // region fully limits the backdrop filter.
-          backdrop_filter_bounds.reset();
-        } else {
-          // The backdrop filter bounds might have an effect, but a simple case
-          // to check for is if the backdrop rounded corners are identical to
-          // the quad's rounded corner mask info. In that case, the prior
-          // contains() check would be false, but we can still discard these
-          // bounds since the final mask clip will achieve the same visual
-          // effect.
-          if (params->mask_filter_info) {
-            SkMatrix m = gfx::TransformToFlattenedSkMatrix(
-                params->content_device_transform);
-            if (transformed_filter_bounds.transform(m, &result) &&
-                SkRRect(params->mask_filter_info->rounded_corner_bounds()) ==
-                    result) {
-              backdrop_filter_bounds.reset();
-            }
+      if (!is_rect) {
+        backdrop_rect = backdrop_filter_bounds->getBounds();
+      }
+
+      // Sanity check: limit backdrop filter size to the current render pass
+      // output to prevent excessively large filter/texture sizes.
+      // TODO(crbug.com/448789651): This somewhat odd hack is only necessary
+      // because backdrop source image size is not computed correctly.
+      // Previously, both source and destination images would be clamped to the
+      // visible area, but continued disagreements over the bdfilter spec meant
+      // this behavior was contested. When there's more clarity on this subject,
+      // this should be replaced with a more sensible calculation.
+      gfx::Transform contents_device_transform_inverse;
+      if (params->content_device_transform.GetInverse(
+              &contents_device_transform_inverse)) {
+        // TODO(crbug.com/40916020): This is confusing and opposite from SW
+        // renderer implementation, but necessary
+        // because backdrop_filter_bounds currently lives in content space.
+        // The two implementations should be merged/harmonized if possible.
+        SkRect output_rect =
+            gfx::RectToSkRect(cc::MathUtil::MapEnclosingClippedRect(
+                contents_device_transform_inverse,
+                MoveFromDrawToWindowSpace(
+                    current_frame()->current_render_pass->output_rect)));
+        if (!output_rect.contains(backdrop_rect)) {
+          backdrop_rect.intersect(output_rect);
+          // Allow backdrop_filter_bounds to be too large in the non-
+          // -trivial case, as SKIA path ops are very expensive.
+          if (is_rect) {
+            backdrop_filter_bounds = SkPath::Rect(backdrop_rect);
           }
         }
       } else {
-        backdrop_filter_bounds = pass_bounds->makeTransform(local_matrix);
-        backdrop_rect = backdrop_filter_bounds->getBounds();
+        base::debug::DumpWithoutCrashing();
+        rpdq_params.backdrop_filter = nullptr;
+        return rpdq_params;
+      }
+
+      // TODO(crbug.com/479685275): There used to be special handling for
+      // SkRRect in this case.
+      if (is_rect && backdrop_rect.contains(rpdq_params.filter_bounds)) {
+        backdrop_filter_bounds.reset();
       }
     } else {
       // NOTE: This code is never hit during rendering of an ordinary webpage.
@@ -3157,18 +3144,6 @@ SkiaRenderer::DrawRPDQParams SkiaRenderer::CalculateRPDQParams(
       // See: crbug.com/984649
       backdrop_rect = gfx::RectFToSkRect(params->visible_rect);
     }
-
-    // Sanity check: limit backdrop filter size to the current render pass
-    // output to prevent excessively large filter/texture sizes.
-    // TODO(crbug.com/448789651): This somewhat odd hack is only necessary
-    // because backdrop source image size is not computed correctly. Previously,
-    // both source and destination images would be clamped to the visible area,
-    // but continued disagreements over the bdfilter spec meant this behavior
-    // was contested. When there's more clarity on this subject, this should be
-    // replaced with a more sensible calculation.
-    backdrop_rect.intersect(gfx::RectToSkRect(MoveFromDrawToWindowSpace(
-        current_frame()->current_render_pass->output_rect)));
-
     // TODO(crbug.com/471150365): Although the mirroring behavior is not without
     // some issues (particularly with flickering) it's much better tolerated by
     // users and has the support of WebKit and Gecko. This FF should probably be
@@ -3256,13 +3231,11 @@ void SkiaRenderer::DrawRenderPassQuad(
       gfx::Rect visible_rect = quad->visible_rect;
       SCOPED_CRASH_KEY_STRING32("missing rp backing", "1-visible rect",
                                 visible_rect.ToString());
-      auto filter_it = render_pass_filters_.find(quad->render_pass_id);
-      if (filter_it != render_pass_filters_.end()) {
-        visible_rect =
-            GetExpandedRectForPixelMovingFilters(*quad, *filter_it->second);
+      if (!quad->filters.IsEmpty()) {
+        visible_rect = GetExpandedRectForPixelMovingFilters(*quad);
       }
       SCOPED_CRASH_KEY_STRING32("missing rp backing", "2-filter expansion",
-                                filter_it != render_pass_filters_.end()
+                                !quad->filters.IsEmpty()
                                     ? visible_rect.ToString()
                                     : "no filter expansion");
 
@@ -3696,22 +3669,10 @@ bool SkiaRenderer::CanSkipRenderPassOverlay(
   }
 
   // Compare RenderPassDrawQuads of the previous frame and the current frame.
-  const cc::FilterOperations* filters = FiltersForPass(render_pass_id);
-  const cc::FilterOperations* backdrop_filters =
-      BackdropFiltersForPass(render_pass_id);
   overlay_found->rpdq.shared_quad_state = &(overlay_found->shared_quad_state);
 
   bool no_change_in_rpdq = overlay_found->rpdq.Equals(*rpdq);
-  bool no_change_in_filters =
-      filters ? (overlay_found->filters == *filters)
-              : (overlay_found->filters == cc::FilterOperations());
-  bool no_change_in_backdrop_filters =
-      backdrop_filters
-          ? (overlay_found->backdrop_filters == *backdrop_filters)
-          : (overlay_found->backdrop_filters == cc::FilterOperations());
-
-  if (no_change_in_rpdq && no_change_in_filters &&
-      no_change_in_backdrop_filters) {
+  if (no_change_in_rpdq) {
     if (found_in_available_backings) {
       in_flight_render_pass_overlay_backings_.push_back(*overlay_found);
       available_render_pass_overlay_backings_.erase(it_to_delete);
@@ -3740,8 +3701,6 @@ SkiaRenderer::GetRenderPassBackingForDirectScanout(
         CHECK(pass_it != current_frame()->render_passes_in_draw_order->end());
 
         DCHECK(!pass_it->get()->generate_mipmap);
-        DCHECK(pass_it->get()->filters.IsEmpty());
-        DCHECK(pass_it->get()->backdrop_filters.IsEmpty());
         DCHECK(!(pass_it->get()->will_backing_be_read_by_viz &&
                  backing_it->second.scanout_dcomp_surface));
       }
@@ -3804,16 +3763,6 @@ SkiaRenderer::GetOrCreateRenderPassOverlayBacking(
   overlay_params.render_pass_id = render_pass_id;
   overlay_params.shared_quad_state.SetAll(*rpdq->shared_quad_state);
   overlay_params.rpdq.SetAll(*rpdq);
-
-  if (const cc::FilterOperations* filters = FiltersForPass(render_pass_id);
-      filters) {
-    overlay_params.filters = *filters;
-  }
-  if (const cc::FilterOperations* backdrop_filters =
-          BackdropFiltersForPass(render_pass_id);
-      backdrop_filters) {
-    overlay_params.backdrop_filters = *backdrop_filters;
-  }
 
   in_flight_render_pass_overlay_backings_.push_back(overlay_params);
 
@@ -4255,11 +4204,8 @@ void SkiaRenderer::EnsureMinNumberOfBuffers(int n) {
   buffer_queue_->EnsureMinNumberOfBuffers(n);
 }
 
+#if BUILDFLAG(IS_OZONE)
 gpu::Mailbox SkiaRenderer::GetPrimaryPlaneOverlayTestingMailbox() {
-#if BUILDFLAG(IS_WIN)
-  // Windows dcomp uses a swap chain for primary plane instead of BufferQueue.
-  return gpu::Mailbox();
-#else
   // For the purpose of testing the overlay configuration, the mailbox for ANY
   // buffer from BufferQueue is good enough because they're all created with
   // identical properties.
@@ -4269,10 +4215,7 @@ gpu::Mailbox SkiaRenderer::GetPrimaryPlaneOverlayTestingMailbox() {
   // previous frame's mailbox.)
   CHECK(buffer_queue_);
   return buffer_queue_->GetLastSwappedBuffer();
-#endif
 }
-
-#if BUILDFLAG(IS_OZONE)
 
 DBG_FLAG_FBOOL("delegated.overlay.background_candidate.colored",
                toggle_background_overlay_color)  // False by default.

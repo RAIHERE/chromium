@@ -126,6 +126,7 @@
 #include "content/public/browser/storage_notification_service.h"
 #include "content/public/browser/storage_partition_config.h"
 #include "content/public/browser/storage_usage_info.h"
+#include "content/public/common/child_process_id_util.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_constants.h"
 #include "content/public/common/content_features.h"
@@ -293,40 +294,6 @@ void OnClearedCookies(base::OnceClosure callback, uint32_t num_deleted) {
   std::move(callback).Run();
 }
 
-void CheckQuotaManagedDataDeletionStatus(size_t* deletion_task_count,
-                                         base::OnceClosure callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  if (*deletion_task_count == 0) {
-    delete deletion_task_count;
-    std::move(callback).Run();
-  }
-}
-
-void OnQuotaManagedBucketDeleted(const storage::BucketLocator& bucket,
-                                 size_t* deletion_task_count,
-                                 base::OnceClosure callback,
-                                 blink::mojom::QuotaStatusCode status) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  DCHECK_GT(*deletion_task_count, 0u);
-  if (status != blink::mojom::QuotaStatusCode::kOk) {
-    DLOG(ERROR) << "Couldn't remove data for bucket with storage key "
-                << bucket.storage_key.GetDebugString() << " is_default "
-                << bucket.is_default << " and bucket id " << bucket.id
-                << ". Status: " << static_cast<int>(status);
-  }
-
-  (*deletion_task_count)--;
-  CheckQuotaManagedDataDeletionStatus(deletion_task_count, std::move(callback));
-}
-
-void PerformQuotaManagerStorageCleanup(
-    const scoped_refptr<storage::QuotaManager>& quota_manager,
-    storage::QuotaClientTypes quota_client_types,
-    base::OnceClosure callback) {
-  quota_manager->PerformStorageCleanup(std::move(quota_client_types),
-                                       std::move(callback));
-}
-
 void ClearedGpuCache(base::OnceClosure callback) {
   if (!BrowserThread::CurrentlyOn(BrowserThread::UI)) {
     GetUIThreadTaskRunner({})->PostTask(
@@ -399,7 +366,79 @@ void OnSessionStorageUsageInfo(
   std::move(concurrent).Done(std::move(done_callback));
 }
 
-void ClearLocalStorageOnUIThread(
+void ClearQuotaManagedData(
+    scoped_refptr<storage::QuotaManager> quota_manager,
+    const base::Time begin,
+    const base::Time end,
+    storage::QuotaClientTypes quota_client_types,
+    const blink::StorageKey& storage_key,
+    scoped_refptr<storage::SpecialStoragePolicy> special_storage_policy,
+    StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
+    bool perform_storage_cleanup,
+    base::OnceClosure callback) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+
+  auto on_got_modified_buckets = base::BindOnce(
+      [](scoped_refptr<storage::QuotaManager> quota_manager,
+         scoped_refptr<storage::SpecialStoragePolicy> special_storage_policy,
+         StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
+         std::optional<blink::StorageKey> storage_key,
+         storage::QuotaClientTypes quota_client_types,
+         bool perform_storage_cleanup, base::OnceClosure callback,
+         const std::set<storage::BucketLocator>& buckets) {
+        DCHECK_CURRENTLY_ON(BrowserThread::IO);
+        if (buckets.empty()) {
+          std::move(callback).Run();
+          return;
+        }
+
+        // Collect buckets that pass the filters.
+        std::vector<storage::BucketLocator> buckets_to_delete;
+        for (const storage::BucketLocator& bucket : buckets) {
+          if (storage_key.has_value() && bucket.storage_key != *storage_key) {
+            continue;
+          }
+
+          if (storage_key_matcher &&
+              !storage_key_matcher.Run(bucket.storage_key,
+                                       special_storage_policy.get())) {
+            continue;
+          }
+
+          buckets_to_delete.push_back(bucket);
+        }
+
+        base::OnceClosure done_callback =
+            perform_storage_cleanup
+                ? base::BindOnce(&storage::QuotaManager::PerformStorageCleanup,
+                                 quota_manager, quota_client_types,
+                                 std::move(callback))
+                : std::move(callback);
+
+        base::RepeatingClosure barrier = base::BarrierClosure(
+            buckets_to_delete.size(), std::move(done_callback));
+
+        for (const storage::BucketLocator& bucket : buckets_to_delete) {
+          quota_manager->DeleteBucketData(
+              bucket, quota_client_types,
+              base::IgnoreArgs<blink::mojom::QuotaStatusCode>(barrier));
+        }
+      },
+      quota_manager, std::move(special_storage_policy),
+      std::move(storage_key_matcher),
+      storage_key.origin().opaque() ? std::nullopt
+                                    : std::make_optional(storage_key),
+      std::move(quota_client_types), perform_storage_cleanup,
+      std::move(callback));
+
+  GetIOThreadTaskRunner({})->PostTask(
+      FROM_HERE,
+      base::BindOnce(&storage::QuotaManager::GetBucketsModifiedBetween,
+                     std::move(quota_manager), begin, end,
+                     std::move(on_got_modified_buckets)));
+}
+
+void ClearLocalStorage(
     const scoped_refptr<DOMStorageContextWrapper>& dom_storage_context,
     const scoped_refptr<storage::SpecialStoragePolicy>& special_storage_policy,
     StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
@@ -428,7 +467,7 @@ void ClearLocalStorageOnUIThread(
                      perform_storage_cleanup, begin, end, std::move(callback)));
 }
 
-void ClearSessionStorageOnUIThread(
+void ClearSessionStorage(
     const scoped_refptr<DOMStorageContextWrapper>& dom_storage_context,
     const scoped_refptr<storage::SpecialStoragePolicy>& special_storage_policy,
     StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
@@ -454,7 +493,7 @@ class LoginHandlerDelegate {
       const net::AuthChallengeInfo& auth_info,
       bool is_request_for_primary_main_frame_navigation,
       bool is_request_for_navigation,
-      base::StrictNumeric<int32_t> process_id,
+      const network::OriginatingProcessId& process_id,
       base::StrictNumeric<int32_t> request_id,
       const GURL& url,
       scoped_refptr<net::HttpResponseHeaders> response_headers,
@@ -816,59 +855,6 @@ void StoragePartitionImpl::ForceInProcessStorageServiceForTesting() {
   g_force_in_process_storage_service = true;
 }
 
-// Helper for deleting quota managed data from a partition.
-//
-// Most of the operations in this class are done on IO thread.
-class StoragePartitionImpl::QuotaManagedDataDeletionHelper {
- public:
-  QuotaManagedDataDeletionHelper(
-      uint32_t remove_mask,
-      uint32_t quota_storage_remove_mask,
-      const std::optional<blink::StorageKey>& storage_key,
-      base::OnceClosure callback)
-      : remove_mask_(remove_mask),
-        quota_storage_remove_mask_(quota_storage_remove_mask),
-        storage_key_(storage_key),
-        callback_(std::move(callback)),
-        task_count_(0) {
-    DCHECK(!storage_key_.has_value() || !storage_key_->origin().opaque());
-  }
-
-  QuotaManagedDataDeletionHelper(const QuotaManagedDataDeletionHelper&) =
-      delete;
-  QuotaManagedDataDeletionHelper& operator=(
-      const QuotaManagedDataDeletionHelper&) = delete;
-
-  void IncrementTaskCountOnIO();
-  void DecrementTaskCountOnIO();
-
-  void ClearDataOnIOThread(
-      const scoped_refptr<storage::QuotaManager>& quota_manager,
-      const base::Time begin,
-      const base::Time end,
-      const scoped_refptr<storage::SpecialStoragePolicy>&
-          special_storage_policy,
-      StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-      bool perform_storage_cleanup);
-
-  void ClearBucketsOnIOThread(
-      storage::QuotaManager* quota_manager,
-      const scoped_refptr<storage::SpecialStoragePolicy>&
-          special_storage_policy,
-      StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-      bool perform_storage_cleanup,
-      base::OnceClosure callback,
-      const std::set<storage::BucketLocator>& buckets);
-
- private:
-  // All of these data are accessed on IO thread.
-  uint32_t remove_mask_;
-  uint32_t quota_storage_remove_mask_;
-  std::optional<blink::StorageKey> storage_key_;
-  base::OnceClosure callback_;
-  int task_count_;
-};
-
 // Helper for deleting all sorts of data from a partition, keeps track of
 // deletion status.
 //
@@ -881,19 +867,15 @@ class StoragePartitionImpl::QuotaManagedDataDeletionHelper {
 // finally destroyed when deletion completes (and `callback` is invoked).
 class StoragePartitionImpl::DataDeletionHelper {
  public:
-  DataDeletionHelper(uint32_t remove_mask,
-                     uint32_t quota_storage_remove_mask,
-                     base::OnceClosure callback)
-      : remove_mask_(remove_mask),
-        quota_storage_remove_mask_(quota_storage_remove_mask),
-        callback_(std::move(callback)) {}
+  DataDeletionHelper(uint32_t remove_mask, base::OnceClosure callback)
+      : remove_mask_(remove_mask), callback_(std::move(callback)) {}
 
   DataDeletionHelper(const DataDeletionHelper&) = delete;
   DataDeletionHelper& operator=(const DataDeletionHelper&) = delete;
 
   ~DataDeletionHelper() = default;
 
-  void ClearDataOnUIThread(
+  void ClearData(
       const blink::StorageKey& storage_key,
       BrowsingDataFilterBuilder* filter_builder,
       StorageKeyPolicyMatcherFunction storage_key_policy_matcher,
@@ -917,17 +899,6 @@ class StoragePartitionImpl::DataDeletionHelper {
       bool perform_storage_cleanup,
       const base::Time begin,
       const base::Time end);
-
-  void ClearQuotaManagedDataOnIOThread(
-      const scoped_refptr<storage::QuotaManager>& quota_manager,
-      const base::Time begin,
-      const base::Time end,
-      const blink::StorageKey& storage_key,
-      const scoped_refptr<storage::SpecialStoragePolicy>&
-          special_storage_policy,
-      StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-      bool perform_storage_cleanup,
-      base::OnceClosure callback);
 
  private:
   // For debugging purposes. Please add new deletion tasks at the end.
@@ -960,7 +931,6 @@ class StoragePartitionImpl::DataDeletionHelper {
   void RecordUnfinishedSubTasks();
 
   uint32_t remove_mask_;
-  uint32_t quota_storage_remove_mask_;
 
   // Accessed on UI thread.
   base::OnceClosure callback_;
@@ -970,28 +940,6 @@ class StoragePartitionImpl::DataDeletionHelper {
   base::WeakPtrFactory<StoragePartitionImpl::DataDeletionHelper> weak_factory_{
       this};
 };
-
-void StoragePartitionImpl::DataDeletionHelper::ClearQuotaManagedDataOnIOThread(
-    const scoped_refptr<storage::QuotaManager>& quota_manager,
-    const base::Time begin,
-    const base::Time end,
-    const blink::StorageKey& storage_key,
-    const scoped_refptr<storage::SpecialStoragePolicy>& special_storage_policy,
-    StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-    bool perform_storage_cleanup,
-    base::OnceClosure callback) {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-
-  StoragePartitionImpl::QuotaManagedDataDeletionHelper* helper =
-      new StoragePartitionImpl::QuotaManagedDataDeletionHelper(
-          remove_mask_, quota_storage_remove_mask_,
-          storage_key.origin().opaque() ? std::nullopt
-                                        : std::make_optional(storage_key),
-          std::move(callback));
-  helper->ClearDataOnIOThread(quota_manager, begin, end, special_storage_policy,
-                              std::move(storage_key_matcher),
-                              perform_storage_cleanup);
-}
 
 class StoragePartitionImpl::ServiceWorkerCookieAccessObserver
     : public network::mojom::CookieAccessObserver {
@@ -2132,7 +2080,8 @@ void StoragePartitionImpl::OnAuthRequired(
   if (!is_navigation_request.has_value()) {
     is_navigation_request = context.IsNavigationRequestContext();
   }
-  int process_id = network::mojom::kBrowserProcessId;
+  network::OriginatingProcessId process_id =
+      network::OriginatingProcessId::browser();
   if (original_context.type() == ContextType::kSharedOrServiceWorkerContext) {
     // If the request was initiated by a service worker, use the service
     // worker's process ID. This ensures the `GlobalRequestID` used to look up
@@ -2146,7 +2095,7 @@ void StoragePartitionImpl::OnAuthRequired(
     // `render_frame_host` is not null. If `render_frame_host` is null,
     // later logic will call OnAuthCredentials() with a nullopt that triggers
     // CancelAuth().
-    process_id = network::mojom::kInvalidProcessId;
+    process_id = network::OriginatingProcessId();
 
     // `navigation_or_document_` can be null when `context` is created with
     // an invalid RenderFrameHost after a page is destroyed.
@@ -2161,8 +2110,8 @@ void StoragePartitionImpl::OnAuthRequired(
     if (context.navigation_or_document()) {
       auto* render_frame_host = context.navigation_or_document()->GetDocument();
       if (render_frame_host) {
-        // TODO(crbug.com/379869738) Remove GetUnsafeValue.
-        process_id = render_frame_host->GetGlobalId().child_id.GetUnsafeValue();
+        process_id =
+            ToOriginatingProcessId(render_frame_host->GetGlobalId().child_id);
       }
     }
   }
@@ -2417,10 +2366,12 @@ void StoragePartitionImpl::OnLocalNetworkAccessPermissionRequired(
 
     PermissionController& permission_controller =
         CHECK_DEREF(browser_context_->GetPermissionController());
+    CHECK(!context.process_id().is_browser());
     auto status = permission_controller.GetPermissionStatusForWorker(
         content::PermissionDescriptorUtil::
             CreatePermissionDescriptorForPermissionType(permission_type),
-        content::RenderProcessHost::FromID(context.process_id()),
+        content::RenderProcessHost::FromID(
+            ToChildProcessId(context.process_id().renderer_process_id())),
         context.worker_origin().value());
 
     // If the request was loaded from cache, prefer retrying over the network
@@ -2513,7 +2464,9 @@ void StoragePartitionImpl::OnCertificateRequested(
   base::WeakPtr<WebContents> web_contents_weak;
   int process_id = network::mojom::kInvalidProcessId;
   if (context.type() == ContextType::kSharedOrServiceWorkerContext) {
-    process_id = context.process_id();
+    // TODO(crbug.com/379869738) Remove GetUnsafeValue.
+    // TODO(crbug.com/479742988) This can be the browser process and shouldn't.
+    process_id = context.process_id().GetUnsafeValue();
   } else {
     WebContents* web_contents = context.GetWebContents();
     // The WebContents is already invalid. Bail.
@@ -2632,7 +2585,7 @@ void StoragePartitionImpl::Clone(
       url_loader_network_observers_.current_context());
 }
 
-void StoragePartitionImpl::OnWebSocketConnectedToPrivateNetwork(
+void StoragePartitionImpl::OnWebSocketConnectedToLocalNetwork(
     const GURL& request_url,
     network::mojom::IPAddressSpace ip_address_space) {
   RenderFrameHostImpl* render_frame_host_impl =
@@ -2648,7 +2601,7 @@ void StoragePartitionImpl::OnWebSocketConnectedToPrivateNetwork(
 
     // Log a UseCounter for potential LNA breakage, where we cannot auto-detect
     // a mixed content bypass situation. This is similar to the check below in
-    // StoragePartitionImpl::OnUrlLoaderConnectedToPrivateNetwork.
+    // StoragePartitionImpl::OnUrlLoaderConnectedToLocalNetwork.
     if (!network::IsUrlPotentiallyTrustworthy(request_url) &&
         !request_url.HostIsIPAddress() && !request_url.DomainIs("local")) {
       GetContentClient()->browser()->LogWebFeatureForCurrentPage(
@@ -2659,7 +2612,7 @@ void StoragePartitionImpl::OnWebSocketConnectedToPrivateNetwork(
   }
 }
 
-void StoragePartitionImpl::OnUrlLoaderConnectedToPrivateNetwork(
+void StoragePartitionImpl::OnUrlLoaderConnectedToLocalNetwork(
     const GURL& request_url,
     network::mojom::IPAddressSpace response_address_space,
     network::mojom::IPAddressSpace client_address_space,
@@ -2706,13 +2659,12 @@ void StoragePartitionImpl::OnUrlLoaderConnectedToPrivateNetwork(
 }
 
 mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
-StoragePartitionImpl::CreateURLLoaderNetworkObserverForFrame(int process_id,
-                                                             int routing_id) {
+StoragePartitionImpl::CreateURLLoaderNetworkObserverForFrame(
+    const content::GlobalRenderFrameHostId& frame_id) {
   mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver> remote;
   url_loader_network_observers_.Add(
       this, remote.InitWithNewPipeAndPassReceiver(),
-      URLLoaderNetworkContext::CreateForRenderFrameHost(
-          GlobalRenderFrameHostId(process_id, routing_id)));
+      URLLoaderNetworkContext::CreateForRenderFrameHost(frame_id));
   return remote;
 }
 
@@ -2728,7 +2680,7 @@ StoragePartitionImpl::CreateURLLoaderNetworkObserverForNavigationRequest(
 
 mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver>
 StoragePartitionImpl::CreateURLLoaderNetworkObserverForServiceOrSharedWorker(
-    int process_id,
+    const network::OriginatingProcessId& process_id,
     const url::Origin& worker_origin) {
   mojo::PendingRemote<network::mojom::URLLoaderNetworkServiceObserver> remote;
   url_loader_network_observers_.Add(
@@ -2738,7 +2690,7 @@ StoragePartitionImpl::CreateURLLoaderNetworkObserverForServiceOrSharedWorker(
 }
 
 void StoragePartitionImpl::OnFileUploadRequested(
-    int32_t process_id,
+    const network::OriginatingProcessId& process_id,
     bool async,
     const std::vector<base::FilePath>& file_paths,
     const GURL& destination_url,
@@ -2862,7 +2814,6 @@ void StoragePartitionImpl::OnNewSCTAuditingReportSent() {
 
 void StoragePartitionImpl::ClearDataImpl(
     uint32_t remove_mask,
-    uint32_t quota_storage_remove_mask,
     const blink::StorageKey& storage_key,
     BrowsingDataFilterBuilder* filter_builder,
     StorageKeyPolicyMatcherFunction storage_key_policy_matcher,
@@ -2889,13 +2840,13 @@ void StoragePartitionImpl::ClearDataImpl(
   }
 
   DataDeletionHelper* helper = new DataDeletionHelper(
-      remove_mask, quota_storage_remove_mask,
+      remove_mask,
       base::BindOnce(&StoragePartitionImpl::DeletionHelperDone,
                      weak_factory_.GetWeakPtr(), std::move(callback)));
   // `helper` deletes itself when done in
   // DataDeletionHelper::DecrementTaskCount().
   deletion_helpers_running_++;
-  helper->ClearDataOnUIThread(
+  helper->ClearData(
       storage_key, filter_builder, std::move(storage_key_policy_matcher),
       std::move(cookie_deletion_filter), GetPath(), dom_storage_context_.get(),
       quota_manager_.get(), special_storage_policy_.get(),
@@ -2917,111 +2868,6 @@ void StoragePartitionImpl::DeletionHelperDone(base::OnceClosure callback) {
     // Notify tests that storage partition is done with all deletion tasks.
     std::move(on_deletion_helpers_done_callback_).Run();
   }
-}
-
-void StoragePartitionImpl::QuotaManagedDataDeletionHelper::
-    IncrementTaskCountOnIO() {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  ++task_count_;
-}
-
-void StoragePartitionImpl::QuotaManagedDataDeletionHelper::
-    DecrementTaskCountOnIO() {
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  DCHECK_GT(task_count_, 0);
-  --task_count_;
-  if (task_count_) {
-    return;
-  }
-
-  std::move(callback_).Run();
-  delete this;
-}
-
-void StoragePartitionImpl::QuotaManagedDataDeletionHelper::ClearDataOnIOThread(
-    const scoped_refptr<storage::QuotaManager>& quota_manager,
-    const base::Time begin,
-    const base::Time end,
-    const scoped_refptr<storage::SpecialStoragePolicy>& special_storage_policy,
-    StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-    bool perform_storage_cleanup) {
-  IncrementTaskCountOnIO();
-  base::RepeatingClosure decrement_callback = base::BindRepeating(
-      &QuotaManagedDataDeletionHelper::DecrementTaskCountOnIO,
-      base::Unretained(this));
-
-  // Ask the QuotaManager for all buckets modified within the user-specified
-  // timeframe, and deal with the resulting set in ClearBucketsOnIOThread().
-  if (quota_storage_remove_mask_ & QUOTA_MANAGED_STORAGE_MASK_TEMPORARY) {
-    IncrementTaskCountOnIO();
-    quota_manager->GetBucketsModifiedBetween(
-        begin, end,
-        base::BindOnce(&QuotaManagedDataDeletionHelper::ClearBucketsOnIOThread,
-                       base::Unretained(this), base::RetainedRef(quota_manager),
-                       special_storage_policy, storage_key_matcher,
-                       perform_storage_cleanup, decrement_callback));
-  }
-
-  DecrementTaskCountOnIO();
-}
-
-void StoragePartitionImpl::QuotaManagedDataDeletionHelper::
-    ClearBucketsOnIOThread(
-        storage::QuotaManager* quota_manager,
-        const scoped_refptr<storage::SpecialStoragePolicy>&
-            special_storage_policy,
-        StoragePartition::StorageKeyPolicyMatcherFunction storage_key_matcher,
-        bool perform_storage_cleanup,
-        base::OnceClosure callback,
-        const std::set<storage::BucketLocator>& buckets) {
-  // The QuotaManager manages all storage other than cookies, LocalStorage,
-  // and SessionStorage. This loop wipes out most HTML5 storage for the given
-  // storage keys.
-  DCHECK_CURRENTLY_ON(BrowserThread::IO);
-  if (buckets.empty()) {
-    std::move(callback).Run();
-    return;
-  }
-
-  storage::QuotaClientTypes quota_client_types =
-      StoragePartitionImpl::GenerateQuotaClientTypes(remove_mask_);
-
-  // The logic below (via CheckQuotaManagedDataDeletionStatus) only
-  // invokes the callback when all processing is complete.
-  base::OnceClosure done_callback =
-      perform_storage_cleanup
-          ? base::BindOnce(&PerformQuotaManagerStorageCleanup,
-                           base::WrapRefCounted(quota_manager),
-                           quota_client_types, std::move(callback))
-          : std::move(callback);
-
-  size_t* deletion_task_count = new size_t(0u);
-  (*deletion_task_count)++;
-  for (const auto& bucket : buckets) {
-    // TODO(mkwst): Clean this up, it's slow. http://crbug.com/130746
-    if (storage_key_.has_value() && bucket.storage_key != *storage_key_) {
-      continue;
-    }
-
-    if (storage_key_matcher &&
-        !storage_key_matcher.Run(bucket.storage_key,
-                                 special_storage_policy.get())) {
-      continue;
-    }
-
-    auto split_callback = base::SplitOnceCallback(std::move(done_callback));
-    done_callback = std::move(split_callback.first);
-
-    (*deletion_task_count)++;
-    quota_manager->DeleteBucketData(
-        bucket, quota_client_types,
-        base::BindOnce(&OnQuotaManagedBucketDeleted, bucket,
-                       deletion_task_count, std::move(split_callback.second)));
-  }
-  (*deletion_task_count)--;
-
-  CheckQuotaManagedDataDeletionStatus(deletion_task_count,
-                                      std::move(done_callback));
 }
 
 base::OnceClosure
@@ -3072,7 +2918,7 @@ void StoragePartitionImpl::DataDeletionHelper::RecordUnfinishedSubTasks() {
   }
 }
 
-void StoragePartitionImpl::DataDeletionHelper::ClearDataOnUIThread(
+void StoragePartitionImpl::DataDeletionHelper::ClearData(
     const blink::StorageKey& storage_key,
     BrowsingDataFilterBuilder* filter_builder,
     StorageKeyPolicyMatcherFunction storage_key_policy_matcher,
@@ -3206,18 +3052,16 @@ void StoragePartitionImpl::DataDeletionHelper::ClearDataOnUIThread(
       remove_mask_ & REMOVE_DATA_MASK_FILE_SYSTEMS ||
       remove_mask_ & REMOVE_DATA_MASK_SERVICE_WORKERS ||
       remove_mask_ & REMOVE_DATA_MASK_CACHE_STORAGE) {
-    GetIOThreadTaskRunner({})->PostTask(
-        FROM_HERE,
-        base::BindOnce(&DataDeletionHelper::ClearQuotaManagedDataOnIOThread,
-                       base::Unretained(this),
-                       base::WrapRefCounted(quota_manager), begin, end,
-                       storage_key, storage_policy_ref,
-                       combined_storage_key_matcher, perform_storage_cleanup,
-                       CreateTaskCompletionClosure(TracingDataType::kQuota)));
+    ClearQuotaManagedData(
+        quota_manager, begin, end,
+        StoragePartitionImpl::GenerateQuotaClientTypes(remove_mask_),
+        storage_key, storage_policy_ref, combined_storage_key_matcher,
+        perform_storage_cleanup,
+        CreateTaskCompletionClosure(TracingDataType::kQuota));
   }
 
   if (remove_mask_ & REMOVE_DATA_MASK_LOCAL_STORAGE) {
-    ClearLocalStorageOnUIThread(
+    ClearLocalStorage(
         base::WrapRefCounted(dom_storage_context), storage_policy_ref,
         combined_storage_key_matcher, storage_key, perform_storage_cleanup,
         begin, end,
@@ -3230,7 +3074,7 @@ void StoragePartitionImpl::DataDeletionHelper::ClearDataOnUIThread(
     if (storage_key_origin_empty) {
       // TODO(crbug.com/41457196): Sometimes SessionStorage fails to call its
       // callback. Figure out why.
-      ClearSessionStorageOnUIThread(
+      ClearSessionStorage(
           base::WrapRefCounted(dom_storage_context), storage_policy_ref,
           combined_storage_key_matcher, perform_storage_cleanup,
           mojo::WrapCallbackWithDefaultInvokeIfNotRun(
@@ -3351,11 +3195,9 @@ void StoragePartitionImpl::DataDeletionHelper::ClearDataOnUIThread(
   }
 }
 
-void StoragePartitionImpl::ClearDataForOrigin(
-    uint32_t remove_mask,
-    uint32_t quota_storage_remove_mask,
-    const GURL& storage_origin,
-    base::OnceClosure callback) {
+void StoragePartitionImpl::ClearDataForOrigin(uint32_t remove_mask,
+                                              const GURL& storage_origin,
+                                              base::OnceClosure callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
   DCHECK(initialized_);
   CookieDeletionFilterPtr deletion_filter = CookieDeletionFilter::New();
@@ -3368,10 +3210,9 @@ void StoragePartitionImpl::ClearDataForOrigin(
   auto filter_builder = BrowsingDataFilterBuilder::Create(
       content::BrowsingDataFilterBuilder::Mode::kDelete);
   filter_builder->AddOrigin(url::Origin::Create(storage_origin));
-  ClearDataImpl(remove_mask, quota_storage_remove_mask, blink::StorageKey(),
-                filter_builder.get(), StorageKeyPolicyMatcherFunction(),
-                std::move(deletion_filter), false, base::Time(),
-                base::Time::Max(), std::move(callback));
+  ClearDataImpl(remove_mask, blink::StorageKey(), filter_builder.get(),
+                StorageKeyPolicyMatcherFunction(), std::move(deletion_filter),
+                false, base::Time(), base::Time::Max(), std::move(callback));
 }
 
 void StoragePartitionImpl::ClearDataForBuckets(
@@ -3424,7 +3265,6 @@ void StoragePartitionImpl::ClearDataForBucketsDone(
 }
 
 void StoragePartitionImpl::ClearData(uint32_t remove_mask,
-                                     uint32_t quota_storage_remove_mask,
                                      const blink::StorageKey& storage_key,
                                      const base::Time begin,
                                      const base::Time end,
@@ -3436,7 +3276,7 @@ void StoragePartitionImpl::ClearData(uint32_t remove_mask,
   }
   bool perform_storage_cleanup =
       begin.is_null() && end.is_max() && storage_key.origin().opaque();
-  ClearDataImpl(remove_mask, quota_storage_remove_mask, storage_key,
+  ClearDataImpl(remove_mask, storage_key,
                 /*filter_builder=*/nullptr, StorageKeyPolicyMatcherFunction(),
                 std::move(deletion_filter), perform_storage_cleanup, begin, end,
                 std::move(callback));
@@ -3444,7 +3284,6 @@ void StoragePartitionImpl::ClearData(uint32_t remove_mask,
 
 void StoragePartitionImpl::ClearData(
     uint32_t remove_mask,
-    uint32_t quota_storage_remove_mask,
     BrowsingDataFilterBuilder* filter_builder,
     StorageKeyPolicyMatcherFunction storage_key_policy_matcher,
     network::mojom::CookieDeletionFilterPtr cookie_deletion_filter,
@@ -3453,8 +3292,8 @@ void StoragePartitionImpl::ClearData(
     const base::Time end,
     base::OnceClosure callback) {
   DCHECK(initialized_);
-  ClearDataImpl(remove_mask, quota_storage_remove_mask, blink::StorageKey(),
-                filter_builder, std::move(storage_key_policy_matcher),
+  ClearDataImpl(remove_mask, blink::StorageKey(), filter_builder,
+                std::move(storage_key_policy_matcher),
                 std::move(cookie_deletion_filter), perform_storage_cleanup,
                 begin, end, std::move(callback));
 }
@@ -3810,16 +3649,15 @@ StoragePartitionImpl::CreateURLLoaderFactoryParams() {
       network::mojom::URLLoaderFactoryParams::New();
   // This method is used for browser-process initiated requests for which there
   // is no corresponding RenderProcessHost.
-  params->process_id = network::OriginatingProcess::browser();
+  params->process_id = network::OriginatingProcessId::browser();
   params->automatically_assign_isolation_info = true;
   params->is_orb_enabled = false;
   params->is_trusted = true;
   // For browser-process initiated requests there is no corresponding service
   // worker origin, so just pass an opaque origin.
-  // TODO(crbug.com/379869738) Remove GetUnsafeValue.
   params->url_loader_network_observer =
-      CreateURLLoaderNetworkObserverForServiceOrSharedWorker(
-          params->process_id.GetUnsafeValue(), url::Origin());
+      CreateURLLoaderNetworkObserverForServiceOrSharedWorker(params->process_id,
+                                                             url::Origin());
   params->disable_web_security =
       base::CommandLine::ForCurrentProcess()->HasSwitch(
           switches::kDisableWebSecurity);
@@ -4022,7 +3860,7 @@ StoragePartitionImpl::URLLoaderNetworkContext::URLLoaderNetworkContext(
 }
 
 StoragePartitionImpl::URLLoaderNetworkContext::URLLoaderNetworkContext(
-    int process_id,
+    const network::OriginatingProcessId& process_id,
     const url::Origin& worker_origin)
     : type_(Type::kSharedOrServiceWorkerContext),
       process_id_(process_id),

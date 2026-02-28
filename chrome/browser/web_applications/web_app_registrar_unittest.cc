@@ -1115,7 +1115,7 @@ TEST_F(WebAppRegistrarTest,
       test::CreateWebApp(GURL("isolated-app://random_name"));
   const webapps::AppId app_id = web_app->app_id();
 
-  web_app->SetDisplayMode(DisplayMode::kBorderless);
+  web_app->SetDisplayMode(DisplayMode::kUnframed);
   web_app->SetUserDisplayMode(mojom::UserDisplayMode::kBrowser);
   web_app->SetInstallState(proto::INSTALLED_WITH_OS_INTEGRATION);
   web_app->SetIsolationData(
@@ -1126,7 +1126,7 @@ TEST_F(WebAppRegistrarTest,
 
   RegisterAppUnsafe(std::move(web_app));
 
-  EXPECT_EQ(DisplayMode::kBorderless,
+  EXPECT_EQ(DisplayMode::kUnframed,
             registrar().GetAppEffectiveDisplayMode(app_id));
 }
 
@@ -1235,13 +1235,16 @@ TEST_F(WebAppRegistrarTest, TestIsDefaultManagementInstalled) {
   RegisterAppUnsafe(std::move(web_app2));
 
   // Currently default installed.
-  EXPECT_TRUE(registrar().IsInstalledByDefaultManagement(app_id1));
+  EXPECT_TRUE(registrar().AppMatches(
+      app_id1, WebAppFilter::InstalledByDefaultManagement()));
   // Currently installed by source other than installed.
-  EXPECT_FALSE(registrar().IsInstalledByDefaultManagement(app_id2));
+  EXPECT_FALSE(registrar().AppMatches(
+      app_id2, WebAppFilter::InstalledByDefaultManagement()));
 
   // Uninstalling the previously default installed app.
   Uninstall(app_id1);
-  EXPECT_FALSE(registrar().IsInstalledByDefaultManagement(app_id1));
+  EXPECT_FALSE(registrar().AppMatches(
+      app_id1, WebAppFilter::InstalledByDefaultManagement()));
 }
 
 // This test uses SetLinkCapturingUserPreference, which is not appropriate for
@@ -1912,8 +1915,8 @@ class WebAppRegistrarDisplayModeTest
       case DisplayMode::kStandalone:
       case DisplayMode::kFullscreen:
         return DisplayMode::kStandalone;
-      case DisplayMode::kBorderless:
-        return DisplayMode::kBorderless;
+      case DisplayMode::kUnframed:
+        return DisplayMode::kUnframed;
       case DisplayMode::kWindowControlsOverlay:
         return DisplayMode::kWindowControlsOverlay;
       case DisplayMode::kTabbed:
@@ -1934,8 +1937,8 @@ class WebAppRegistrarDisplayModeTest
       case DisplayMode::kFullscreen:
       case DisplayMode::kTabbed:
         return DisplayMode::kStandalone;
-      case DisplayMode::kBorderless:
-        return DisplayMode::kBorderless;
+      case DisplayMode::kUnframed:
+        return DisplayMode::kUnframed;
       case DisplayMode::kWindowControlsOverlay:
         return DisplayMode::kWindowControlsOverlay;
       case DisplayMode::kUndefined:
@@ -2038,7 +2041,7 @@ INSTANTIATE_TEST_SUITE_P(All,
                                          DisplayMode::kMinimalUi,
                                          DisplayMode::kStandalone,
                                          DisplayMode::kFullscreen,
-                                         DisplayMode::kBorderless,
+                                         DisplayMode::kUnframed,
                                          DisplayMode::kPictureInPicture,
                                          DisplayMode::kWindowControlsOverlay,
                                          DisplayMode::kTabbed),
@@ -2052,7 +2055,7 @@ INSTANTIATE_TEST_SUITE_P(All,
                                return "Standalone";
                              case DisplayMode::kFullscreen:
                                return "Fullscreen";
-                             case DisplayMode::kBorderless:
+                             case DisplayMode::kUnframed:
                                return "Borderless";
                              case DisplayMode::kPictureInPicture:
                                return "PictureInPicture";
@@ -2064,7 +2067,6 @@ INSTANTIATE_TEST_SUITE_P(All,
                                NOTREACHED();
                            }
                          });
-
 
 class WebAppRegistrarParameterizedTest
     : public WebAppRegistrarTest,

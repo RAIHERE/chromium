@@ -33,8 +33,8 @@ static inline bool IsValidDirAttribute(const AtomicString& value) {
 // Keywords from CSS font-size are skipped.
 static inline bool IsDisallowedMathSizeAttribute(const AtomicString& value) {
   return EqualIgnoringASCIICase(value, "medium") ||
-         value.EndsWith("large", kTextCaseASCIIInsensitive) ||
-         value.EndsWith("small", kTextCaseASCIIInsensitive) ||
+         value.EndsWithIgnoringAsciiCase("large") ||
+         value.EndsWithIgnoringAsciiCase("small") ||
          EqualIgnoringASCIICase(value, "smaller") ||
          EqualIgnoringASCIICase(value, "larger") ||
          EqualIgnoringASCIICase(value, "math");
@@ -53,20 +53,20 @@ bool MathMLElement::IsPresentationAttribute(const QualifiedName& name) const {
 
 namespace {
 
-bool ParseScriptLevel(const AtomicString& attributeValue,
-                      unsigned& scriptLevel,
+bool ParseScriptLevel(const AtomicString& attribute_value,
+                      unsigned& script_level,
                       bool& add) {
-  String value = attributeValue;
-  if (value.StartsWith("+") || value.StartsWith("-")) {
+  StringView value = attribute_value;
+  if (value.starts_with('+') || value.starts_with('-')) {
     add = true;
-    value = value.Right(1);
+    value = value.substr(value.length() - 1, 1);
   }
 
   return VisitCharacters(value, [&](auto chars) {
     NumberParsingResult result;
     constexpr auto kOptions =
         NumberParsingOptions().SetAcceptMinusZeroForUnsigned();
-    scriptLevel = CharactersToUInt(chars, kOptions, &result);
+    script_level = CharactersToUInt(chars, kOptions, &result);
     return result == NumberParsingResult::kSuccess;
   });
 }
@@ -94,15 +94,15 @@ void MathMLElement::CollectStyleForPresentationAttribute(
     AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kColor,
                                             value);
   } else if (name == mathml_names::kScriptlevelAttr) {
-    unsigned scriptLevel = 0;
+    unsigned script_level = 0;
     bool add = false;
-    if (ParseScriptLevel(value, scriptLevel, add)) {
+    if (ParseScriptLevel(value, script_level, add)) {
       if (add) {
         AddPropertyToPresentationAttributeStyle(
             style, CSSPropertyID::kMathDepth, StrCat({"add(", value, ")"}));
       } else {
         AddPropertyToPresentationAttributeStyle(
-            style, CSSPropertyID::kMathDepth, scriptLevel,
+            style, CSSPropertyID::kMathDepth, script_level,
             CSSPrimitiveValue::UnitType::kNumber);
       }
     }
@@ -152,8 +152,10 @@ const CSSPrimitiveValue* MathMLElement::ParseMathLength(
   // TODO(crbug.com/476061189) We are using attribute name as property name for
   // caching property-dependent random() values. This behaviour is not
   // specified.
-  CSSParserLocalContext local_context = CSSParserLocalContext(
-      CSSPropertyName(AtomicString(attr_name.ToString())));
+  CSSParserLocalContext local_context(
+      CSSPropertyName(AtomicString(attr_name.ToString())),
+      CSSPropertyID::kInvalid,
+      /*custom_function_name=*/g_null_atom);
   const CSSPrimitiveValue* parsed_value = CSSParser::ParseLengthPercentage(
       value,
       StrictCSSParserContext(GetExecutionContext()->GetSecureContextMode()),

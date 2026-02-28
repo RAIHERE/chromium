@@ -249,7 +249,7 @@ using base::UserMetricsAction;
   mediator.settingsHandler = HandlerForProtocol(dispatcher, SettingsCommands);
   mediator.tabGroupsHandler = HandlerForProtocol(dispatcher, TabGroupsCommands);
   mediator.bookmarksHandler = HandlerForProtocol(dispatcher, BookmarksCommands);
-  if (IsLensOverlayAvailable(profile->GetPrefs())) {
+  if (IsLensOverlayAllowedByPolicy(profile->GetPrefs())) {
     mediator.lensOverlayHandler =
         HandlerForProtocol(dispatcher, LensOverlayCommands);
   }
@@ -340,6 +340,7 @@ using base::UserMetricsAction;
                                   customizationEventHandler:self];
 
   LayoutGuideCenter* layoutGuideCenter = LayoutGuideCenterForBrowser(browser);
+  mediator.layoutGuideCenter = layoutGuideCenter;
   UILayoutGuide* layoutGuide =
       [layoutGuideCenter makeLayoutGuideNamed:kToolsMenuGuide];
   [self.baseViewController.view addLayoutGuide:layoutGuide];

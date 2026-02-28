@@ -37,6 +37,7 @@
 #include "base/uuid.h"
 #include "base/values.h"
 #include "base/version_info/channel.h"
+#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/about_flags.h"
 #include "chrome/browser/browser_process.h"
@@ -46,6 +47,7 @@
 #include "chrome/browser/devtools/devtools_select_file_dialog.h"
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/devtools/url_constants.h"
+#include "chrome/browser/lifetime/application_lifetime.h"
 #include "chrome/browser/policy/profile_policy_connector.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_avatar_icon_util.h"
@@ -792,7 +794,8 @@ bool IsAnyAidaPoweredFeatureEnabled() {
              ::features::kDevToolsAiAssistancePerformanceAgent) ||
          base::FeatureList::IsEnabled(
              ::features::kDevToolsAiCodeCompletion) ||
-         base::FeatureList::IsEnabled(::features::kDevToolsAiCodeGeneration);
+         base::FeatureList::IsEnabled(::features::kDevToolsAiCodeGeneration) ||
+         base::FeatureList::IsEnabled(::features::kDevToolsAiCodeCompletionStyles);
 }
 }  // namespace
 
@@ -1714,21 +1717,20 @@ base::DictValue DevToolsUIBindings::GetSyncInformationForProfile(
       IdentityManagerFactory::GetForProfile(profile);
   AccountInfo extended_info =
       identity_manager->FindExtendedAccountInfo(account_info);
-  gfx::Image account_image;
-  if (extended_info.IsEmpty() || extended_info.account_image.IsEmpty()) {
-    account_image = ui::ResourceBundle::GetSharedInstance().GetImageNamed(
-        profiles::GetPlaceholderAvatarIconResourceID());
-  } else {
-    account_image = extended_info.account_image;
-  }
+  gfx::Image account_image = extended_info.GetAvatarImage().value_or(
+      ui::ResourceBundle::GetSharedInstance().GetImageNamed(
+          profiles::GetPlaceholderAvatarIconResourceID()));
   scoped_refptr<base::RefCountedMemory> png_bytes =
       account_image.As1xPNGBytes();
   if (png_bytes->size() > 0) {
     result.Set("accountImage", base::Base64Encode(*png_bytes));
   }
 
-  if (!extended_info.IsEmpty()) {
-    result.Set("accountFullName", extended_info.full_name);
+  if (extended_info.GetFullName().has_value()) {
+    result.Set("accountFullName", *extended_info.GetFullName());
+  }
+  if (extended_info.GetGivenName().has_value()) {
+    result.Set("accountGivenName", *extended_info.GetGivenName());
   }
 
   return result;
@@ -1925,6 +1927,23 @@ base::DictValue DevToolsUIBindings::GetHostConfigDictionary(Profile* profile) {
                       std::move(ai_code_generation_dict));
   }
 
+  if (base::FeatureList::IsEnabled(::features::kDevToolsAiCodeCompletionStyles)) {
+    base::DictValue ai_code_completion_styles_dict;
+    ai_code_completion_styles_dict.Set(
+        "enabled", base::FeatureList::IsEnabled(
+                       ::features::kDevToolsAiCodeCompletionStyles));
+    ai_code_completion_styles_dict.Set(
+        "modelId", features::kDevToolsAiCodeCompletionStylesModelId.Get());
+    ai_code_completion_styles_dict.Set(
+        "temperature", features::kDevToolsAiCodeCompletionStylesTemperature.Get());
+    ai_code_completion_styles_dict.Set(
+        "userTier",
+        features::kDevToolsAiCodeCompletionStylesUserTier.GetName(
+            features::kDevToolsAiCodeCompletionStylesUserTier.Get()));
+    response_dict.Set("devToolsAiCodeCompletionStyles",
+                      std::move(ai_code_completion_styles_dict));
+  }
+
   if (base::FeatureList::IsEnabled(
           ::features::kDevToolsEnableDurableMessages)) {
     base::DictValue devtools_durable_message_dict;
@@ -2012,6 +2031,16 @@ base::DictValue DevToolsUIBindings::GetHostConfigDictionary(Profile* profile) {
                       std::move(devtools_animation_styles_in_styles_tab_dict));
   }
 
+#if BUILDFLAG(ENABLE_JXL_DECODER)
+  const bool jpeg_xl_image_format_enabled =
+      base::FeatureList::IsEnabled(blink::features::kJXLImageFormat);
+#else
+  const bool jpeg_xl_image_format_enabled = false;
+#endif
+  response_dict.Set(
+      "devToolsJpegXlImageFormat",
+      base::DictValue().Set("enabled", jpeg_xl_image_format_enabled));
+
   base::DictValue deep_links_via_extensibility_api_dict;
   deep_links_via_extensibility_api_dict.Set(
       "enabled",
@@ -2084,25 +2113,12 @@ base::DictValue DevToolsUIBindings::GetHostConfigDictionary(Profile* profile) {
       base::DictValue().Set("enabled", base::FeatureList::IsEnabled(
                                            ::features::kDevToolsLiveEdit)));
 
-  response_dict.Set(
-      "devToolsIndividualRequestThrottling",
-      base::DictValue().Set(
-          "enabled", base::FeatureList::IsEnabled(
-                         ::features::kDevToolsIndividualRequestThrottling)));
-
   base::DictValue device_bound_sessions_debugging;
   device_bound_sessions_debugging.Set(
       "enabled",
       base::FeatureList::IsEnabled(features::kDeviceBoundSessionsDevTools));
   response_dict.Set("deviceBoundSessionsDebugging",
                     std::move(device_bound_sessions_debugging));
-
-  base::DictValue prompt_api_dict;
-  prompt_api_dict.Set("enabled", base::FeatureList::IsEnabled(
-                                     ::features::kDevToolsAiPromptApi));
-  prompt_api_dict.Set("allowWithoutGpu",
-                      features::kDevToolsAiPromptApiAllowWithoutGpu.Get());
-  response_dict.Set("devToolsAiPromptApi", std::move(prompt_api_dict));
 
   if (base::FeatureList::IsEnabled(
           ::features::kDevToolsAiAssistanceContextSelectionAgent)) {
@@ -2324,6 +2340,10 @@ void DevToolsUIBindings::SetChromeFlag(const std::string& flag_name,
   SetChromeFlagInternal(profile_, flag_name, value);
 }
 
+void DevToolsUIBindings::RequestRestart() {
+  chrome::AttemptRestart();
+}
+
 void DevToolsUIBindings::MaybeStartLogging() {
   if (session_id_for_logging_.is_empty()) {
     session_id_for_logging_ = base::UnguessableToken::Create();
@@ -2519,7 +2539,7 @@ void DevToolsUIBindings::FilePathsChanged(
   size_t added_index = 0;
   size_t removed_index = 0;
   // Dispatch limited amount of file paths in a time to avoid
-  // IPC max message size limit. See https://crbug.com/797817.
+  // IPC max message size limit. See https://crbug.com/41362454.
   while (changed_index < changed_paths.size() ||
          added_index < added_paths.size() ||
          removed_index < removed_paths.size()) {

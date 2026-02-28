@@ -82,7 +82,6 @@
 #include "third_party/blink/renderer/core/frame/local_frame.h"
 #include "third_party/blink/renderer/core/frame/settings.h"
 #include "third_party/blink/renderer/core/fullscreen/fullscreen.h"
-#include "third_party/blink/renderer/core/html/anchor_element_observer.h"
 #include "third_party/blink/renderer/core/html/custom/custom_element.h"
 #include "third_party/blink/renderer/core/html/custom/custom_element_registry.h"
 #include "third_party/blink/renderer/core/html/custom/element_internals.h"
@@ -121,6 +120,7 @@
 #include "third_party/blink/renderer/core/page/spatial_navigation.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
 #include "third_party/blink/renderer/core/paint/timing/container_timing.h"
+#include "third_party/blink/renderer/core/scroll/scroll_into_view_util.h"
 #include "third_party/blink/renderer/core/svg/svg_svg_element.h"
 #include "third_party/blink/renderer/core/timing/soft_navigation_heuristics.h"
 #include "third_party/blink/renderer/core/trustedtypes/trusted_script.h"
@@ -325,7 +325,7 @@ void HTMLElement::ApplyBorderAttributeToStyle(
 }
 
 bool HTMLElement::IsPresentationAttribute(const QualifiedName& name) const {
-  if (name == html_names::kAlignAttr || name == html_names::kAnchorAttr ||
+  if (name == html_names::kAlignAttr ||
       name == html_names::kContenteditableAttr ||
       name == html_names::kHiddenAttr || name == html_names::kLangAttr ||
       name.Matches(xml_names::kLangAttr) ||
@@ -353,11 +353,6 @@ void HTMLElement::CollectStyleForPresentationAttribute(
     } else {
       AddPropertyToPresentationAttributeStyle(style, CSSPropertyID::kTextAlign,
                                               value);
-    }
-  } else if (name == html_names::kAnchorAttr) {
-    if (RuntimeEnabledFeatures::HTMLAnchorAttributeEnabled()) {
-      AddPropertyToPresentationAttributeStyle(
-          style, CSSPropertyID::kPositionAnchor, CSSValueID::kAuto);
     }
   } else if (name == html_names::kContenteditableAttr) {
     AtomicString lower_value = value.LowerASCII();
@@ -582,8 +577,6 @@ const AttributeTriggers* HTMLElement::TriggersForAttributeName(
        nullptr},
       {html_names::kOnmousewheelAttr, kNoWebFeature,
        event_type_names::kMousewheel, nullptr},
-      {html_names::kOnoverscrollAttr, kNoWebFeature,
-       event_type_names::kOverscroll, nullptr},
       {html_names::kOnpasteAttr, kNoWebFeature, event_type_names::kPaste,
        nullptr},
       {html_names::kOnpauseAttr, kNoWebFeature, event_type_names::kPause,
@@ -850,37 +843,31 @@ void HTMLElement::AttributeChanged(const AttributeModificationParams& params) {
     return;
   }
 
+  if (params.reason != AttributeModificationReason::kDirectly) {
+    return;
+  }
+
   if (params.name == html_names::kCommandAttr) {
     bool old_is_overscroll = IsOverscrollCommand(
         GetCommandEventType(params.old_value, GetExecutionContext()));
     bool new_is_overscroll = IsOverscrollCommand(
         GetCommandEventType(params.new_value, GetExecutionContext()));
-    const AtomicString& command_for =
-        FastGetAttribute(html_names::kCommandforAttr);
-    if (old_is_overscroll != new_is_overscroll && !command_for.empty()) {
+    if (isConnected() && old_is_overscroll != new_is_overscroll) {
       if (new_is_overscroll) {
-        GetDocument().AddOverscrollCommandTarget(command_for);
+        GetDocument().AddOverscrollCommandInvoker(*this);
       } else {
-        CHECK(old_is_overscroll);
-        GetDocument().RemoveOverscrollCommandTarget(command_for);
+        GetDocument().RemoveOverscrollCommandInvoker(*this);
       }
+      GetDocument().MarkOverscrollCommandTargetsDirty();
     }
   } else if (params.name == html_names::kCommandforAttr) {
-    if (IsOverscrollCommand(
-            GetCommandEventType(FastGetAttribute(html_names::kCommandAttr),
-                                GetExecutionContext())) &&
-        params.old_value != params.new_value) {
-      if (!params.old_value.empty()) {
-        GetDocument().RemoveOverscrollCommandTarget(params.old_value);
-      }
-      if (!params.new_value.empty()) {
-        GetDocument().AddOverscrollCommandTarget(params.new_value);
-      }
+    if (isConnected() && IsOverscrollCommand(GetCommandEventType(
+                             FastGetAttribute(html_names::kCommandAttr),
+                             GetExecutionContext()))) {
+      GetDocument().MarkOverscrollCommandTargetsDirty();
     }
   }
 
-  if (params.reason != AttributeModificationReason::kDirectly)
-    return;
   // adjustedFocusedElementInTreeScope() is not trivial. We should check
   // attribute names, then call adjustedFocusedElementInTreeScope().
   if (params.name == html_names::kHiddenAttr && !params.new_value.IsNull()) {
@@ -1012,7 +999,7 @@ void HTMLElement::setInnerText(const String& text) {
   // the function, we can guarantee that no exceptions will be thrown.
   EventQueueScope delay_mutation_events;
 
-  if (!text.Contains('\n') && !text.Contains('\r')) {
+  if (!text.contains('\n') && !text.contains('\r')) {
     if (text.empty()) {
       RemoveChildren();
       return;
@@ -1041,10 +1028,11 @@ void HTMLElement::setOuterText(const String& text,
   Node* new_child = nullptr;
 
   // Convert text to fragment with <br> tags instead of linebreaks if needed.
-  if (text.Contains('\r') || text.Contains('\n'))
+  if (text.contains('\r') || text.contains('\n')) {
     new_child = TextToFragment(text, exception_state);
-  else
+  } else {
     new_child = Text::Create(GetDocument(), text);
+  }
 
   if (exception_state.HadException())
     return;
@@ -1666,6 +1654,11 @@ void HTMLElement::ShowPopoverInternal(Element* invoker,
     // :popover-open https://issues.chromium.org/issues/375004874
     OwnerShadowHost()->PseudoStateChanged(CSSSelector::kPseudoOpen);
   }
+  if (IsA<HTMLMenuItemElement>(invoker)) {
+    // There are some edge cases where :open doesn't change here, but in
+    // practice this basically means it's changing.
+    invoker->PseudoStateChanged(CSSSelector::kPseudoOpen);
+  }
 
   CHECK(!original_document.AllOpenPopovers().Contains(this));
   original_document.AllOpenPopovers().insert(this);
@@ -2106,6 +2099,11 @@ PopoverHideResult HTMLElement::HidePopoverInternal(
     // :popover-open https://issues.chromium.org/issues/375004874
     OwnerShadowHost()->PseudoStateChanged(CSSSelector::kPseudoOpen);
   }
+  if (IsA<HTMLMenuItemElement>(invoker)) {
+    // There are some edge cases where :open doesn't change here, but in
+    // practice this basically means it's changing.
+    invoker->PseudoStateChanged(CSSSelector::kPseudoOpen);
+  }
 
   document.AllOpenPopovers().erase(this);
 
@@ -2233,7 +2231,7 @@ const HTMLElement* NearestTargetPopoverForInvoker(
         // This code should return the *target popover* for several kinds of
         // potential invokers:
 
-        // Case 1. A <menuitem> element with the `commandfor` attribute.
+        // A <menuitem> element with the `commandfor` attribute.
         if (auto* menu_item = DynamicTo<HTMLMenuItemElement>(test_node)) {
           if (auto* target =
                   DynamicTo<HTMLElement>(menu_item->commandForElement());
@@ -2242,7 +2240,7 @@ const HTMLElement* NearestTargetPopoverForInvoker(
           }
         }
 
-        // Case 2. A <button> element with the `commandfor` attribute.
+        // A <button> element with the `commandfor` attribute.
         if (auto* button = DynamicTo<HTMLButtonElement>(test_node)) {
           if (auto* target =
                   DynamicTo<HTMLElement>(button->commandForElement());
@@ -2251,7 +2249,7 @@ const HTMLElement* NearestTargetPopoverForInvoker(
           }
         }
 
-        // Case 3. An HTMLFormControlElement with the `popovertarget` attribute.
+        // An HTMLFormControlElement with the `popovertarget` attribute.
         if (auto* form_element = DynamicTo<HTMLFormControlElement>(
                 const_cast<Node*>(test_node))) {
           if (auto* target =
@@ -2260,7 +2258,16 @@ const HTMLElement* NearestTargetPopoverForInvoker(
           }
         }
 
-        // Case 4. A select element whose picker is a popover.
+        // An element with the `interestfor` attribute.
+        if (auto* element = DynamicTo<Element>(const_cast<Node*>(test_node))) {
+          if (auto* target =
+                  DynamicTo<HTMLElement>(element->InterestForElement());
+              target && target->IsPopover()) {
+            return target;
+          }
+        }
+
+        // A select element whose picker is a popover.
         if (auto* select = DynamicTo<HTMLSelectElement>(test_node)) {
           if (auto* popover_picker = select->PopoverPickerElement()) {
             if (RuntimeEnabledFeatures::LightDismissFromClickEnabled()) {
@@ -2269,14 +2276,14 @@ const HTMLElement* NearestTargetPopoverForInvoker(
           }
         }
 
-        // Case 5. A customizable combobox whose picker is a popover.
+        // A customizable combobox whose picker is a popover.
         if (auto* input = DynamicTo<HTMLInputElement>(test_node)) {
           if (input->IsBaseAppearanceCombobox()) {
             return input->DataList();
           }
         }
 
-        // Case 6. A custom element button with `ElementInternals.type=button`
+        // A custom element button with `ElementInternals.type=button`
         // with the `popovertarget` attribute or the `commandfor` attribute.
         if (auto* html_element = DynamicTo<HTMLElement>(test_node);
             html_element &&
@@ -2382,9 +2389,7 @@ const HTMLElement* HTMLElement::FindTopmostPopoverAncestor(
   // 1. DOM tree ancestor.
   check_ancestor(
       FlatTreeTraversal::ParentElement(new_popover_or_top_layer_element));
-  // 2. Anchor attribute.
-  check_ancestor(new_popover_or_top_layer_element.anchorElement());
-  // 3. Invoker to popover
+  // 2. Invoker to popover
   check_ancestor(new_popovers_invoker);
   return topmost_popover_ancestor;
 }
@@ -2539,14 +2544,25 @@ bool HTMLElement::IsValidBuiltinPopoverCommand(CommandEventType command) {
 
 bool HTMLElement::IsValidBuiltinCommand(HTMLElement& invoker,
                                         CommandEventType command) {
-  return Element::IsValidBuiltinCommand(invoker, command) ||
-         IsValidBuiltinPopoverCommand(command) ||
-         (RuntimeEnabledFeatures::HTMLCommandActionsV2Enabled() &&
-          (command == CommandEventType::kToggleFullscreen ||
-           command == CommandEventType::kRequestFullscreen ||
-           command == CommandEventType::kExitFullscreen)) ||
-         (RuntimeEnabledFeatures::HTMLCommandForScrollCommandsEnabled() &&
-          Element::IsScrollCommand(command));
+  if (Element::IsValidBuiltinCommand(invoker, command) ||
+      IsValidBuiltinPopoverCommand(command)) {
+    return true;
+  }
+  if (command == CommandEventType::kToggleFullscreen ||
+      command == CommandEventType::kRequestFullscreen ||
+      command == CommandEventType::kExitFullscreen) {
+    CHECK(RuntimeEnabledFeatures::HTMLCommandActionsV2Enabled());
+    return true;
+  }
+  if (Element::IsScrollByPageCommand(command)) {
+    CHECK(RuntimeEnabledFeatures::HTMLCommandForScrollCommandsEnabled());
+    return true;
+  }
+  if (command == CommandEventType::kToggleOverscroll) {
+    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    return true;
+  }
+  return false;
 }
 
 bool HTMLElement::HandleCommandInternal(HTMLElement& invoker,
@@ -2555,6 +2571,101 @@ bool HTMLElement::HandleCommandInternal(HTMLElement& invoker,
     return false;
   }
   if (Element::HandleCommandInternal(invoker, command)) {
+    return true;
+  }
+
+  if (command == CommandEventType::kToggleOverscroll) {
+    CHECK(RuntimeEnabledFeatures::OverscrollGesturesEnabled());
+    auto* overscroll_area_parent =
+        GetPseudoElement(kPseudoIdOverscrollAreaParent);
+    if (!overscroll_area_parent) {
+      return true;
+    }
+
+    auto* overscroll_area_object =
+        DynamicTo<LayoutBox>(overscroll_area_parent->GetLayoutObject());
+    if (!overscroll_area_object) {
+      return true;
+    }
+
+    auto* scrollable_area = DynamicTo<PaintLayerScrollableArea>(
+        overscroll_area_object->GetScrollableArea());
+    CHECK(scrollable_area);
+
+    const cc::SnapContainerData* container_data =
+        scrollable_area->GetSnapContainerData();
+    CHECK(container_data);
+    CHECK_EQ(container_data->size(), 2u);
+
+    const cc::TargetSnapAreaElementIds& previous_snap_targets =
+        container_data->GetTargetSnapAreaElementIds();
+    const auto& first_data = container_data->at(0);
+    const auto& second_data = container_data->at(1);
+
+    ScrollOffset scroll_origin =
+        gfx::PointF(scrollable_area->ScrollOrigin()).OffsetFromOrigin();
+
+    // We do the math in absolute space, since that's the space in which our
+    // snap targets are defined.
+    ScrollOffset old_offset =
+        scrollable_area->GetScrollOffset() + scroll_origin;
+    ScrollOffset new_offset;
+    if (previous_snap_targets.x == first_data.element_id) {
+      gfx::RectF target_rect = second_data.rect;
+
+      PhysicalSize box_size = overscroll_area_object->PhysicalContentBoxSize();
+
+      // We need to find distances in all 4 directions relative to the current
+      // scroll offset.
+      float min_x_offset = std::min(target_rect.x() - old_offset.x(), 0.f);
+      float min_y_offset = std::min(target_rect.y() - old_offset.y(), 0.f);
+      float max_x_offset = std::max(
+          target_rect.right() - box_size.width.ToFloat() - old_offset.x(), 0.f);
+      float max_y_offset = std::max(
+          target_rect.bottom() - box_size.height.ToFloat() - old_offset.y(),
+          0.f);
+
+      // These are now distances from scroll offset, so we need to pick a
+      // dimension which has the furthest distance to scroll from current
+      // offset. Note that "min" values should be less than or equal to 0 as a
+      // delta for the current offset.
+      // If values are equal we prefer the y axis and the "min" within the axis.
+      if (std::max(-min_x_offset, max_x_offset) >
+          std::max(-min_y_offset, max_y_offset)) {
+        new_offset.set_x(-min_x_offset >= max_x_offset ? min_x_offset
+                                                       : max_x_offset);
+      } else {
+        new_offset.set_y(-min_y_offset >= max_y_offset ? min_y_offset
+                                                       : max_y_offset);
+      }
+      // Now new offset has the delta we need to move relative to the old
+      // offset. We need to convert that into an actual offset (still in
+      // absolute space though).
+      new_offset += old_offset;
+    } else {
+      new_offset = scroll_origin;
+    }
+
+    bool x_changed = new_offset.x() != old_offset.x();
+    bool y_changed = new_offset.y() != old_offset.y();
+
+    // Convert the offset into scroll origin space.
+    new_offset -= scroll_origin;
+
+    std::unique_ptr<cc::SnapSelectionStrategy> strategy =
+        cc::SnapSelectionStrategy::CreateForEndPosition(
+            scrollable_area->ScrollOffsetToPosition(new_offset), x_changed,
+            y_changed);
+    std::optional<gfx::PointF> snap_point =
+        scrollable_area->GetSnapPositionAndSetTarget(*strategy);
+    if (snap_point.has_value()) {
+      new_offset = scrollable_area->ScrollPositionToOffset(snap_point.value());
+    }
+
+    scrollable_area->SetScrollOffset(new_offset,
+                                     mojom::blink::ScrollType::kProgrammatic,
+                                     cc::ScrollSourceType::kAbsoluteScroll,
+                                     mojom::blink::ScrollBehavior::kAuto);
     return true;
   }
 
@@ -2677,6 +2788,11 @@ bool HTMLElement::HandleCommandForActivation() {
             CommandEventType::kNone);
   const auto command_event_type =
       GetCommandEventType(action, GetExecutionContext());
+  bool is_valid_builtin =
+      command_target->IsValidBuiltinCommand(*this, command_event_type);
+  if (!is_valid_builtin && command_event_type != CommandEventType::kCustom) {
+    return false;
+  }
   Event* command_event =
       CommandEvent::Create(event_type_names::kCommand, action, this);
   command_target->DispatchEvent(*command_event);
@@ -2730,7 +2846,7 @@ CommandEventType HTMLElement::GetCommandEventType(
   }
 
   // Custom Invoke Action
-  if (action.StartsWith("--")) {
+  if (action.starts_with("--")) {
     return CommandEventType::kCustom;
   }
 
@@ -3163,14 +3279,21 @@ Node::InsertionNotificationRequest HTMLElement::InsertedInto(
   if (IsFormAssociatedCustomElement())
     EnsureElementInternals().InsertedInto(insertion_point);
 
+  if (insertion_point.isConnected() &&
+      IsOverscrollCommand(GetCommandEventType(
+          FastGetAttribute(html_names::kCommandAttr), GetExecutionContext()))) {
+    GetDocument().AddOverscrollCommandInvoker(*this);
+    GetDocument().MarkOverscrollCommandTargetsDirty();
+  }
+
   return kInsertionDone;
 }
 
 void HTMLElement::RemovedFrom(ContainerNode& insertion_point) {
+  bool was_in_document = insertion_point.isConnected();
   if (IsPopover() && !GetDocument().StatePreservingAtomicMoveInProgress()) {
     // If a popover is removed from the document, make sure it gets
     // removed from the popover element stack and the top layer.
-    bool was_in_document = insertion_point.isConnected();
     if (was_in_document) {
       // We can't run focus event handlers while removing elements.
       HidePopoverInternal(
@@ -3183,6 +3306,13 @@ void HTMLElement::RemovedFrom(ContainerNode& insertion_point) {
   Element::RemovedFrom(insertion_point);
   if (IsFormAssociatedCustomElement())
     EnsureElementInternals().RemovedFrom(insertion_point);
+
+  if (was_in_document &&
+      IsOverscrollCommand(GetCommandEventType(
+          FastGetAttribute(html_names::kCommandAttr), GetExecutionContext()))) {
+    GetDocument().RemoveOverscrollCommandInvoker(*this);
+    GetDocument().MarkOverscrollCommandTargetsDirty();
+  }
 }
 
 void HTMLElement::DidMoveToNewDocument(Document& old_document) {
@@ -3336,13 +3466,13 @@ void HTMLElement::AddHTMLBackgroundImageToStyle(
     HeapVector<CSSPropertyValue, 8>& style,
     const String& url_value,
     const AtomicString& initiator_name) {
-  String url = StripLeadingAndTrailingHTMLSpaces(url_value);
+  StringView url = StripLeadingAndTrailingHtmlSpaces(url_value);
   if (url.empty()) {
     return;
   }
   auto* image_value =
       MakeGarbageCollected<CSSImageValue>(*MakeGarbageCollected<CSSUrlData>(
-          AtomicString(url), GetDocument().CompleteURL(url),
+          url.ToAtomicString(), GetDocument().CompleteURL(url),
           Referrer(GetExecutionContext()->OutgoingReferrer(),
                    GetExecutionContext()->GetReferrerPolicy()),
           /*origin_clean=*/true, /*is_ad_related=*/false));
@@ -3361,6 +3491,14 @@ LabelsNodeList* HTMLElement::labels() {
 
 bool HTMLElement::IsInteractiveContent() const {
   return false;
+}
+
+FocusgroupFlags HTMLElement::NativeArrowKeyAxes() const {
+  // Contenteditable uses arrow keys for cursor movement in both axes.
+  if (isContentEditableForBinding()) {
+    return FocusgroupFlags::kInline | FocusgroupFlags::kBlock;
+  }
+  return Element::NativeArrowKeyAxes();
 }
 
 void HTMLElement::DefaultEventHandler(Event& event) {
@@ -3629,7 +3767,7 @@ void HTMLElement::OnNonceAttrChanged(
 
 void HTMLElement::OnContainerTimingAttrChanged(
     const AttributeModificationParams& params) {
-  if (!RuntimeEnabledFeatures::ContainerTimingEnabled()) {
+  if (!RuntimeEnabledFeatures::ContainerTimingEnabled(GetExecutionContext())) {
     return;
   }
 
@@ -3658,7 +3796,7 @@ void HTMLElement::OnContainerTimingAttrChanged(
 
 void HTMLElement::OnContainerTimingIgnoreAttrChanged(
     const AttributeModificationParams& params) {
-  if (!RuntimeEnabledFeatures::ContainerTimingEnabled()) {
+  if (!RuntimeEnabledFeatures::ContainerTimingEnabled(GetExecutionContext())) {
     return;
   }
   bool had_container_timing_ignore = !params.old_value.IsNull();
@@ -3958,6 +4096,18 @@ void HTMLElement::OnRoleAttrChanged(const AttributeModificationParams& params) {
   } else if (EqualIgnoringASCIICase(params.new_value, "treeitem")) {
     UseCounter::Count(GetDocument(), WebFeature::kRoleAttributeTreeitem);
   }
+}
+
+bool HTMLElement::IsRenderedInTopLayer() const {
+  if (FastHasAttribute(html_names::kPopoverAttr) && popoverOpen()) {
+    return true;
+  }
+  if (auto* dialog = DynamicTo<HTMLDialogElement>(this)) {
+    if (dialog->IsModal()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 }  // namespace blink

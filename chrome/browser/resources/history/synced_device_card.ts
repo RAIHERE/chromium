@@ -21,18 +21,12 @@ import type {ForeignSessionTab} from './externs.js';
 import {getCss} from './synced_device_card.css.js';
 import {getHtml} from './synced_device_card.html.js';
 
-declare global {
-  interface HTMLElementTagNameMap {
-    'history-synced-device-card': HistorySyncedDeviceCardElement;
-  }
-}
-
 export interface HistorySyncedDeviceCardElement {
   $: {
-    'card-heading': HTMLElement,
-    'collapse': CrCollapseElement,
-    'collapse-button': HTMLElement,
-    'menu-button': HTMLElement,
+    cardHeading: HTMLElement,
+    collapseButton: HTMLElement,
+    collapse: CrCollapseElement,
+    menuButton: HTMLElement,
   };
 }
 
@@ -103,9 +97,9 @@ export class HistorySyncedDeviceCardElement extends CrLitElement {
    * one for each result if the card is open.
    */
   createFocusRows(): FocusRow[] {
-    const titleRow = new FocusRow(this.$['card-heading'], null);
-    titleRow.addItem('menu', '#menu-button');
-    titleRow.addItem('collapse', '#collapse-button');
+    const titleRow = new FocusRow(this.$.cardHeading, null);
+    titleRow.addItem('menu', '#menuButton');
+    titleRow.addItem('collapse', '#collapseButton');
     const rows = [titleRow];
     if (this.opened) {
       this.shadowRoot.querySelectorAll<HTMLElement>('.item-container')

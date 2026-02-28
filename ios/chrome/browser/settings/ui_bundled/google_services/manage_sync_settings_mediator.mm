@@ -53,7 +53,8 @@
 #import "ios/chrome/browser/shared/ui/table_view/cells/table_view_text_item.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
-#import "ios/chrome/browser/signin/model/avatar_provider.h"
+#import "ios/chrome/browser/signin/model/authentication_service_observer_bridge.h"
+#import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
 #import "ios/chrome/browser/signin/model/constants.h"
 #import "ios/chrome/browser/sync/model/enterprise_utils.h"
@@ -78,14 +79,16 @@ static const syncer::UserSelectableType kAccountSwitchItems[] = {
     syncer::UserSelectableType::kAutofill,
     syncer::UserSelectableType::kPasswords,
     syncer::UserSelectableType::kPayments,
-    syncer::UserSelectableType::kPreferences};
+    syncer::UserSelectableType::kPreferences,
+    syncer::UserSelectableType::kThemes};
 
 constexpr CGFloat kErrorSymbolPointSize = 22.;
 constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
 
 }  // namespace
 
-@interface ManageSyncSettingsMediator () <IdentityManagerObserverBridgeDelegate>
+@interface ManageSyncSettingsMediator () <AuthenticationServiceObserving,
+                                          IdentityManagerObserverBridgeDelegate>
 
 // Model item for each data types.
 @property(nonatomic, strong) NSArray<TableViewItem*>* syncSwitchItems;
@@ -116,6 +119,9 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   // Observer for `IdentityManager`.
   std::unique_ptr<signin::IdentityManagerObserverBridge>
       _identityManagerObserver;
+  // Observer for `AuthenticationService`.
+  std::unique_ptr<AuthenticationServiceObserverBridge>
+      _authServiceObserverBridge;
   // Authentication service.
   raw_ptr<AuthenticationService> _authenticationService;
   // Account manager service to retrieve Chrome identities.
@@ -136,12 +142,16 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   if (self) {
     DCHECK(syncService);
     CHECK(authenticationService);
+    CHECK(authenticationService->SigninEnabled(), base::NotFatalUntil::M144);
     _syncService = syncService;
     _syncObserver = std::make_unique<SyncObserverBridge>(self, syncService);
     _identityManager = identityManager;
     _identityManagerObserver =
         std::make_unique<signin::IdentityManagerObserverBridge>(identityManager,
                                                                 self);
+    _authServiceObserverBridge =
+        std::make_unique<AuthenticationServiceObserverBridge>(
+            authenticationService, self);
     _authenticationService = authenticationService;
     _chromeAccountManagerService = accountManagerService;
     _signedInIdentity = _authenticationService->GetPrimaryIdentity(
@@ -157,12 +167,17 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   return self;
 }
 
+- (void)dealloc {
+  CHECK(!_authenticationService, base::NotFatalUntil::M152);
+}
+
 - (void)disconnect {
   _syncObserver.reset();
   _syncService = nullptr;
   _consumer = nullptr;
   _identityManager = nullptr;
   _identityManagerObserver.reset();
+  _authServiceObserverBridge.reset();
   _authenticationService = nullptr;
   self.commandHandler = nullptr;
   self.syncErrorHandler = nullptr;
@@ -211,7 +226,12 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   [model setFooter:footerItem
       forSectionWithIdentifier:SyncDataTypeSectionIdentifier];
   NSMutableArray* syncSwitchItems = [[NSMutableArray alloc] init];
+  syncer::UserSelectableTypeSet registeredTypes =
+      _syncService->GetUserSettings()->GetRegisteredSelectableTypes();
   for (syncer::UserSelectableType dataType : kAccountSwitchItems) {
+    if (!registeredTypes.Has(dataType)) {
+      continue;
+    }
     TableViewItem* switchItem = [self tableViewItemWithDataType:dataType];
     [syncSwitchItems addObject:switchItem];
     [model addItem:switchItem
@@ -440,7 +460,7 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   }
   // There should be a sign-out section. Load it if it's not there yet.
   if (!hasSignOutSection) {
-    [self loadSignOutAndManageAccountsSection];
+    [self loadManageAccountsSection];
     [self loadSwitchAccountAndSignOutSection];
     NSUInteger sectionIndex =
         [model sectionForSectionIdentifier:ManageAndSignOutSectionIdentifier];
@@ -449,12 +469,12 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   }
 }
 
-- (void)loadSignOutAndManageAccountsSection {
+- (void)loadManageAccountsSection {
   if (!self.accountStateSignedIn) {
     return;
   }
 
-  // Creates the manage accounts and sign-out section.
+  // Creates the manage accounts section.
   TableViewModel* model = self.consumer.tableViewModel;
   // The AdvancedSettingsSectionIdentifier does not exist when sync is disabled
   // by administrator for a signed-in account.
@@ -467,7 +487,7 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   [model insertSectionWithIdentifier:ManageAndSignOutSectionIdentifier
                              atIndex:previousSection + 1];
 
-  // Creates items in the manage accounts and sign-out section.
+  // Creates items in the manage accounts section.
   // Manage Google Account item.
   TableViewTextItem* item =
       [[TableViewTextItem alloc] initWithType:ManageGoogleAccountItemType];
@@ -493,28 +513,10 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   item.accessibilityTraits |= UIAccessibilityTraitButton;
   [model addItem:item
       toSectionWithIdentifier:ManageAndSignOutSectionIdentifier];
-
-  // If kSeparateProfilesForManagedAccounts is disabled, the signout button
-  // exists in the ManageAndSignOutSection.
-  if (!AreSeparateProfilesForManagedAccountsEnabled()) {
-    // Sign out item.
-    item = [[TableViewTextItem alloc] initWithType:SignOutItemType];
-    item.text = GetNSString(IDS_IOS_GOOGLE_ACCOUNT_SETTINGS_SIGN_OUT_ITEM);
-    item.textColor = [UIColor colorNamed:kBlueColor];
-    item.accessibilityTraits |= UIAccessibilityTraitButton;
-    [model addItem:item
-        toSectionWithIdentifier:ManageAndSignOutSectionIdentifier];
-
-    if (self.forcedSigninEnabled) {
-      [model setFooter:[self createForcedSigninFooterItem]
-          forSectionWithIdentifier:ManageAndSignOutSectionIdentifier];
-    }
-  }
 }
 
 - (void)loadSwitchAccountAndSignOutSection {
-  if (!self.accountStateSignedIn ||
-      !AreSeparateProfilesForManagedAccountsEnabled()) {
+  if (!self.accountStateSignedIn) {
     return;
   }
 
@@ -524,9 +526,6 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   CHECK_NE(NSNotFound, previousSection);
   [model insertSectionWithIdentifier:SwitchAccountAndSignOutSectionIdentifier
                              atIndex:previousSection + 1];
-
-  // If kSeparateProfilesForManagedAccounts is enabled, the signout button
-  // exists in its own section along with the switch profile item.
 
   // Creates items in the switch account and sign-out section.
   // Switch Account item.
@@ -630,8 +629,11 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
 
   // Types that are disabled by policy will be ignored.
   syncer::DataTypeSet requestedTypes;
+  syncer::UserSelectableTypeSet registeredTypes =
+      _syncService->GetUserSettings()->GetRegisteredSelectableTypes();
   for (syncer::UserSelectableType userSelectableType : kAccountSwitchItems) {
-    if (![self isManagedSyncSettingsDataType:userSelectableType]) {
+    if (registeredTypes.Has(userSelectableType) &&
+        ![self isManagedSyncSettingsDataType:userSelectableType]) {
       requestedTypes.Put(
           syncer::UserSelectableTypeToCanonicalDataType(userSelectableType));
     }
@@ -786,6 +788,10 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
       accessibilityIdentifier = kSyncReadingListIdentifier;
       break;
     case syncer::UserSelectableType::kThemes:
+      itemType = ThemesDataTypeItemType;
+      textStringID = IDS_IOS_SYNC_DATATYPE_IOS_THEME;
+      accessibilityIdentifier = kSyncThemesIdentifier;
+      break;
     case syncer::UserSelectableType::kExtensions:
     case syncer::UserSelectableType::kApps:
     case syncer::UserSelectableType::kSavedTabGroups:
@@ -895,7 +901,8 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
     case OpenTabsDataTypeItemType:
     case PasswordsDataTypeItemType:
     case ReadingListDataTypeItemType:
-    case SettingsDataTypeItemType: {
+    case SettingsDataTypeItemType:
+    case ThemesDataTypeItemType: {
       // Don't try to toggle if item is managed.
       DCHECK(syncSwitchItem);
       syncer::UserSelectableType dataType =
@@ -973,6 +980,14 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   return YES;
 }
 
+#pragma mark - AuthenticationServiceObserving
+
+- (void)onServiceStatusChanged {
+  if (!_authenticationService->SigninEnabled()) {
+    [self.commandHandler closeManageSyncSettings];
+  }
+}
+
 #pragma mark - ManageSyncSettingsTableViewControllerModelDelegate
 
 - (void)manageSyncSettingsTableViewControllerLoadModel:
@@ -988,7 +1003,7 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   [self loadBatchUploadSection];
   [self loadSyncDataTypeSection];
   [self loadAdvancedSettingsSection];
-  [self loadSignOutAndManageAccountsSection];
+  [self loadManageAccountsSection];
   [self loadSwitchAccountAndSignOutSection];
   [self fetchLocalDataDescriptionsForBatchUploadWithFirstLoad:YES];
   // Loading the header asks the consumer to reload the data, so it should be
@@ -1127,6 +1142,7 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
     case TypesListHeaderOrFooterType:
     case AccountErrorMessageItemType:
     case BatchUploadRecommendationItemType:
+    case ThemesDataTypeItemType:
       // Nothing to do.
       break;
   }
@@ -1342,6 +1358,5 @@ constexpr CGFloat kBatchUploadSymbolPointSize = 22.;
   return _syncService->HasDisableReason(
       syncer::SyncService::DISABLE_REASON_ENTERPRISE_POLICY);
 }
-
 
 @end

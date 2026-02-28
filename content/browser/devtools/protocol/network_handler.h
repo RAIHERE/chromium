@@ -116,7 +116,18 @@ class NetworkHandler : public DevToolsDomainHandler,
   static void SetCookies(
       StoragePartition* storage_partition,
       std::unique_ptr<protocol::Array<Network::CookieParam>> cookies,
+      DevToolsAgentHostClient& client,
+      bool is_webui,
       base::OnceCallback<void(bool)> callback);
+
+  static void ClearCookies(StoragePartition* storage_partition,
+                           DevToolsAgentHostClient& client,
+                           bool is_webui,
+                           base::OnceClosure callback);
+
+  static bool CanAccessCookie(DevToolsAgentHostClient& client,
+                              bool is_webui,
+                              const net::CanonicalCookie& cookie);
 
   void Wire(UberDispatcher* dispatcher) override;
   void SetRenderer(int render_process_id,
@@ -379,8 +390,8 @@ class NetworkHandler : public DevToolsDomainHandler,
       bool disable_third_party_cookie_heuristics) override;
 
   // Protocol builders.
-  static String BuildPrivateNetworkRequestPolicy(
-      network::mojom::PrivateNetworkRequestPolicy policy);
+  static String BuildLocalNetworkAccessRequestPolicy(
+      network::mojom::LocalNetworkAccessRequestPolicy policy);
   static protocol::Network::IPAddressSpace BuildIpAddressSpace(
       network::mojom::IPAddressSpace space);
   static std::unique_ptr<protocol::Network::ClientSecurityState>

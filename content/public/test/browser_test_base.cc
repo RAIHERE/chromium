@@ -114,7 +114,7 @@
 #include "content/app/content_main_runner_impl.h"
 #include "content/app/mojo/mojo_init.h"
 #include "content/app/mojo_ipc_support.h"
-#include "content/browser/memory_coordinator/browser_memory_consumer_registry.h"
+#include "content/browser/memory_coordinator/browser_memory_coordinator.h"
 #include "content/public/app/content_main_delegate.h"
 #include "content/public/common/content_paths.h"
 #include "testing/android/native_test/native_browser_test_support.h"
@@ -621,7 +621,7 @@ void BrowserTestBase::SetUp() {
   // follows.
 
   base::MemoryPressureListenerRegistry memory_pressure_listener_registry;
-  base::ScopedMemoryConsumerRegistry<BrowserMemoryConsumerRegistry> registry;
+  BrowserMemoryCoordinator memory_coordinator;
 
   // Unlike other platforms, android_browsertests can reuse the same process for
   // multiple tests. Need to reset startup metrics to allow recording them

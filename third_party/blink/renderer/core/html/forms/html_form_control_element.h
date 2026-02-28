@@ -37,7 +37,6 @@
 namespace blink {
 
 class HTMLFormElement;
-class JSONValue;
 
 // HTMLFormControlElement is the default implementation of
 // ListedElement, and listed element implementations should use
@@ -154,11 +153,7 @@ class CORE_EXPORT HTMLFormControlElement : public HTMLElement,
 
   bool MatchesValidityPseudoClasses() const override;
 
-  // Used for the (experimental) declarative WebMCP prototype.
-  String GetMCPJSONValue(JSONValue& value) const;
-  virtual bool SupportsWebMCP() const { return false; }
-  virtual String GetWebMCPParameterName() const;
-  virtual void FillWebMCPData(JSONValue& data);
+  String GetWebMCPParameterName() const;
 
  protected:
   HTMLFormControlElement(const QualifiedName& tag_name, Document&);

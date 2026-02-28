@@ -24,6 +24,7 @@
 #include "third_party/blink/renderer/core/mathml_names.h"
 #include "third_party/blink/renderer/core/sanitizer/sanitizer_builtins.h"
 #include "third_party/blink/renderer/core/svg_names.h"
+#include "third_party/blink/renderer/core/trustedtypes/trusted_type_policy_factory.h"
 #include "third_party/blink/renderer/core/xlink_names.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
 #include "third_party/blink/renderer/platform/weborigin/kurl.h"
@@ -34,9 +35,9 @@ Sanitizer* Sanitizer::Create(
     const V8UnionSanitizerConfigOrSanitizerPresets* config_or_preset,
     ExceptionState& exception_state) {
   if (!config_or_preset) {
-    return Create(nullptr, /*safe*/ false, exception_state);
+    return Create(nullptr, Mode::kUnsafe, exception_state);
   } else if (config_or_preset->IsSanitizerConfig()) {
-    return Create(config_or_preset->GetAsSanitizerConfig(), /*safe*/ false,
+    return Create(config_or_preset->GetAsSanitizerConfig(), Mode::kUnsafe,
                   exception_state);
   } else if (config_or_preset->IsSanitizerPresets()) {
     return Create(config_or_preset->GetAsSanitizerPresets().AsEnum(),
@@ -47,18 +48,19 @@ Sanitizer* Sanitizer::Create(
 }
 
 Sanitizer* Sanitizer::Create(const SanitizerConfig* sanitizer_config,
-                             bool safe,
+                             Mode safe,
                              ExceptionState& exception_state) {
   Sanitizer* sanitizer = MakeGarbageCollected<Sanitizer>();
   if (!sanitizer_config) {
     // Default case: Set from builtin Sanitizer.
-    sanitizer->setFrom(*(safe ? SanitizerBuiltins::GetDefaultSafe()
-                              : SanitizerBuiltins::GetDefaultUnsafe()));
+    sanitizer->setFrom(*(safe == Mode::kSafe
+                             ? SanitizerBuiltins::GetDefaultSafe()
+                             : SanitizerBuiltins::GetDefaultUnsafe()));
     DCHECK(sanitizer->isValid());
     return sanitizer;
   }
 
-  bool success = sanitizer->setFrom(sanitizer_config, !safe);
+  bool success = sanitizer->setFrom(sanitizer_config, safe != Mode::kSafe);
   if (!success) {
     exception_state.ThrowTypeError("Invalid Sanitizer configuration.");
     return nullptr;
@@ -387,7 +389,7 @@ bool Sanitizer::AllowElement(const QualifiedName& name,
         // Step 2.3.1.3: If dataAttributes is true:
         if (data_attrs_ == SanitizerBoolWithAbsence::kTrue) {
           allow_attrs->erase_if([](const QualifiedName& name) {
-            return name.LocalName().StartsWith("data-");
+            return name.LocalName().starts_with("data-");
           });
         }
       }
@@ -532,6 +534,11 @@ bool Sanitizer::ReplaceElement(const QualifiedName& name) {
   DCHECK(isValid());
   // Step 3: Set element to the result of canonicalize a sanitizer element
   // with element. (Done by caller.)
+  // https://github.com/WICG/sanitizer-api/issues/365:
+  // If name is "html", return false.
+  if (name == html_names::kHTMLTag) {
+    return false;
+  }
   // Step 4: If configuration["replaceWithChildrenElements"] contains element:
   // Step 4.1: Return false.
   bool contains_name = replace_elements_ && replace_elements_->Contains(name);
@@ -567,7 +574,7 @@ bool Sanitizer::AllowAttribute(const QualifiedName& name) {
     // Step 2.1: Comment: If we have a global allow-list, [...]
     // Step 2.2: If configuration["dataAttributes"] is true and [...]
     if (data_attrs_ == SanitizerBoolWithAbsence::kTrue &&
-        name.NamespaceURI().IsNull() && name.LocalName().StartsWith("data-")) {
+        name.NamespaceURI().IsNull() && name.LocalName().starts_with("data-")) {
       return false;
     }
     // Step 2.3: If configuration["attributes"] contains attribute return false.
@@ -619,21 +626,34 @@ bool Sanitizer::RemoveAttribute(const QualifiedName& name) {
   // with attribute. Step 2: If configuration["attributes"] exists:
   if (allow_attrs_) {
     // Step 2.1: Comment: If we have a global allow-list, we need to add
-    // attribute. Step 2.2: If configuration["attributes"] does not contain
-    // attribute:
-    if (!allow_attrs_->Contains(name)) {
-      // Step 2.2.1: Return false.
-      return false;
-    }
+    // attribute.
+    // Step 2.2: Set |modified| to the result of remove attribute  from
+    // |configuration|["{{SanitizerConfig/attributes}}"].
+    bool modified = allow_attrs_->Contains(name);
     // Step 2.3: Comment: Fix-up per-element allow and remove lists.
     // Step 2.4: If configuration["elements"] exists:
     if (allow_elements_) {
       // Step 2.4.1: For each element in configuration["elements"]:
-      // Step 2.4.1.1: If element["removeAttributes"] with default « » contains
-      // attribute: Step 2.4.1.1.1: Remove attribute from
-      // element["removeAttributes"].
-      for (const auto& item : remove_attrs_per_element_) {
+      for (const auto& item : allow_attrs_per_element_) {
+        // Step 2.4.1.1: If element["attributes"] with default «» contains
+        // attribute:
         if (item.value.Contains(name)) {
+          // Step 2.4.1.1.1: Set modified to true.
+          modified = true;
+          // Step 2.4.1.1.2: Remove attribute from element["attributes"].
+          SanitizerNameSet attrs(item.value);
+          attrs.erase(name);
+          allow_attrs_per_element_.Set(item.key, attrs);
+        }
+      }
+      // ALso Step 2.4.1, For each element in configuration["elements"]
+      for (const auto& item : remove_attrs_per_element_) {
+        // Step 2.4.1.2: If element["removeAttributes"] with default «» contains
+        // attribute:
+        if (item.value.Contains(name)) {
+          // Step 2.4.1.2.1: Assert: modified is true.
+          CHECK(modified);
+          // Step 2.4.1.2.2: Remove attribute from element["removeAttributes"].
           SanitizerNameSet attrs(item.value);
           attrs.erase(name);
           remove_attrs_per_element_.Set(item.key, attrs);
@@ -643,7 +663,7 @@ bool Sanitizer::RemoveAttribute(const QualifiedName& name) {
     // Step 2.5: Remove attribute from configuration["attributes"].
     allow_attrs_->erase(name);
     // Step 2.6: Return true.
-    return true;
+    return modified;
   } else {
     // Step 3: Otherwise:
     DCHECK(remove_attrs_);
@@ -684,7 +704,7 @@ bool Sanitizer::RemoveAttribute(const QualifiedName& name) {
   }
 }
 
-void Sanitizer::SanitizeElement(Element* element) const {
+void Sanitizer::SanitizeElement(Element* element, Mode safe) const {
   // https://wicg.github.io/sanitizer-api/#sanitize-core, Step 1.5.8 + 1.5.9.1-4
   //
   // The sanitize-core algorithm is fairly long. This implements the steps to
@@ -714,15 +734,29 @@ void Sanitizer::SanitizeElement(Element* element) const {
     } else if (remove_attrs_ && remove_attrs_->Contains(name)) {
       keep = false;
     } else if (allow_attrs_ && name.NamespaceURI().IsNull() &&
-               name.LocalName().StartsWith("data-")) {
+               name.LocalName().starts_with("data-")) {
       keep = data_attrs_ == SanitizerBoolWithAbsence::kTrue;
     } else {
-      keep =
-          !allow_attrs_ && (!allow_per_element || allow_per_element->empty());
+      keep = !allow_attrs_ && !allow_per_element;
     }
     if (!keep) {
       element->removeAttribute(name);
     }
+
+    if (keep && safe == Mode::kSafe) {
+      // This is an overly conservative CHECK to prevent another bug like
+      // 477643913. Presumably, we can remove this check at some point.
+      CHECK(name.NamespaceURI() ||
+            !TrustedTypePolicyFactory::IsEventHandlerAttributeName(
+                name.LocalName()));
+    }
+  }
+
+  if (safe == Mode::kSafe) {
+    // This is an overly conservative CHECK to prevent another bug like
+    // 477643913. Presumably, we can remove this check at some point.
+    CHECK_NE(element->TagQName(), html_names::kScriptTag);
+    CHECK_NE(element->TagQName(), svg_names::kScriptTag);
   }
 }
 
@@ -743,10 +777,10 @@ void RemoveAttributeIfValueIsHref(Element* element,
 }
 
 void Sanitizer::SanitizeJavascriptNavigationAttributes(Element* element,
-                                                       bool safe) const {
+                                                       Mode safe) const {
   // Special treatment of javascript: URLs when used for navigation.
   // https://wicg.github.io/sanitizer-api/#sanitize-core, Steps 1.5.9.5
-  if (!safe) {
+  if (safe == Mode::kUnsafe) {
     return;
   }
 
@@ -776,7 +810,7 @@ void Sanitizer::SanitizeJavascriptNavigationAttributes(Element* element,
   }
 }
 
-void Sanitizer::SanitizeTemplate(Node* node, bool safe) const {
+void Sanitizer::SanitizeTemplate(Node* node, Mode safe) const {
   // https://wicg.github.io/sanitizer-api/#sanitize-core,
   // Step 1.5.5: Recurse into template content.
   if (IsA<HTMLTemplateElement>(node)) {
@@ -801,12 +835,12 @@ void Sanitizer::SanitizeSafe(Node* root) const {
   Sanitizer* safe = MakeGarbageCollected<Sanitizer>();
   safe->setFrom(*this);
   safe->removeUnsafe();
-  safe->Sanitize(root, /*safe*/ true);
+  safe->Sanitize(root, Mode::kSafe);
 }
 
 void Sanitizer::SanitizeUnsafe(Node* root) const {
   CHECK(!root->GetDocument().IsActive());
-  Sanitize(root, /*safe*/ false);
+  Sanitize(root, Mode::kUnsafe);
 }
 
 Sanitizer::Action Sanitizer::ActionForNode(Node* node, Node* root) const {
@@ -817,6 +851,10 @@ Sanitizer::Action Sanitizer::ActionForNode(Node* node, Node* root) const {
       Element* element = To<Element>(node);
       if (replace_elements_ &&
           replace_elements_->Contains(element->TagQName())) {
+        // See: crbug.com/476333990.
+        CHECK_NE(element->TagQName(), html_names::kHTMLTag);
+        CHECK(!element->IsInDocumentTree() ||
+              !element->parentNode()->IsDocumentNode());
         // Step 5.2: If [...configuration["replaceWithChildrenElements"]...]
         return Action::kReplaceWithChildren;
       }
@@ -838,6 +876,9 @@ Sanitizer::Action Sanitizer::ActionForNode(Node* node, Node* root) const {
       // Steps 5.5-5.9 are in the subsequent switch-case, based on |action|.
     }
     case Node::NodeType::kCommentNode:
+    // TODO(nrosenthal): sanitizer for PIs?
+    // Spec: https://github.com/WICG/sanitizer-api/issues/370
+    case Node::NodeType::kProcessingInstructionNode:
       // Step 4: If child implement Comments & config["comments"] is not true:
       return (comments_ == SanitizerBoolWithAbsence::kTrue) ? Action::kKeep
                                                             : Action::kDrop;
@@ -856,12 +897,12 @@ Sanitizer::Action Sanitizer::ActionForNode(Node* node, Node* root) const {
   }
 }
 
-void Sanitizer::ProcessElement(Element* element, bool safe) const {
-  SanitizeElement(element);
+void Sanitizer::ProcessElement(Element* element, Mode safe) const {
+  SanitizeElement(element, safe);
   SanitizeJavascriptNavigationAttributes(element, safe);
 }
 
-void Sanitizer::Sanitize(Node* root, bool safe) const {
+void Sanitizer::Sanitize(Node* root, Mode safe) const {
   // https://wicg.github.io/sanitizer-api/#sanitize-core
   // This is structured a little differently than the spec, for better
   // readability. For step 1.5, we may call into helper methods.
@@ -908,7 +949,7 @@ void Sanitizer::Sanitize(Node* root, bool safe) const {
   }
 }
 
-bool Sanitizer::SanitizeSingleNode(Node* node, bool safe) const {
+bool Sanitizer::SanitizeSingleNode(Node* node, Mode safe) const {
   Action action = ActionForNode(node, node);
   if (action == Action::kKeepElement) {
     ProcessElement(To<Element>(node), safe);
@@ -1153,6 +1194,11 @@ bool Sanitizer::isValid() const {
   if (Intersect(remove_elements_, replace_elements_)) {
     return false;
   }
+  // https://github.com/WICG/sanitizer-api/issues/365
+  // If config[replaceWithChildrenElements] contains "html"
+  if (replace_elements_ && replace_elements_->Contains(html_names::kHTMLTag)) {
+    return false;
+  }
   // Step 7: If config[attributes] exists:
   if (allow_attrs_) {
     // Step 7.1: If config[elements] exists:
@@ -1181,7 +1227,7 @@ bool Sanitizer::isValid() const {
           // attribute.
           if (allow_attrs_per_element_.Contains(element)) {
             for (const auto& attr : allow_attrs_per_element_.at(element)) {
-              if (attr.LocalName().StartsWith("data-")) {
+              if (attr.LocalName().starts_with("data-")) {
                 return false;
               }
             }
@@ -1194,7 +1240,7 @@ bool Sanitizer::isValid() const {
       // Step 7.2.1: config[attributes] does not contain a custom data
       // attribute.
       for (const auto& attr : *allow_attrs_) {
-        if (attr.LocalName().StartsWith("data-")) {
+        if (attr.LocalName().starts_with("data-")) {
           return false;
         }
       }

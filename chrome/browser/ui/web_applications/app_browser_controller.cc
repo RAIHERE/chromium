@@ -136,6 +136,14 @@ bool AppBrowserController::IsForWebApp(const BrowserWindowInterface* browser,
 }
 
 // static
+bool AppBrowserController::IsForIsolatedSubApp(
+    const BrowserWindowInterface* browser,
+    const std::optional<webapps::AppId>& maybe_parent_app_id) {
+  return IsWebApp(browser) && maybe_parent_app_id.has_value() &&
+         From(browser)->app_id() == maybe_parent_app_id.value();
+}
+
+// static
 BrowserWindowInterface* AppBrowserController::FindForWebApp(
     const Profile& profile,
     const webapps::AppId& app_id) {
@@ -492,7 +500,11 @@ bool AppBrowserController::HasPendingUpdateNotIgnoredByUser() const {
   return false;
 }
 
-void AppBrowserController::CreateMetadataAndTriggerAppUpdateDialog(
+bool AppBrowserController::HasPendingMigration() const {
+  return false;
+}
+
+void AppBrowserController::TriggerAppUpdateOrMigrationDialog(
     base::TimeTicks start_time) const {}
 
 bool AppBrowserController::IsPreventCloseEnabled() const {

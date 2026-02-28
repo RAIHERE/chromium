@@ -28,7 +28,6 @@
 #include "third_party/blink/public/common/navigation/impression.h"
 #include "third_party/blink/public/common/navigation/navigation_policy.h"
 #include "third_party/blink/public/common/tokens/tokens.h"
-#include "third_party/blink/public/mojom/navigation/navigation_initiator_activation_and_ad_status.mojom.h"
 #include "third_party/blink/public/mojom/navigation/was_activated_option.mojom.h"
 #include "ui/base/page_transition_types.h"
 #include "url/gurl.h"
@@ -314,11 +313,10 @@ class NavigationController {
     // Download policy to be applied if this navigation turns into a download.
     blink::NavigationDownloadPolicy download_policy;
 
-    // Common begin navigation status.
-    blink::mojom::NavigationInitiatorActivationAndAdStatus
-        initiator_activation_and_ad_status =
-            blink::mojom::NavigationInitiatorActivationAndAdStatus::
-                kDidNotStartWithTransientActivation;
+    // Whether this navigation was started by an ad (i.e., an ad script was in
+    // the JavaScript stack at the time of the navigation, or the frame is an ad
+    // frame, as determined by Ad Tagging).
+    bool started_by_ad = false;
 
     // Indicates that this navigation is for PDF content in a renderer.
     bool is_pdf = false;
@@ -346,6 +344,14 @@ class NavigationController {
     // login URLs which may be broken by HTTPS Upgrades due to the portal's
     // unconventional handling of HTTPS URLs.
     bool force_no_https_upgrade = false;
+
+    // A text fragment selector (that uses the syntax defined in
+    // https://wicg.github.io/scroll-to-text-fragment/#syntax) to scroll the
+    // matched text into the viewport without applying the standard highlight
+    // styling. This is used for cross-device scroll restoration.
+    // The string should contain only the selector value (the part after
+    // "text=" in a URL directive), not the "text=" prefix itself.
+    std::optional<std::string> internal_scroll_to_text_fragment;
   };
 
   // Disables checking for a repost and prompting the user. This is used during

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "base/callback_list.h"
+#include "base/containers/flat_map.h"
 #include "base/functional/callback_forward.h"
 #include "base/memory/memory_pressure_listener.h"
 #include "base/memory/raw_ptr.h"
@@ -17,16 +18,20 @@
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
 #include "chrome/browser/glic/common/glic_tab_observer.h"
+#include "chrome/browser/glic/glic_tab_restore_data.h"
 #include "chrome/browser/glic/host/glic.mojom.h"
 #include "chrome/browser/glic/host/glic_web_client_access.h"
 #include "chrome/browser/glic/host/host.h"
 #include "chrome/browser/glic/public/context/glic_sharing_manager.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_invoke_options.h"
 #include "chrome/browser/glic/service/glic_instance_impl.h"
+#include "chrome/browser/glic/service/glic_invoke_handler.h"
 #include "chrome/browser/glic/service/metrics/glic_instance_coordinator_metrics.h"
 #include "chrome/browser/glic/widget/glic_window_controller.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/views/widget/widget.h"
 #include "ui/views/widget/widget_observer.h"
@@ -49,6 +54,8 @@ namespace glic {
 BASE_DECLARE_FEATURE(kGlicHibernateAllOnMemoryPressure);
 
 BASE_DECLARE_FEATURE(kGlicHibernateOnMemoryUsage);
+
+BASE_DECLARE_FEATURE(kGlicMaxAwakeInstances);
 
 // An interface to GlicInstanceCoordinatorImpl. Should be used instead of direct
 // access to GlicInstanceCoordinatorImpl to allow for test fakes.
@@ -121,12 +128,15 @@ class GlicInstanceCoordinatorImpl
   void Toggle(BrowserWindowInterface* browser,
               bool prevent_close,
               mojom::InvocationSource source,
-              std::optional<std::string> prompt_suggestion) override;
+              std::optional<std::string> deprecated_prompt_suggestion,
+              bool deprecated_auto_send,
+              std::optional<std::string> deprecated_conversation_id) override;
   void ShowAfterSignIn(base::WeakPtr<Browser> browser) override;
   // Shuts down all hosts. Only call it before destruction of the instance
   // coordinator.
   void Shutdown() override;
   void Close(const CloseOptions& options) override;
+  void Invoke(tabs::TabInterface* tab, GlicInvokeOptions options);
   void CloseInstanceWithFrame(
       content::RenderFrameHost* render_frame_host) override;
   void CloseAndShutdownInstanceWithFrame(
@@ -180,10 +190,18 @@ class GlicInstanceCoordinatorImpl
 
  private:
   void OnTabEvent(const GlicTabEvent& event);
+  // Returns a pointer to an instance with the given conversation id or nullptr
+  // if no such instance exists.
+  GlicInstanceImpl* GetInstanceImplForConversationId(
+      const std::string& conversation_id);
+  GlicInstanceImpl* GetOrCreateInstanceImplForConversationId(
+      const std::string& conversation_id);
   GlicInstanceImpl* GetOrCreateGlicInstanceImplForTab(tabs::TabInterface* tab);
   GlicInstanceImpl* GetOrCreateInstanceImplForFloaty();
-  GlicInstanceImpl* CreateGlicInstance();
-  std::unique_ptr<GlicInstanceImpl> CreateInstanceImpl();
+  GlicInstanceImpl* CreateGlicInstance(
+      std::optional<InstanceId> instance_id = std::nullopt);
+  std::unique_ptr<GlicInstanceImpl> CreateInstanceImpl(
+      std::optional<InstanceId> instance_id = std::nullopt);
   void CreateWarmedInstance();
 
   // Helper method to get a list of recently active instances sorted by time.
@@ -199,17 +217,32 @@ class GlicInstanceCoordinatorImpl
   void ToggleSidePanel(BrowserWindowInterface* browser,
                        bool prevent_close,
                        glic::mojom::InvocationSource source,
-                       std::optional<std::string> prompt_suggestion);
+                       std::optional<std::string> prompt_suggestion,
+                       bool auto_send,
+                       std::optional<std::string> conversation_id);
 
   void CloseFloaty(const CloseOptions& options = {});
 
   void OnMemoryPressure(base::MemoryPressureLevel level) override;
   void CheckMemoryUsage();
+  void ApplyMaxAwakeInstancesLimit();
 
   void RemoveInstance(GlicInstanceImpl* instance) override;
 
   void NotifyActiveInstanceChanged();
   void ComputeContentAccessIndicator();
+
+  void OnTabsInserted(const TabStripModelChange::Insert* insert);
+  void MaybeDaisyChainNewTab(const TabCreationEvent& event);
+  void MaybeDaisyChainFromLinkClick(const TabCreationEvent& event);
+
+  void OnInvokeHandlerComplete(GlicInstance* instance,
+                               GlicInvokeHandler* handler);
+
+  GlicInstanceImpl* GetOrRestoreInstanceImpl(
+      const GlicRestoredState::InstanceInfo& instance_info);
+  void RestoreTab(content::WebContents* web_contents,
+                  const GlicRestoredState& state);
 
   // List of callbacks to be notified when window activation has changed.
   base::RepeatingCallbackList<void(bool)> window_activation_callback_list_;
@@ -220,6 +253,9 @@ class GlicInstanceCoordinatorImpl
       contextual_cueing_service_;
 
   std::map<InstanceId, std::unique_ptr<GlicInstanceImpl>> instances_;
+
+  base::flat_map<GlicInstance*, std::unique_ptr<GlicInvokeHandler>>
+      invoke_handlers_;
 
   std::unique_ptr<GlicInstanceImpl> warmed_instance_;
 

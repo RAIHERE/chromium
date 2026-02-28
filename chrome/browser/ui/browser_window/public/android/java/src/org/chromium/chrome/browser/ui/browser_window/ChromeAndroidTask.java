@@ -11,6 +11,7 @@ import org.chromium.base.JniOnceCallback;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.multiwindow.MultiInstanceManager;
+import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tabmodel.SupportedProfileType;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.components.browser_ui.desktop_windowing.DesktopWindowStateManager;
@@ -107,7 +108,9 @@ public interface ChromeAndroidTask {
          * Callback to notify native callers when a native {@code AndroidBrowserWindow} is created
          * and fully initialized.
          *
-         * <p>The type of the callback is the address of the native {@code AndroidBrowserWindow}.
+         * <p>The type of the callback is the address of the native {@code AndroidBrowserWindow} for
+         * the initial profile. On mobile, there may be multiple {@code AndroidBrowserWindow}s for
+         * different profiles.
          */
         final @Nullable JniOnceCallback<Long> mTaskCreationCallbackForNative;
 
@@ -191,13 +194,6 @@ public interface ChromeAndroidTask {
     @Nullable ActivityWindowAndroid getTopActivityWindowAndroid();
 
     /**
-     * Called when native initialization has finished.
-     *
-     * <p>This signals when this {@link ChromeAndroidTask} is fully initialized.
-     */
-    void onNativeInitializationFinished();
-
-    /**
      * Adds a {@link ChromeAndroidTaskFeature} to this {@link ChromeAndroidTask}.
      *
      * <p>If an instance of the given {@code featureKey} hasn't been added to this Task, this method
@@ -234,8 +230,35 @@ public interface ChromeAndroidTask {
      *
      * <p>If the native object hasn't been created, this method will create it before returning its
      * address.
+     *
+     * @param profile The profile associated with the browser window.
      */
-    long getOrCreateNativeBrowserWindowPtr();
+    long getOrCreateNativeBrowserWindowPtr(Profile profile);
+
+    /**
+     * Returns an array of the all native {@code BrowserWindowInterface} addresses.
+     *
+     * <p>If the native object hasn't been created, this method will create it before returning its
+     * address.
+     */
+    List<Long> getAllNativeBrowserWindowPtrs();
+
+    /**
+     * Adds an {@link AndroidBrowserWindowObserver} for future {@code AndroidBrowserWindow} events.
+     *
+     * @param observer The observer to add.
+     */
+    void addAndroidBrowserWindowObserver(AndroidBrowserWindowObserver observer);
+
+    /**
+     * Removes an {@link AndroidBrowserWindowObserver}.
+     *
+     * @param observer The observer to remove.
+     */
+    void removeAndroidBrowserWindowObserver(AndroidBrowserWindowObserver observer);
+
+    /** Returns whether observer is registered for {@code AndroidBrowserWindow} events. */
+    boolean hasAndroidBrowserWindowObserver(AndroidBrowserWindowObserver observer);
 
     /**
      * Destroys all objects owned by this {@link ChromeAndroidTask}, including all {@link
@@ -270,7 +293,8 @@ public interface ChromeAndroidTask {
      * when its state changed from nonexistent or inactive (minimized/unfocused), to the active
      * state (in the foreground and focused).
      *
-     * <p>The timestamp is in milliseconds since boot.
+     * <p>The timestamp is in milliseconds since boot. Returns 0 if this task has never been
+     * activated.
      */
     long getLastActivatedTimeMillis();
 
@@ -329,5 +353,5 @@ public interface ChromeAndroidTask {
     /**
      * Returns the {@code SessionID} as returned by {@code BrowserWindowInterface::GetSessionID()}.
      */
-    @Nullable Integer getSessionIdForTesting();
+    @Nullable Integer getSessionIdForTesting(Profile profile);
 }

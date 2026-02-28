@@ -317,7 +317,7 @@ apps::Readiness ConvertWebappUninstallSourceToReadiness(
     case webapps::WebappUninstallSource::kDevtools:
     case webapps::WebappUninstallSource::kAppMigration:
       return apps::Readiness::kUninstalledByUser;
-    case webapps::WebappUninstallSource::kMigration:
+    case webapps::WebappUninstallSource::kUninstallAndReplaceMigration:
     case webapps::WebappUninstallSource::kInternalPreinstalled:
     case webapps::WebappUninstallSource::kExternalPreinstalled:
     case webapps::WebappUninstallSource::kExternalPolicy:
@@ -666,8 +666,9 @@ apps::IntentFilters WebAppPublisherHelper::CreateIntentFiltersForWebApp(
 
   // TODO(crbug.com/458291386): Launch protocol handlers for all PWAs (and not
   // just IWAs) on ChromeOS -- this requires some additional UX work.
-  if (provider.registrar_unsafe().AppMatches(app.app_id(),
-                                             WebAppFilter::IsIsolatedApp())) {
+  if (provider.registrar_unsafe().AppMatches(
+          app.app_id(),
+          WebAppFilter::IsIsolatedApp() | WebAppFilter::IsIsolatedSubApp())) {
     // Includes all protocol handlers except for the ones that the user has
     // explicitly disallowed.
     const std::vector<custom_handlers::ProtocolHandler> protocol_handlers =
@@ -755,7 +756,8 @@ apps::AppPtr WebAppPublisherHelper::CreateWebApp(const WebApp* web_app) {
 
   // Isolated web apps can only be opened in window.
   app->allow_window_mode_selection = !provider_->registrar_unsafe().AppMatches(
-      web_app->app_id(), WebAppFilter::IsIsolatedApp());
+      web_app->app_id(),
+      WebAppFilter::IsIsolatedApp() | WebAppFilter::IsIsolatedSubApp());
 
   SetWebAppShowInFields(web_app, *app);
 
@@ -1258,7 +1260,7 @@ apps::WindowMode WebAppPublisherHelper::ConvertDisplayModeToWindowMode(
     case blink::mojom::DisplayMode::kStandalone:
     case blink::mojom::DisplayMode::kFullscreen:
     case blink::mojom::DisplayMode::kWindowControlsOverlay:
-    case blink::mojom::DisplayMode::kBorderless:
+    case blink::mojom::DisplayMode::kUnframed:
     case blink::mojom::DisplayMode::kPictureInPicture:
       return apps::WindowMode::kWindow;
   }

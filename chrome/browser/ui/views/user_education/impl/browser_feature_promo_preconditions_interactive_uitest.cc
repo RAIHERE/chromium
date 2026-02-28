@@ -10,8 +10,14 @@
 #include "base/test/scoped_feature_list.h"
 #include "base/test/simple_test_clock.h"
 #include "base/time/time.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
+#include "chrome/browser/actor/actor_task.h"
+#include "chrome/browser/actor/actor_test_util.h"
+#include "chrome/browser/actor/ui/actor_ui_tab_controller_interface.h"
+#include "chrome/browser/actor/ui/states/tab_indicator_state.h"
 #include "chrome/browser/autocomplete/chrome_autocomplete_scheme_classifier.h"
 #include "chrome/browser/browser_process.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/exclusive_access/exclusive_access_manager.h"
@@ -24,6 +30,7 @@
 #include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_preconditions.h"
+#include "chrome/common/actor/task_id.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/interactive_test_utils.h"
 #include "chrome/test/interaction/interactive_browser_test.h"
@@ -96,6 +103,13 @@ IN_PROC_BROWSER_TEST_F(WindowActivePreconditionUiTest, ElementInActiveBrowser) {
 }
 
 IN_PROC_BROWSER_TEST_F(WindowActivePreconditionUiTest,
+                       RegionElementInActiveBrowser) {
+  RunTestSequence(
+      CaptureAnchor(kBrowserDialogAnchorElementId),
+      CheckWindowActiveResult(user_education::FeaturePromoResult::Success()));
+}
+
+IN_PROC_BROWSER_TEST_F(WindowActivePreconditionUiTest,
                        ElementInInactiveBrowser) {
   auto* const incog = CreateIncognitoBrowser();
   RunTestSequence(
@@ -106,6 +120,24 @@ IN_PROC_BROWSER_TEST_F(WindowActivePreconditionUiTest,
                 Steps(WaitForShow(kToolbarAppMenuButtonElementId),
                       ActivateSurface(kToolbarAppMenuButtonElementId))),
       WithElement(kToolbarAppMenuButtonElementId,
+                  [this](ui::TrackedElement* anchor) {
+                    *anchor_element_data_ = anchor;
+                  }),
+      CheckWindowActiveResult(
+          user_education::FeaturePromoResult::kAnchorSurfaceNotActive));
+}
+
+IN_PROC_BROWSER_TEST_F(WindowActivePreconditionUiTest,
+                       RegionElementInInactiveBrowser) {
+  auto* const incog = CreateIncognitoBrowser();
+  RunTestSequence(
+      WaitForShow(kToolbarAppMenuButtonElementId),
+      SetOnIncompatibleAction(OnIncompatibleAction::kSkipTest,
+                              "Linux window activation issues."),
+      InContext(BrowserElements::From(incog)->GetContext(),
+                Steps(WaitForShow(kToolbarAppMenuButtonElementId),
+                      ActivateSurface(kToolbarAppMenuButtonElementId))),
+      WithElement(kBrowserDialogAnchorElementId,
                   [this](ui::TrackedElement* anchor) {
                     *anchor_element_data_ = anchor;
                   }),
@@ -377,10 +409,14 @@ class UserNotActivePreconditionUiTest
   ~UserNotActivePreconditionUiTest() override = default;
 
   void SetUp() override {
-    feature_list_.InitAndEnableFeatureWithParameters(
-        user_education::features::kUserEducationExperienceVersion2Point5,
-        {{"idle_before_heavyweight",
-          base::StringPrintf("%dms", GetParam().InMilliseconds())}});
+    user_education::features::testing::TimeoutOverrides overrides;
+    overrides.high_priority_timeout = base::Seconds(1);
+    overrides.medium_priority_timeout = base::Seconds(2);
+    overrides.low_priority_timeout = base::Seconds(3);
+    overrides.idle_before_heavyweight = GetParam();
+    timeout_override_handle_ =
+        user_education::features::testing::SetTimeoutOverridesForTest(
+            overrides);
     less_than_activity_time_ = GetParam() / 2;
     more_than_activity_time_ = GetParam() + base::Seconds(1);
 
@@ -423,7 +459,8 @@ class UserNotActivePreconditionUiTest
   base::TimeDelta less_than_activity_time_;
   base::TimeDelta more_than_activity_time_;
 
-  base::test::ScopedFeatureList feature_list_;
+  user_education::features::testing::TimeoutOverrideHandle
+      timeout_override_handle_;
   base::SimpleTestClock test_clock_;
   user_education::UserEducationTimeProvider time_provider_;
   std::unique_ptr<UserNotActivePrecondition> precondition_;
@@ -462,4 +499,71 @@ IN_PROC_BROWSER_TEST_P(UserNotActivePreconditionUiTest,
       CheckPrecondResult(expected_result), Advance(less_than_activity_time_),
       CheckPrecondResult(expected_result), Advance(more_than_activity_time_),
       CheckPrecondResult(user_education::FeaturePromoResult::Success()));
+}
+
+using ActorNotActuatingActiveTabPreconditionUiTest =
+    BrowserFeaturePromoPreconditionsUiTest;
+
+IN_PROC_BROWSER_TEST_F(ActorNotActuatingActiveTabPreconditionUiTest,
+                       BlockedWhenActuating) {
+  RunTestSequence(
+      // By default with no actuation, precondition should succeed.
+      CheckResult(
+          [this]() {
+            ActorNotActuatingActiveTabPrecondition precond(*browser());
+            return precond.CheckPrecondition(data_);
+          },
+          user_education::FeaturePromoResult::Success()),
+      // Start actuating on the active tab.
+      Do([this]() {
+        auto* service = actor::ActorKeyedService::Get(browser()->profile());
+        actor::TaskId task_id =
+            service->CreateTask(actor::NoEnterprisePolicyChecker());
+        auto* task = service->GetTask(task_id);
+        task->AddTab(browser()->GetActiveTabInterface()->GetHandle(),
+                     base::DoNothing());
+      }),
+      // Precondition should block
+      CheckResult(
+          [this]() {
+            ActorNotActuatingActiveTabPrecondition precond(*browser());
+            return precond.CheckPrecondition(data_);
+          },
+          user_education::FeaturePromoResult::kBlockedByUi));
+}
+
+IN_PROC_BROWSER_TEST_F(ActorNotActuatingActiveTabPreconditionUiTest,
+                       SuccessWhenActuatingBackgroundTab) {
+  // Test that when actuation is occurring on a background tab, the
+  // precondition succeeds.
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kFirstTab);
+  DEFINE_LOCAL_ELEMENT_IDENTIFIER_VALUE(kSecondTab);
+  RunTestSequence(
+      InstrumentTab(kFirstTab),
+      AddInstrumentedTab(kSecondTab, GURL("about:blank")),
+      WaitForShow(kSecondTab),
+      // Second tab is active, start actuating on first tab.
+      Do([this]() {
+        auto* service = actor::ActorKeyedService::Get(browser()->profile());
+        actor::TaskId task_id =
+            service->CreateTask(actor::NoEnterprisePolicyChecker());
+        auto* task = service->GetTask(task_id);
+        task->AddTab(
+            browser()->GetTabStripModel()->GetTabAtIndex(0)->GetHandle(),
+            base::DoNothing());
+      }),
+      CheckResult(
+          [this]() {
+            ActorNotActuatingActiveTabPrecondition precond(*browser());
+            return precond.CheckPrecondition(data_);
+          },
+          user_education::FeaturePromoResult::Success()),
+      // Activate first tab, and confirm precondition blocks showing.
+      SelectTab(kTabStripElementId, 0), WaitForShow(kFirstTab),
+      CheckResult(
+          [this]() {
+            ActorNotActuatingActiveTabPrecondition precond(*browser());
+            return precond.CheckPrecondition(data_);
+          },
+          user_education::FeaturePromoResult::kBlockedByUi));
 }

@@ -225,8 +225,41 @@ wtf_size_t StringView::find(UChar ch, wtf_size_t start) const {
                   : blink::Find(Span16(), ch, start);
 }
 
+wtf_size_t StringView::find(const StringView& match_string,
+                            wtf_size_t start) const {
+  return internal::Find(*this, match_string, start);
+}
+
+wtf_size_t StringView::rfind(UChar ch, wtf_size_t start) const {
+  if (empty()) {
+    return kNotFound;
+  }
+  return Is8Bit() ? blink::ReverseFind(Span8(), ch, start)
+                  : blink::ReverseFind(Span16(), ch, start);
+}
+
+StringView::size_type StringView::rfind(const StringView& value,
+                                        size_type start) const {
+  size_type value_length = value.length();
+  if (value_length == 0u) {
+    return std::min(start, length());
+  }
+  return VisitCharacters(*this, [&](auto chars) {
+    if (value_length == 1u) {
+      return blink::ReverseFind(chars, value[0], start);
+    }
+    return VisitCharacters(value, [&](auto value_chars) {
+      return internal::ReverseFind(chars, value_chars, start);
+    });
+  });
+}
+
 bool StringView::contains(UChar ch) const {
   return find(ch) != kNotFound;
+}
+
+bool StringView::contains(const StringView& other) const {
+  return find(other) != kNotFound;
 }
 
 bool StringView::starts_with(const StringView& other) const {
@@ -336,7 +369,7 @@ bool DeprecatedEqualIgnoringCase(const StringView& a, const StringView& b) {
   return DeprecatedEqualIgnoringCaseAndNullity(a, b);
 }
 
-bool EqualIgnoringASCIICase(const StringView& a, const StringView& b) {
+bool EqualIgnoringAsciiCase(const StringView& a, const StringView& b) {
   if (a.IsNull() || b.IsNull())
     return a.IsNull() == b.IsNull();
   if (a.length() != b.length())
@@ -344,8 +377,8 @@ bool EqualIgnoringASCIICase(const StringView& a, const StringView& b) {
   if (a.Bytes() == b.Bytes() && a.Is8Bit() == b.Is8Bit())
     return true;
   return VisitCharacters(a, [b](auto chars) {
-    return b.Is8Bit() ? EqualIgnoringASCIICase(chars, b.Span8())
-                      : EqualIgnoringASCIICase(chars, b.Span16());
+    return b.Is8Bit() ? EqualIgnoringAsciiCase(chars, b.Span8())
+                      : EqualIgnoringAsciiCase(chars, b.Span16());
   });
 }
 

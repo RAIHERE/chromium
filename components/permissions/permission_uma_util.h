@@ -8,6 +8,7 @@
 #include <optional>
 #include <set>
 #include <string>
+#include <string_view>
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
@@ -788,10 +789,17 @@ class PermissionUmaUtil {
       PermissionAction previous_action,
       ContentSetting setting_after);
 
-  static void RecordPageInfoPermissionChange(ContentSettingsType type,
-                                             ContentSetting setting_before,
-                                             ContentSetting setting_after,
-                                             bool suppress_reload_page_bar);
+  static void RecordPageInfoCameraMicPermissionChange(
+      ContentSettingsType type,
+      ContentSetting setting_before,
+      ContentSetting setting_after,
+      bool is_subscribed_to_permission_change_event);
+
+  static void RecordPageInfoPermissionChange(
+      ContentSettingsType type,
+      ContentSetting setting_before,
+      ContentSetting setting_after,
+      bool is_subscribed_to_permission_change_event);
 
   static std::string GetPermissionActionString(
       PermissionAction permission_action);
@@ -849,6 +857,11 @@ class PermissionUmaUtil {
   // permission prompt was granted.
   static void RecordPageReloadInfoBarShown(bool shown);
 
+  // Records whether the page that requested a permission is subscribed to the
+  // permission status change listener.
+  static void RecordOnPermissionStatusChangedEventSubscribed(RequestType type,
+                                                             bool subscribed);
+
   // Records UKM metrics for ContentSettingsTypes that have user facing
   // permission prompts triggered by the user clicking on the Embedded
   // Permission Element. The passed in `permission` must be such that
@@ -882,9 +895,10 @@ class PermissionUmaUtil {
       bool always_active);
 
   // Records if the browser was always active before user's interaction.
-  static void RecordActionBrowserAlwaysActive(RequestTypeForUma request_type,
-                                              std::string permission_action,
-                                              bool always_active);
+  static void RecordActionBrowserAlwaysActive(
+      RequestTypeForUma request_type,
+      std::string_view permission_action,
+      bool always_active);
 
   // Records the execution time of prediction model inquiries.
   static void RecordPredictionModelInquireTime(

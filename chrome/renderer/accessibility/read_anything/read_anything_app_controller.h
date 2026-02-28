@@ -15,6 +15,7 @@
 #include "base/memory/raw_ptr.h"
 #include "base/memory/safe_ref.h"
 #include "base/scoped_observation.h"
+#include "base/values.h"
 #include "chrome/common/read_anything/read_anything.mojom.h"
 #include "chrome/renderer/accessibility/read_anything/read_aloud_app_model.h"
 #include "chrome/renderer/accessibility/read_anything/read_anything_app_model.h"
@@ -50,6 +51,7 @@ class AXTreeDistiller;
 class DependencyParserModel;
 class ReadAnythingAppControllerTest;
 class ReadAnythingAppControllerScreen2xDataCollectionModeTest;
+class ReadAnythingAppControllerReadabilityTest;
 
 ///////////////////////////////////////////////////////////////////////////////
 // ReadAnythingAppController
@@ -89,6 +91,21 @@ class ReadAnythingAppController
 
   static const int kMaxWordsConsumed = 25000;
   static const int kWordsConsumedBuckets = 100;
+
+  struct LinkData {
+    LinkData();
+    ~LinkData();
+    LinkData(const LinkData& other);
+    LinkData& operator=(const LinkData& other);
+    std::string html_id;
+    std::string name;
+    std::string target;
+    std::string text;
+    std::string textAfter;
+    std::string textBefore;
+    std::string title;
+    ui::AXNodeID id;
+  };
 
   ReadAnythingAppController(const ReadAnythingAppController&) = delete;
   ReadAnythingAppController& operator=(const ReadAnythingAppController&) =
@@ -152,7 +169,8 @@ class ReadAnythingAppController
       base::DictValue voices,
       base::ListValue languages_enabled_in_pref,
       read_anything::mojom::HighlightGranularity granularity,
-      read_anything::mojom::LineFocus line_focus) override;
+      read_anything::mojom::LineFocus last_non_disabled_line_focus,
+      bool line_focus_enabled) override;
   void SetLanguageCode(const std::string& code) override;
   void SetDefaultLanguageCode(const std::string& code) override;
   void ScreenAIServiceReady() override;
@@ -166,6 +184,8 @@ class ReadAnythingAppController
   void OnTabMuteStateChange(bool muted) override;
   void UpdateContent(const std::string& title,
                      const std::string& content) override;
+  void OnReadabilityDistillationStateChanged(
+      read_anything::mojom::ReadAnythingDistillationState new_state) override;
 
 #if BUILDFLAG(IS_CHROMEOS)
   void OnDeviceLocked() override;
@@ -174,10 +194,6 @@ class ReadAnythingAppController
 #endif
 
   // ui::AXTreeObserver:
-  void OnNodeDataChanged(ui::AXTree* tree,
-                         const ui::AXNodeData& old_node_data,
-                         const ui::AXNodeData& new_node_data) override;
-
   void OnNodeWillBeDeleted(ui::AXTree* tree, ui::AXNode* node) override;
 
   void OnNodeDeleted(ui::AXTree* tree, ui::AXNodeID node) override;
@@ -212,7 +228,8 @@ class ReadAnythingAppController
   int LineSpacing() const;
   int ColorTheme() const;
   int HighlightGranularity() const;
-  int LineFocus() const;
+  int LastNonDisabledLineFocus() const;
+  bool IsLineFocusOn() const;
   bool IsHighlightOn();
   int StandardLineSpacing() const;
   int LooseLineSpacing() const;
@@ -226,9 +243,8 @@ class ReadAnythingAppController
   int YellowTheme() const;
   int BlueTheme() const;
   int HighContrastTheme() const;
-  int LowContrastTheme() const;
-  int SepiaLightTheme() const;
-  int SepiaDarkTheme() const;
+  int LowContrastLightTheme() const;
+  int LowContrastDarkTheme() const;
   int AutoHighlighting() const;
   int WordHighlighting() const;
   int PhraseHighlighting() const;
@@ -250,8 +266,11 @@ class ReadAnythingAppController
   int LineFocusStaticLine() const;
   int LineFocusCursorLine() const;
   int MaxLineWidth() const;
+  int InHiddenPresentationState() const;
   int InSidePanelPresentationState() const;
   int InImmersiveOverlayPresentationState() const;
+  int DistillationTypeScreen2x() const;
+  int DistillationTypeReadability() const;
   std::string GetStoredVoice() const;
   std::vector<std::string> GetLanguagesEnabledInPref() const;
   std::vector<ui::AXNodeID> GetChildren(ui::AXNodeID ax_node_id) const;
@@ -265,6 +284,8 @@ class ReadAnythingAppController
   std::string GetAltText(ui::AXNodeID ax_node_id) const;
   std::string GetDomDistillerTitle() const;
   std::string GetDomDistillerContentHtml() const;
+  // Serializes accessibility tree anchors into a V8 object for the frontend.
+  v8::Local<v8::Value> GetDomDistillerAnchors() const;
   // Will only return a state if IsImmersiveReadAnythingEnabled() is true.
   // Returns the presentation through the OnGetPresentationState callback.
   void SendGetPresentationStateRequest() const;
@@ -291,11 +312,11 @@ class ReadAnythingAppController
   void OnCollapseSelection() const;
   void OnDistilled(int word_count);
   bool IsGoogleDocs() const;
-  bool IsReadAloudEnabled() const;
   bool IsImmersiveEnabled() const;
   bool IsTsTextSegmentationEnabled() const;
   bool IsReadabilityEnabled() const;
   bool IsLineFocusEnabled() const;
+  bool IsReadabilityWithLinksEnabled() const;
   bool IsChromeOsAsh() const;
   bool IsPhraseHighlightingEnabled() const;
   void OnLetterSpacingChange(int value);
@@ -328,6 +349,9 @@ class ReadAnythingAppController
   void TogglePresentation();
   void TogglePinState();
   void OnPinStatusReceived(bool pin_state) override;
+
+  // Returns the current active distillation method state as an integer.
+  int GetDistillationMethod() const;
 
   // The language code that should be used to determine which voices are
   // supported for speech.
@@ -403,11 +427,14 @@ class ReadAnythingAppController
   //   };
   void SetContentForTesting(v8::Local<v8::Value> v8_snapshot_lite,
                             std::vector<ui::AXNodeID> content_node_ids);
+  void SetAnchorsForTesting(v8::Local<v8::Value> v8_snapshot_lite,
+                            std::vector<ui::AXNodeID> content_node_ids);
   void SetLanguageForTesting(const std::string& language_code);
 
  private:
   friend ReadAnythingAppControllerTest;
   friend ReadAnythingAppControllerScreen2xDataCollectionModeTest;
+  friend ReadAnythingAppControllerReadabilityTest;
   // The fallback language code if GetLanguageCodeForSpeech has an error.
   // However, this may be the same value as GetLanguageCodeForSpeech.
   const std::string& GetDefaultLanguageCodeForSpeech() const;
@@ -415,6 +442,15 @@ class ReadAnythingAppController
   void Distill(bool for_training_data = false);
   void DrawSelection();
   void DrawEmptyState();
+
+  // Helper function that restarts the distillation logging timer and triggers a
+  // new distillation if the tree is ready.
+  void DistillNewTree();
+
+  // Returns the initial distillation method state based on feature flags and
+  // page type (e.g. if it's PDF).
+  ReadAnythingAppModel::DistillationMethod GetInitialDistillationMethod(
+      bool is_pdf) const;
 
   void ExecuteJavaScript(const std::string& script);
 

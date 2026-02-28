@@ -44,9 +44,13 @@
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
 #include "chrome/browser/devtools/devtools_window.h"
 #include "chrome/browser/devtools/features.h"
+#include "chrome/browser/devtools/views/devtools_floaty.h"
 #include "chrome/browser/download/download_prefs.h"
 #include "chrome/browser/download/download_stats.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
 #include "chrome/browser/language/language_model_manager_factory.h"
 #include "chrome/browser/media/router/media_router_feature.h"
 #include "chrome/browser/navigation_predictor/navigation_predictor_features.h"
@@ -235,6 +239,7 @@
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/models/image_model.h"
 #include "ui/base/mojom/menu_source_type.mojom.h"
+#include "ui/base/resource/resource_bundle.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/color/color_provider.h"
 #include "ui/gfx/favicon_size.h"
@@ -275,13 +280,6 @@
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/extension.h"
 #endif
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/resources/grit/glic_browser_resources.h"
-#include "ui/base/resource/resource_bundle.h"
-#endif  // BUILDFLAG(ENABLE_GLIC)
 
 #if BUILDFLAG(ENABLE_PDF)
 #include "chrome/browser/pdf/pdf_extension_util.h"
@@ -370,9 +368,6 @@ using extensions::MenuManager;
 
 namespace {
 
-constexpr char kOpenLinkAsProfileHistogram[] =
-    "RenderViewContextMenu.OpenLinkAsProfile";
-
 constexpr int kTabMenuIconSize = 16;
 
 base::OnceCallback<void(RenderViewContextMenu*)>* GetMenuShownCallback() {
@@ -384,18 +379,6 @@ base::OnceCallback<void(RenderViewContextMenu*)>* GetMenuShownCallback() {
 enum class UmaEnumIdLookupType {
   GeneralEnumId,
   ContextSpecificEnumId,
-};
-
-// Count when Open Link as Profile or Incognito Window menu item is displayed or
-// clicked. Metric: "RenderViewContextMenu.OpenLinkAsProfile".
-// These values are persisted to logs. Entries should not be renumbered and
-// numeric values should never be reused.
-enum class OpenLinkAs {
-  kOpenLinkAsProfileDisplayed = 0,
-  kOpenLinkAsProfileClicked = 1,
-  kOpenLinkAsIncognitoDisplayed = 2,
-  kOpenLinkAsIncognitoClicked = 3,
-  kMaxValue = kOpenLinkAsIncognitoClicked,
 };
 
 const std::map<int, int>& GetIdcToUmaMap(UmaEnumIdLookupType type) {
@@ -560,13 +543,15 @@ const std::map<int, int>& GetIdcToUmaMap(UmaEnumIdLookupType type) {
        {IDC_CONTENT_CONTEXT_OPENLINKSPLITVIEW, 156},
        {IDC_CONTENT_CONTEXT_GLICSHAREIMAGE, 157},
        {IDC_CONTENT_CONTEXT_ARCHIVE_GLIC, 158},
+       {IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI, 159},
+       {IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS, 160},
        // To add new items:
        //   - Add one more line above this comment block, using the UMA value
        //     from the line below this comment block.
        //   - Increment the UMA value in that latter line.
        //   - Add the new item to the RenderViewContextMenuItem enum in
        //     tools/metrics/histograms/metadata/ui/enums.xml.
-       {0, 159}});
+       {0, 161}});
   // LINT.ThenChange(//tools/metrics/histograms/metadata/ui/enums.xml:RenderViewContextMenuItem)
 
   // LINT.IfChange(ContextMenuOptionDesktop)
@@ -852,15 +837,22 @@ bool IsLensOptionEnteredThroughKeyboard(int event_flags) {
 
 bool IsGlicWindow(const RenderViewContextMenu* menu,
                   content::BrowserContext* browser_context) {
-#if BUILDFLAG(ENABLE_GLIC)
   if (glic::GlicEnabling::IsEnabledByFlags()) {
     auto* glic_service =
         glic::GlicKeyedServiceFactory::GetGlicKeyedService(browser_context);
     return glic_service && glic_service->IsActiveWebContents(
                                menu->GetWebContents()->GetOuterWebContents());
   }
-#endif  // BUILDFLAG(ENABLE_GLIC)
   return false;
+}
+
+bool IsPrintPreviewContent(const GURL& current_url) {
+#if BUILDFLAG(ENABLE_PRINT_PREVIEW)
+  return printing::PrintPreviewDialogController::IsPrintPreviewContentURL(
+      current_url);
+#else
+  return false;
+#endif
 }
 
 }  // namespace
@@ -919,6 +911,7 @@ RenderViewContextMenu::RenderViewContextMenu(
       protocol_handler_submenu_model_(this),
       protocol_handler_registry_(
           ProtocolHandlerRegistryFactory::GetForBrowserContext(GetProfile())),
+      inspect_submenu_model_(this),
       accessibility_labels_submenu_model_(this),
       embedder_web_contents_(GetWebContentsToUse(&render_frame_host)),
       autofill_context_menu_manager_(this, &menu_model_) {
@@ -1090,7 +1083,6 @@ void RenderViewContextMenu::InitMenu() {
       menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
     }
   } else {
-#if BUILDFLAG(ENABLE_GLIC)
     // Add "Copy Link Address" menu option for Glic Multi instance. Link
     // options are not supported by default (since Glic uses WebView's context
     // menu).
@@ -1099,7 +1091,6 @@ void RenderViewContextMenu::InitMenu() {
       AppendCopyLinkLocationItem();
       menu_model_.AddSeparator(ui::NORMAL_SEPARATOR);
     }
-#endif  // BUILDFLAG(ENABLE_GLIC)
   }
 
   bool media_image = content_type_->SupportsGroup(
@@ -1186,14 +1177,11 @@ void RenderViewContextMenu::InitMenu() {
       content_type_->SupportsGroup(ContextMenuContentType::ITEM_GROUP_PRINT)) {
     AppendPrintItem();
   } else {
-#if BUILDFLAG(ENABLE_GLIC)
-
     if (IsGlicWindow(this, browser_context_) &&
         base::FeatureList::IsEnabled(features::kGlicPrintMenuItem) &&
         glic::GlicEnabling::IsMultiInstanceEnabled()) {
       AppendPrintItem();
     }
-#endif  // BUILDFLAG(ENABLE_GLIC)
   }
 
   // ITEM_GROUP_SMART_SELECTION is for selected text that is not a link.
@@ -1516,24 +1504,6 @@ void RenderViewContextMenu::RecordShownItem(int id, bool is_submenu) {
       DLOG(ERROR) << "Update GetIdcToUmaMap. Unhandled IDC: " << id;
     }
   }
-
-  // The "Open Link as Profile" item can either be shown directly in the main
-  // menu as an item or as a sub-menu. The metric needs to track the
-  // impressions in the main menu, which are
-  // IDC_CONTENT_CONTEXT_OPENLINKINPROFILE when there is a sub-menu, and
-  // IDC_OPEN_LINK_IN_PROFILE_FIRST when there is not.
-  // IDC_OPEN_LINK_IN_PROFILE_FIRST is also emitted when the sub-menu is
-  // opened, so it is not taken into account when the sub-menu exists.
-  if (id == IDC_CONTENT_CONTEXT_OPENLINKINPROFILE ||
-      (id == IDC_OPEN_LINK_IN_PROFILE_FIRST &&
-       profile_link_submenu_model_.GetItemCount() == 0)) {
-    base::UmaHistogramEnumeration(kOpenLinkAsProfileHistogram,
-                                  OpenLinkAs::kOpenLinkAsProfileDisplayed);
-  } else if (id == IDC_CONTENT_CONTEXT_OPENLINKOFFTHERECORD &&
-             IsOpenLinkOTREnabled(GetProfile(), params_.link_url)) {
-    base::UmaHistogramEnumeration(kOpenLinkAsProfileHistogram,
-                                  OpenLinkAs::kOpenLinkAsIncognitoDisplayed);
-  }
 }
 
 bool RenderViewContextMenu::IsHTML5Fullscreen() const {
@@ -1631,8 +1601,21 @@ void RenderViewContextMenu::AppendDeveloperItems() {
                                       IDS_CONTENT_CONTEXT_RELOADFRAME);
     }
   }
-  menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_INSPECTELEMENT,
-                                  IDS_CONTENT_CONTEXT_INSPECTELEMENT);
+
+  if (base::FeatureList::IsEnabled(features::kDevToolsGreenDevUi)) {
+    inspect_submenu_model_.AddItemWithStringId(
+        IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI,
+        IDS_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI);
+    inspect_submenu_model_.AddItemWithStringId(
+        IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS,
+        IDS_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS);
+    menu_model_.AddSubMenuWithStringId(IDC_CONTENT_CONTEXT_INSPECTELEMENT,
+                                       IDS_CONTENT_CONTEXT_INSPECTELEMENT,
+                                       &inspect_submenu_model_);
+  } else {
+    menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_INSPECTELEMENT,
+                                    IDS_CONTENT_CONTEXT_INSPECTELEMENT);
+  }
 }
 
 void RenderViewContextMenu::AppendDevtoolsForUnpackedExtensions() {
@@ -2098,7 +2081,6 @@ void RenderViewContextMenu::AppendSearchWebForImageItems() {
 }
 
 void RenderViewContextMenu::AppendGlicShareImageItem() {
-#if BUILDFLAG(ENABLE_GLIC)
   if (glic::GlicEnabling::IsShareImageEnabledForProfile(GetProfile()) &&
       !IsGlicWindow(this, browser_context_)) {
     tabs::TabInterface* tab =
@@ -2120,7 +2102,6 @@ void RenderViewContextMenu::AppendGlicShareImageItem() {
           kGlicShareImageMenuItem);
     }
   }
-#endif  // BUILDFLAG(ENABLE_GLIC)
 }
 
 void RenderViewContextMenu::AppendAudioItems() {
@@ -2421,7 +2402,6 @@ void RenderViewContextMenu::AppendReadAnythingItem() {
 }
 
 void RenderViewContextMenu::AppendGlicItems() {
-#if BUILDFLAG(ENABLE_GLIC)
   if (IsGlicWindow(this, browser_context_)) {
     menu_model_.AddItemWithStringId(IDC_CONTENT_CONTEXT_RELOAD_GLIC,
                                     IDS_CONTENT_CONTEXT_RELOAD);
@@ -2448,7 +2428,6 @@ void RenderViewContextMenu::AppendGlicItems() {
           kGlicArchiveConversationMenuItem);
     }
   }
-#endif  // BUILDFLAG(ENABLE_GLIC)
 }
 
 void RenderViewContextMenu::AppendRotationItems() {
@@ -2501,10 +2480,10 @@ void RenderViewContextMenu::AppendSearchProvider() {
     // When the Lens text selection entrypoint flag is enabled, checking for the
     // availability of Lens requires the browser, so hide the menu item if the
     // flag is enabled and there is no browser (e.g. when selecting in the side
-    // panel).
+    // panel). However, show the menu item in print preview.
     if (!lens::features::
             IsLensOverlayTextSelectionContextMenuEntrypointEnabled() ||
-        GetBrowser()) {
+        GetBrowser() || IsPrintPreviewContent(current_url_)) {
       menu_model_.AddItem(
           IDC_CONTENT_CONTEXT_SEARCHWEBFOR,
           l10n_util::GetStringFUTF16(IDS_CONTENT_CONTEXT_SEARCHWEBFOR,
@@ -2932,6 +2911,8 @@ bool RenderViewContextMenu::IsCommandIdEnabled(int id) const {
 
     case IDC_CONTENT_CONTEXT_INSPECTELEMENT:
     case IDC_CONTENT_CONTEXT_INSPECTBACKGROUNDPAGE:
+    case IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI:
+    case IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS:
     case IDC_CONTENT_CONTEXT_RELOAD_PACKAGED_APP:
     case IDC_CONTENT_CONTEXT_RESTART_PACKAGED_APP:
       return IsDevCommandEnabled(id);
@@ -3250,8 +3231,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
   if (id >= IDC_OPEN_LINK_IN_PROFILE_FIRST &&
       id <= IDC_OPEN_LINK_IN_PROFILE_LAST) {
     ExecOpenLinkInProfile(id - IDC_OPEN_LINK_IN_PROFILE_FIRST);
-    base::UmaHistogramEnumeration(kOpenLinkAsProfileHistogram,
-                                  OpenLinkAs::kOpenLinkAsProfileClicked);
     return;
   }
 
@@ -3300,8 +3279,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           WindowOpenDisposition::OFF_THE_RECORD, ui::PAGE_TRANSITION_LINK,
           /*extra_headers=*/std::string(),
           /*started_from_context_menu=*/true);
-      base::UmaHistogramEnumeration(kOpenLinkAsProfileHistogram,
-                                    OpenLinkAs::kOpenLinkAsIncognitoClicked);
       break;
 
     case IDC_CONTENT_CONTEXT_OPENLINKBOOKMARKAPP:
@@ -3377,18 +3354,15 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
       break;
 
     case IDC_CONTENT_CONTEXT_RELOAD_GLIC:
-#if BUILDFLAG(ENABLE_GLIC)
       if (glic::GlicEnabling::IsEnabledByFlags()) {
         auto* glic_service = glic::GlicKeyedService::Get(browser_context_);
         if (glic_service) {
           glic_service->Reload(GetRenderFrameHost());
         }
       }
-#endif  // BUILDFLAG(ENABLE_GLIC)
       break;
 
     case IDC_CONTENT_CONTEXT_CLOSE_GLIC:
-#if BUILDFLAG(ENABLE_GLIC)
       if (glic::GlicEnabling::IsEnabledByFlags() &&
           !glic::GlicEnabling::IsMultiInstanceEnabled()) {
         auto* glic_service = glic::GlicKeyedService::Get(browser_context_);
@@ -3403,11 +3377,9 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           }
         }
       }
-#endif  // BUILDFLAG(ENABLE_GLIC)
       break;
 
     case IDC_CONTENT_CONTEXT_ARCHIVE_GLIC:  // Added for archive conversation
-#if BUILDFLAG(ENABLE_GLIC)
       if (glic::GlicEnabling::IsMultiInstanceEnabled() &&
           base::FeatureList::IsEnabled(features::kGlicArchiveConversation)) {
         auto* glic_service = glic::GlicKeyedService::Get(browser_context_);
@@ -3416,7 +3388,6 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
           glic_service->Archive(GetRenderFrameHost()->GetOutermostMainFrame());
         }
       }
-#endif  // BUILDFLAG(ENABLE_GLIC)
       break;
 
     case IDC_CONTENT_CONTEXT_LENS_REGION_SEARCH:
@@ -3551,6 +3522,14 @@ void RenderViewContextMenu::ExecuteCommand(int id, int event_flags) {
 
     case IDC_CONTENT_CONTEXT_INSPECTBACKGROUNDPAGE:
       ExecInspectBackgroundPage();
+      break;
+
+    case IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI:
+      ExecInspectElementWithGemini();
+      break;
+
+    case IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS:
+      ExecInspectElement();
       break;
 
     case IDC_CONTENT_CONTEXT_TRANSLATE:
@@ -3997,14 +3976,12 @@ bool RenderViewContextMenu::IsPasteAndMatchStyleEnabled() const {
 }
 
 bool RenderViewContextMenu::IsPrintPreviewEnabled() const {
-#if BUILDFLAG(ENABLE_GLIC)
   if (IsGlicWindow(this, browser_context_) &&
       base::FeatureList::IsEnabled(features::kGlicPrintMenuItem) &&
       glic::GlicEnabling::IsMultiInstanceEnabled()) {
     return GetPrefs(browser_context_)->GetBoolean(prefs::kPrintingEnabled) &&
            (source_web_contents_ && !source_web_contents_->IsCrashed());
   }
-#endif  // BUILDFLAG(ENABLE_GLIC)
 
   if (params_.media_type != ContextMenuDataMediaType::kNone &&
       !(params_.media_flags & ContextMenuData::kMediaCanPrint)) {
@@ -4278,6 +4255,16 @@ void RenderViewContextMenu::ExecInspectBackgroundPage() {
       platform_app, GetProfile(), DevToolsOpenedByAction::kContextMenuInspect);
 }
 
+void RenderViewContextMenu::ExecInspectElementWithGemini() {
+  LOG(ERROR) << "ExecInspectElementWithGemini called at " << params_.x << ", "
+             << params_.y;
+  // TOOD(crbug.com/466071312): Send the actual node id.
+  DevToolsFloaty::Show(Profile::FromBrowserContext(browser_context_),
+                       render_process_id_, render_frame_id_,
+                       gfx::Point(params_.x, params_.y),
+                       /* *backend_node_id*/ 1);
+}
+
 void RenderViewContextMenu::CheckSupervisedUserURLFilterAndSaveLinkAs() {
   Profile* const profile = Profile::FromBrowserContext(browser_context_);
   CHECK(profile);
@@ -4332,17 +4319,13 @@ void RenderViewContextMenu::ExecSaveLinkAs() {
           policy_exception_justification: "Not implemented."
         })");
 
-  auto dl_params = std::make_unique<DownloadUrlParameters>(
-      url, render_frame_host->GetProcess()->GetDeprecatedID(),
-      render_frame_host->GetRoutingID(), traffic_annotation);
+  auto dl_params =
+      render_frame_host->CreateDownloadUrlParameters(url, traffic_annotation);
   content::Referrer referrer = CreateReferrer(url, params_);
   dl_params->set_referrer(referrer.url);
   dl_params->set_referrer_policy(
       content::Referrer::ReferrerPolicyForUrlRequest(referrer.policy));
   dl_params->set_referrer_encoding(params_.frame_charset);
-  // TODO(crbug.com/40066346): use the actual origin here rather than
-  // pulling it out of the frame url.
-  dl_params->set_initiator(url::Origin::Create(params_.frame_url));
   dl_params->set_suggested_name(params_.suggested_filename);
   dl_params->set_prompt(true);
   dl_params->set_download_source(download::DownloadSource::CONTEXT_MENU);
@@ -4408,7 +4391,6 @@ void RenderViewContextMenu::ExecSaveAs() {
 }
 
 void RenderViewContextMenu::ExecGlicShareImage() {
-#if BUILDFLAG(ENABLE_GLIC)
   if (!glic::GlicEnabling::IsShareImageEnabledForProfile(GetProfile())) {
     // If this has changed since the context menu was summoned, bail early.
     return;
@@ -4418,7 +4400,6 @@ void RenderViewContextMenu::ExecGlicShareImage() {
         tabs::TabInterface::MaybeGetFromContents(source_web_contents_),
         GetRenderFrameHost(), params().src_url);
   }
-#endif  // BUILDLFLAG(ENABLE_GLIC)
 }
 
 void RenderViewContextMenu::ExecExitFullscreen() {

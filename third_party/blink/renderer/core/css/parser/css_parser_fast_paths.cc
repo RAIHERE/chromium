@@ -1211,12 +1211,13 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
              value_id == CSSValueID::kOptimizequality;
     case CSSPropertyID::kColumnRuleBreak:
     case CSSPropertyID::kRowRuleBreak:
-      return value_id == CSSValueID::kAuto || value_id == CSSValueID::kNone ||
-             value_id == CSSValueID::kSpanningItem ||
+      return value_id == CSSValueID::kNone ||
+             value_id == CSSValueID::kNormal ||
              value_id == CSSValueID::kIntersection;
     case CSSPropertyID::kColumnRuleVisibilityItems:
     case CSSPropertyID::kRowRuleVisibilityItems:
-      return value_id == CSSValueID::kAll || value_id == CSSValueID::kAround ||
+      return value_id == CSSValueID::kAuto || value_id == CSSValueID::kAll ||
+             value_id == CSSValueID::kAround ||
              value_id == CSSValueID::kBetween;
     case CSSPropertyID::kColumnSpan:
       return value_id == CSSValueID::kAll || value_id == CSSValueID::kNone;
@@ -1244,11 +1245,14 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
     case CSSPropertyID::kForcedColorAdjust:
       return value_id == CSSValueID::kNone || value_id == CSSValueID::kAuto ||
              value_id == CSSValueID::kPreserveParentColor;
-    case CSSPropertyID::kGapRuleOverlap:
+    case CSSPropertyID::kRuleOverlap:
       return value_id == CSSValueID::kRowOverColumn ||
              value_id == CSSValueID::kColumnOverRow;
     case CSSPropertyID::kGridLanesPack:
       return value_id == CSSValueID::kNormal || value_id == CSSValueID::kDense;
+    case CSSPropertyID::kImageAnimation:
+      return value_id == CSSValueID::kRunning ||
+             value_id == CSSValueID::kPaused || value_id == CSSValueID::kNormal;
     case CSSPropertyID::kImageRendering:
       return value_id == CSSValueID::kAuto ||
              value_id == CSSValueID::kWebkitOptimizeContrast ||
@@ -1405,7 +1409,9 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
              value_id == CSSValueID::kDotted ||
              value_id == CSSValueID::kDashed || value_id == CSSValueID::kWavy;
     case CSSPropertyID::kTextDecorationSkipInk:
-      return value_id == CSSValueID::kAuto || value_id == CSSValueID::kNone;
+      return value_id == CSSValueID::kAuto || value_id == CSSValueID::kNone ||
+             (RuntimeEnabledFeatures::CSSTextDecorationSkipInkAllEnabled() &&
+              value_id == CSSValueID::kAll);
     case CSSPropertyID::kTextOrientation:
       return value_id == CSSValueID::kMixed ||
              value_id == CSSValueID::kUpright ||
@@ -1425,14 +1431,6 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
              value_id == CSSValueID::kOptimizespeed ||
              value_id == CSSValueID::kOptimizelegibility ||
              value_id == CSSValueID::kGeometricprecision;
-    case CSSPropertyID::kTextTransform:
-      return value_id == CSSValueID::kCapitalize ||
-             value_id == CSSValueID::kUppercase ||
-             value_id == CSSValueID::kLowercase ||
-             value_id == CSSValueID::kMathAuto ||
-             value_id == CSSValueID::kNone ||
-             (RuntimeEnabledFeatures::CSSTextTransformFullWidthEnabled() &&
-              value_id == CSSValueID::kFullWidth);
     case CSSPropertyID::kUnicodeBidi:
       return value_id == CSSValueID::kNormal ||
              value_id == CSSValueID::kEmbed ||
@@ -1556,6 +1554,12 @@ bool CSSParserFastPaths::IsValidKeywordPropertyAndValue(
              value_id == CSSValueID::kColumnReverse;
     case CSSPropertyID::kFieldSizing:
       return value_id == CSSValueID::kFixed || value_id == CSSValueID::kContent;
+    case CSSPropertyID::kFrameSizing:
+      return value_id == CSSValueID::kAuto ||
+             value_id == CSSValueID::kContentWidth ||
+             value_id == CSSValueID::kContentHeight ||
+             value_id == CSSValueID::kContentInlineSize ||
+             value_id == CSSValueID::kContentBlockSize;
     case CSSPropertyID::kHyphens:
 #if BUILDFLAG(USE_MINIKIN_HYPHENATION) || BUILDFLAG(IS_APPLE)
       return value_id == CSSValueID::kAuto || value_id == CSSValueID::kNone ||
@@ -1758,10 +1762,12 @@ CSSBitset CSSParserFastPaths::handled_by_keyword_fast_paths_properties_{{
     CSSPropertyID::kFillRule,
     CSSPropertyID::kFloat,
     CSSPropertyID::kFieldSizing,
+    CSSPropertyID::kFrameSizing,
     CSSPropertyID::kForcedColorAdjust,
-    CSSPropertyID::kGapRuleOverlap,
+    CSSPropertyID::kRuleOverlap,
     CSSPropertyID::kGridLanesPack,
     CSSPropertyID::kHyphens,
+    CSSPropertyID::kImageAnimation,
     CSSPropertyID::kImageRendering,
     CSSPropertyID::kInterpolateSize,
     CSSPropertyID::kListStylePosition,
@@ -1812,7 +1818,6 @@ CSSBitset CSSParserFastPaths::handled_by_keyword_fast_paths_properties_{{
     CSSPropertyID::kWebkitTextOrientation,
     CSSPropertyID::kTextRendering,
     CSSPropertyID::kTextSpacingTrim,
-    CSSPropertyID::kTextTransform,
     CSSPropertyID::kUnicodeBidi,
     CSSPropertyID::kVectorEffect,
     CSSPropertyID::kViewTransitionScope,

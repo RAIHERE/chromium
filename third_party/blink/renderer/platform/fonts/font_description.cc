@@ -549,23 +549,23 @@ void FontDescription::UpdateFromSkiaFontStyle(const SkFontStyle& font_style) {
     SetStyle(kNormalSlopeValue);
 }
 
-int FontDescription::MinimumPrefixWidthToHyphenate() const {
-  // If the maximum width available for the prefix before the hyphen is small,
-  // then it is very unlikely that an hyphenation opportunity exists, so do not
-  // bother to look for it.  These are heuristic numbers for performance added
-  // in http://wkb.ug/45606
-  const int kMinimumPrefixWidthNumerator = 5;
-  const int kMinimumPrefixWidthDenominator = 4;
-  return ComputedPixelSize() * kMinimumPrefixWidthNumerator /
-         kMinimumPrefixWidthDenominator;
-}
-
 ResolvedFontFeatures FontDescription::ResolveFontFeatures() const {
   if (const auto* alternates = GetFontVariantAlternates()) {
-    ResolvedFontFeatures features_with_description =
+    // Per CSS Fonts 4 section 7.2, the font-variant-alternates CSS property
+    // takes precedence over the @font-face font-feature-settings descriptor.
+    // https://drafts.csswg.org/css-fonts-4/#feature-variation-precedence
+    ResolvedFontFeatures merged_features =
         alternates->GetResolvedFontFeatures();
-    features_with_description.AppendVector(resolved_font_features_);
-    return features_with_description;
+    const wtf_size_t resolved_size = merged_features.size();
+    merged_features.reserve(resolved_size + resolved_font_features_.size());
+    for (const auto& descriptor_feature : resolved_font_features_) {
+      if (!std::ranges::contains(
+              base::span{merged_features}.first(resolved_size),
+              descriptor_feature.tag, &FontFeatureValue::tag)) {
+        merged_features.emplace_back(descriptor_feature);
+      }
+    }
+    return merged_features;
   }
   return resolved_font_features_;
 }

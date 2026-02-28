@@ -38,7 +38,7 @@ class TabModelJniBridge : public TabModel {
                     const jni_zero::JavaRef<jobject>& jobj,
                     Profile* profile,
                     chrome::android::ActivityType activity_type,
-                    bool is_archived_tab_model);
+                    TabModelType tab_model_type);
   void Destroy(JNIEnv* env);
 
   TabModelJniBridge(const TabModelJniBridge&) = delete;
@@ -48,6 +48,7 @@ class TabModelJniBridge : public TabModel {
 
   void AssociateWithBrowserWindow(JNIEnv* env,
                                   long native_android_browser_window);
+  void DissociateWithBrowserWindow(JNIEnv* env);
   void TabAddedToModel(JNIEnv* env, TabAndroid* tab);
   TabAndroid* DuplicateTab(JNIEnv* env, TabAndroid* tab);
   void MoveTabToWindowForTesting(JNIEnv* env,
@@ -118,7 +119,12 @@ class TabModelJniBridge : public TabModel {
   tabs::TabInterface* OpenTab(const GURL& url, int index) override;
   void SetOpenerForTab(tabs::TabHandle target, tabs::TabHandle opener) override;
   tabs::TabInterface* GetOpenerForTab(tabs::TabHandle target) override;
-  void DiscardTab(tabs::TabHandle tab) override;
+  tabs::TabInterface* InsertWebContentsAt(
+      int index,
+      std::unique_ptr<content::WebContents> web_contents,
+      bool should_pin,
+      std::optional<tab_groups::TabGroupId> group) override;
+  content::WebContents* DiscardTab(tabs::TabHandle tab) override;
   tabs::TabInterface* DuplicateTab(tabs::TabHandle tab) override;
   tabs::TabInterface* GetTab(int index) override;
   int GetIndexOfTab(tabs::TabHandle tab) override;
@@ -150,6 +156,8 @@ class TabModelJniBridge : public TabModel {
   void MoveTabGroupToWindow(tab_groups::TabGroupId group_id,
                             SessionID destination_window_id,
                             int destination_index) override;
+  bool IsThisTabListEditable() override;
+  bool IsClosingAllTabs() override;
 
   // Returns a corresponding Java Class object.
   static jclass GetClazz(JNIEnv* env);
@@ -174,7 +182,7 @@ class TabModelJniBridge : public TabModel {
   bool is_archived_tab_model_;
   // Cannot use a conventional member variable because this is initialized after
   // the constructor.
-  std::unique_ptr<ui::ScopedUnownedUserData<TabModel>>
+  std::unique_ptr<ui::ScopedUnownedUserData<TabListInterface>>
       scoped_unowned_user_data_;
 };
 

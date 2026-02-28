@@ -719,8 +719,8 @@ bool CreateTemporaryDirInDir(const FilePath& base_dir,
     new_dir_name.assign(prefix);
     new_dir_name.append(AsWString(NumberToString16(GetCurrentProcId())));
     new_dir_name.push_back('_');
-    new_dir_name.append(AsWString(
-        NumberToString16(RandInt(0, std::numeric_limits<int32_t>::max()))));
+    new_dir_name.append(AsWString(NumberToString16(
+        RandIntInclusive(0, std::numeric_limits<int32_t>::max()))));
 
     path_to_create = base_dir.Append(new_dir_name);
     if (::CreateDirectory(path_to_create.value().c_str(), NULL)) {
@@ -1240,8 +1240,8 @@ bool PreventExecuteMappingInternal(const FilePath& path, bool skip_path_check) {
     return false;
   }
 
-  static constexpr wchar_t kEveryoneSid[] = L"WD";
-  auto sids = win::Sid::FromSddlStringVector({kEveryoneSid});
+  const std::vector<std::wstring> sddl = {L"WD"};
+  auto sids = win::Sid::FromSddlStringVector(sddl);
 
   // Remove executable access from the file. The API does not add a duplicate
   // ACE if it already exists.

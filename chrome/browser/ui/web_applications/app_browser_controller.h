@@ -84,6 +84,11 @@ class AppBrowserController : public ui::ColorProviderKey::InitializerSupplier,
   // Returns whether |browser| is a web app window/pop-up for |app_id|.
   static bool IsForWebApp(const BrowserWindowInterface* browser,
                           const webapps::AppId& app_id);
+  // Returns whether |browser| is a web app window/pop-up for
+  // |maybe_parent_app_id|.
+  static bool IsForIsolatedSubApp(
+      const BrowserWindowInterface* browser,
+      const std::optional<webapps::AppId>& maybe_parent_app_id = std::nullopt);
   // Returns a BrowserWindowInterface* that is for |app_id| and |profile| if
   // any, searches in order of last browser activation. Ignores pop-up Browsers.
   static BrowserWindowInterface* FindForWebApp(const Profile& profile,
@@ -270,9 +275,12 @@ class AppBrowserController : public ui::ColorProviderKey::InitializerSupplier,
   // not been ignored by the user.
   virtual bool HasPendingUpdateNotIgnoredByUser() const;
 
-  // Constructs the metadata required for app identity updating and triggers the
-  // corresponding dialog.
-  virtual void CreateMetadataAndTriggerAppUpdateDialog(
+  // Returns true if there is a pending migration available for this app.
+  virtual bool HasPendingMigration() const;
+
+  // Constructs the metadata required for app identity updating or migration,
+  // and triggers the corresponding dialog.
+  virtual void TriggerAppUpdateOrMigrationDialog(
       base::TimeTicks start_time) const;
 
   // Returns whether prevent close is enabled.

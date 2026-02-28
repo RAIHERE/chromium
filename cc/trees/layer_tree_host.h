@@ -46,7 +46,6 @@
 #include "cc/metrics/begin_main_frame_metrics.h"
 #include "cc/metrics/events_metrics_manager.h"
 #include "cc/metrics/frame_sequence_tracker.h"
-#include "cc/paint/canvas_draw_element_ids.h"
 #include "cc/paint/node_id.h"
 #include "cc/resources/ui_resource_request.h"
 #include "cc/trees/browser_controls_params.h"
@@ -684,6 +683,13 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
     pending_commit_state()->force_send_metadata_request = true;
   }
 
+  // Requests a cap on CPU performance during idle periods. Forwarded
+  // to ADPF on Android, no-op on other platforms.
+  void RequestEfficientScheduling(bool prefer_efficient_scheduling) {
+    pending_commit_state()->prefer_efficient_scheduling =
+        prefer_efficient_scheduling;
+  }
+
   // Returns the state of |force_send_metadata_request_| and resets the
   // variable to false.
   bool TakeForceSendMetadataRequest();
@@ -769,14 +775,6 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   void RegisterElement(ElementId element_id, Layer* layer);
   void UnregisterElement(ElementId element_id, const Layer* layer);
 
-  void SetCanvasDrawElementIds(
-      AllCanvasDrawElementIds all_canvas_draw_element_ids) {
-    all_canvas_draw_element_ids_ = std::move(all_canvas_draw_element_ids);
-  }
-  const AllCanvasDrawElementIds& all_canvas_draw_element_ids() const {
-    return all_canvas_draw_element_ids_;
-  }
-
   void SetElementIdsForTesting();
   void BuildPropertyTreesForTesting();
 
@@ -792,6 +790,7 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
 
   // LayerTreeHost interface to Proxy.
   void WillBeginMainFrame();
+  void WillBeginImplCommit();
   void DidBeginMainFrame();
   void BeginMainFrame(const viz::BeginFrameArgs& args);
   void BeginMainFrameNotExpectedSoon();
@@ -1118,6 +1117,10 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   // destroyed midway which causes a crash. crbug.com/654672
   bool inside_main_frame_ = false;
 
+  // Track when we're inside `WillBeginImplCommit` to ensure commit state is
+  // not modified.
+  bool inside_will_begin_impl_commit_ = false;
+
   // Set to force a commit during BeginMainFrame even if there are no actual
   // rendering changes, to ensure the bits in CommitState are propagated.
   bool force_commit_for_propagation_ = true;
@@ -1139,12 +1142,8 @@ class CC_EXPORT LayerTreeHost : public MutatorHostClient {
   // Layer id to Layer map.
   std::unordered_map<int, raw_ptr<Layer, CtnExperimental>> layer_id_map_;
 
-  // This is for layer tree mode only.
   std::unordered_map<ElementId, raw_ptr<Layer, CtnExperimental>, ElementIdHash>
       element_layers_map_;
-
-  // Ids of elements which can be drawn using html-in-canvas.
-  AllCanvasDrawElementIds all_canvas_draw_element_ids_;
 
   bool in_paint_layer_contents_ = false;
 

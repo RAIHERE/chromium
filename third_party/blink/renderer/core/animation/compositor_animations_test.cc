@@ -58,6 +58,7 @@
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/animation/keyframe_effect.h"
 #include "third_party/blink/renderer/core/animation/pending_animations.h"
+#include "third_party/blink/renderer/core/animation/timeline_trigger.h"
 #include "third_party/blink/renderer/core/css/background_color_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/clip_path_paint_image_generator.h"
 #include "third_party/blink/renderer/core/css/css_custom_ident_value.h"
@@ -490,6 +491,7 @@ class AnimationCompositorAnimationsTest : public PaintTestConfigurations,
       bool IsNeutral() const final { return true; }
       bool IsRevert() const final { return false; }
       bool IsRevertLayer() const final { return false; }
+      bool IsRevertRule() const final { return false; }
       bool PopulateCompositorKeyframeValue(
           const PropertyHandle&,
           Element&,
@@ -2558,6 +2560,39 @@ TEST_P(AnimationCompositorAnimationsTest, UnsupportedSVGCSSProperty) {
                 StartOnCompositorReason::kGeneric));
 }
 
+TEST_P(AnimationCompositorAnimationsTest, UnsupportedSVGResource) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      @keyframes slide {
+        0% { transform: translateX(-100%); }
+        100% { transform: translateX(-10%); }
+      }
+      svg * {
+        animation: slide 4s linear infinite;
+      }
+    </style>
+    <svg id="root">
+      <linearGradient>
+        <stop/>
+      </linearGradient>
+      <pattern>
+        <rect width="100" height="100"/>
+      </pattern>
+    </svg>
+  )HTML");
+
+  for (Element& child :
+       ElementTraversal::DescendantsOf(*GetElementById("root"))) {
+    const Animation& animation =
+        *child.GetElementAnimations()->Animations().begin()->key;
+    EXPECT_TRUE(animation.CheckCanStartAnimationOnCompositor(
+                    GetDocument().View()->GetPaintArtifactCompositor(),
+                    StartOnCompositorReason::kGeneric) &
+                CompositorAnimations::kTargetHasInvalidCompositingState)
+        << child.localName();
+  }
+}
+
 TEST_P(AnimationCompositorAnimationsTest,
        TotalAnimationCountAcrossAllDocuments) {
   LoadTestData("animation-in-main-frame.html");
@@ -4009,6 +4044,9 @@ TEST_F(CompositorAnimationTriggerTest, NonCompositedAnimation) {
             V8AnimationPlayState::Enum::kPaused);
   EXPECT_EQ(noncomposited_animation->CalculateAnimationPlayState(),
             V8AnimationPlayState::Enum::kPaused);
+  GetAnimationHostImpl()->PromoteScrollTimelinesPendingToActive();
+  double time_delta_in_seconds = 0.016;
+  double frame_count = 1;
   Compositor().BeginFrame();
 
   const cc::AnimationHost::IdToTriggerMap& trigger_map =
@@ -4021,7 +4059,12 @@ TEST_F(CompositorAnimationTriggerTest, NonCompositedAnimation) {
 
   // Instigate the trigger condition.
   source->scrollIntoView(nullptr);
-  Compositor().BeginFrame();
+  // We need one frame to commit the main thread scroll offset to cc and one
+  // frame to get the updated cc trigger state to main.
+  Compositor().BeginFrame(frame_count++ * time_delta_in_seconds,
+                          /*raster=*/true);
+  Compositor().BeginFrame(frame_count++ * time_delta_in_seconds,
+                          /*raster=*/true);
 
   // TODO(crbug.com/451238244): The composited animation should also be played
   // by the trigger but as cc triggers are currently not functional, the
@@ -4030,6 +4073,163 @@ TEST_F(CompositorAnimationTriggerTest, NonCompositedAnimation) {
             V8AnimationPlayState::Enum::kPaused);
   EXPECT_EQ(noncomposited_animation->CalculateAnimationPlayState(),
             V8AnimationPlayState::Enum::kRunning);
+}
+
+TEST_P(AnimationCompositorAnimationsTest, ClipExpanderUpdate) {
+  std::unique_ptr<ScopedCompositeClipPathAnimationForTest>
+      scoped_composite_clip_path_animation =
+          std::make_unique<ScopedCompositeClipPathAnimationForTest>(true);
+
+  // Negative insets expand the clip rect.
+  // inset(-0.1px) on 100x100 -> 100.2x100.2. Enclosing int rect: 101x101.
+  // inset(-0.2px) on 100x100 -> 100.4x100.4. Enclosing int rect: 101x101.
+  // The enclosing int rect (paint_clip_rect) remains unchanged, but the
+  // float rect (expanded_layout_clip_rect) changes.
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      @keyframes anim1 {
+        from { clip-path: inset(0px); }
+        to { clip-path: inset(-0.1px); }
+      }
+      @keyframes anim2 {
+        from { clip-path: inset(0px); }
+        to { clip-path: inset(-0.2px); }
+      }
+      #target {
+        width: 100px;
+        height: 100px;
+        animation: anim1 1000s infinite alternate;
+        will-change: clip-path;
+      }
+    </style>
+    <div id="target"></div>
+  )HTML");
+
+  UpdateAllLifecyclePhasesForTest();
+
+  auto* target = GetDocument().getElementById(AtomicString("target"));
+  const auto* properties =
+      target->GetLayoutObject()->FirstFragment().PaintProperties();
+  gfx::RectF rect = properties->MaskClip()->LayoutClipRect().Rect();
+  // inset(-0.1px) on 100x100 -> 100.2x100.2
+  EXPECT_FLOAT_EQ(-0.1f, rect.x());
+  EXPECT_FLOAT_EQ(-0.1f, rect.y());
+  EXPECT_FLOAT_EQ(100.2f, rect.width());
+  EXPECT_FLOAT_EQ(100.2f, rect.height());
+
+  // Switch to anim2 to trigger a change in the animation bounds.
+  target->setAttribute(html_names::kStyleAttr,
+                       AtomicString("animation-name: anim2"));
+  UpdateAllLifecyclePhasesForTest();
+
+  // After updating to the new animation, the bounds should change.
+  rect = properties->MaskClip()->LayoutClipRect().Rect();
+  // inset(-0.2px) on 100x100 -> 100.4x100.4
+  EXPECT_FLOAT_EQ(-0.2f, rect.x());
+  EXPECT_FLOAT_EQ(-0.2f, rect.y());
+  EXPECT_FLOAT_EQ(100.4f, rect.width());
+  EXPECT_FLOAT_EQ(100.4f, rect.height());
+}
+
+TEST_F(CompositorAnimationTriggerTest, SyncTimelineTriggerStateOnMain) {
+  SimRequest request("https://example.com/test.html", "text/html");
+  LoadURL("https://example.com/test.html");
+  request.Complete(R"HTML(
+    <!DOCTYPE html>
+    <style>
+      @keyframes swell {
+        0% { transform: scaleX(1); }
+        50% { transform: scaleX(5); }
+        100% { transform: scaleX(1); }
+      }
+
+      .long {
+        height: 300px;
+        width: 100px;
+      }
+      .scroller {
+        overflow: scroll;
+        height: 150px;
+        width: 100px;
+      }
+
+      #target {
+        timeline-trigger: --trigger view() contain 0% contain 100%;
+        animation: swell .5s both;
+        animation-trigger: --trigger play;
+
+        background: green;
+        height: 100px;
+        width: 100px;
+      }
+    </style>
+    <div id="scroller" class="scroller">
+      <div class="long"></div>
+      <div id="target"></div>
+      <div class="long"></div>
+    </div>
+  )HTML");
+  Compositor().BeginFrame();
+
+  Element* target = GetElement("target");
+  Element* scroller = GetElement("scroller");
+
+  TimelineTrigger* trigger =
+      DynamicTo<TimelineTrigger>(target->NamedTriggers()->begin()->value.Get());
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kIdle);
+
+  double scroller_size = 150;
+  double long_size = 300;
+  double target_size = 100;
+
+  double contain0 = long_size + target_size - scroller_size;
+  double contain100 = long_size;
+
+  double time_delta_in_seconds = 0.016;
+  double frame_count = 1;
+  auto commit = [&]() {
+    // For the tests that follow, we need one commit to have the compositor pick
+    // up the scroll offset update from main and another commit for the main
+    // thread trigger to sync with the updated compositor trigger.
+    Compositor().BeginFrame(frame_count++ * time_delta_in_seconds,
+                            /*raster=*/true);
+    Compositor().BeginFrame(frame_count++ * time_delta_in_seconds,
+                            /*raster=*/true);
+  };
+
+  GetAnimationHostImpl()->PromoteScrollTimelinesPendingToActive();
+
+  scroller->setScrollTop((contain0 + contain100) / 2);
+
+  // Our cc::AnimationTrigger is the source of truth for the trigger state.
+  // We shouldn't change state until a commit has occurred and we receive the
+  // state update.
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kIdle);
+
+  commit();
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kPrimary);
+
+  scroller->setScrollTop(contain100 + 50);
+
+  //  No commit yet, not state change expected.
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kPrimary);
+  //  Post-commit, new state should be visible.
+  commit();
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kInverse);
+
+  // Go back into the trigger range.
+  scroller->setScrollTop((contain0 + contain100) / 2);
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kInverse);
+
+  commit();
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kPrimary);
+
+  // Go back out of the trigger range.
+  scroller->setScrollTop(contain0 - 50);
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kPrimary);
+
+  commit();
+  EXPECT_EQ(trigger->GetState(), TimelineTrigger::State::kInverse);
 }
 
 }  // namespace blink

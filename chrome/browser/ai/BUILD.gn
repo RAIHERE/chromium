@@ -33,16 +33,13 @@ source_set("ai") {
   public_deps = [
     "//base",
     "//chrome/browser/actor",
-    "//chrome/browser/ai:ai_model_download_progress_manager",
+    "//chrome/browser/glic",
     "//chrome/browser/profiles:profile",
     "//components/component_updater",
     "//components/on_device_ai",
     "//components/optimization_guide/core",
     "//content/public/browser",
   ]
-  if (enable_glic) {
-    public_deps += [ "//chrome/browser/glic" ]
-  }
 }
 
 source_set("impl") {
@@ -75,9 +72,9 @@ source_set("impl") {
     "//chrome/browser/ui/tabs:tabs_public",
     "//components/autofill/content/browser",
     "//components/autofill/core/browser",
-    "//components/history_embeddings",
+    "//components/history_embeddings/content",
+    "//components/history_embeddings/core",
     "//components/language/core/common",
-    "//components/on_device_ai",
     "//components/optimization_guide/content/browser",
     "//components/site_engagement/content",
     "//pdf:buildflags",
@@ -98,27 +95,6 @@ source_set("impl") {
   }
 }
 
-source_set("ai_model_download_progress_manager") {
-  sources = [
-    "ai_crx_component.cc",
-    "ai_crx_component.h",
-    "ai_model_download_progress_manager.cc",
-    "ai_model_download_progress_manager.h",
-    "ai_never_load_component.cc",
-    "ai_never_load_component.h",
-  ]
-  public_deps = [
-    "//base",
-    "//chrome/browser:browser_process",
-    "//components/component_updater",
-    "//components/on_device_ai",
-    "//components/update_client",
-    "//content/public/browser",
-    "//mojo/public/cpp/bindings",
-    "//services/on_device_model/public/mojom",
-  ]
-}
-
 source_set("test_support") {
   testonly = true
   sources = [
@@ -129,7 +105,6 @@ source_set("test_support") {
     "//chrome/browser/optimization_guide",
     "//chrome/browser/optimization_guide:test_support",
     "//chrome/test:test_support",
-    "//components/component_updater:test_support",
     "//components/optimization_guide/core:test_support",
     "//testing/gmock",
     "//testing/gtest",
@@ -140,18 +115,14 @@ source_set("test_support") {
 source_set("unit_tests") {
   testonly = true
   sources = [
-    "ai_crx_component_unittest.cc",
     "ai_language_model_unittest.cc",
     "ai_manager_unittest.cc",
-    "ai_model_download_progress_manager_unittest.cc",
     "ai_proofreader_unittest.cc",
-    "ai_rewriter_unittest.cc",
     "ai_summarizer_unittest.cc",
     "ai_writer_unittest.cc",
   ]
   deps = [
     ":ai",
-    ":ai_model_download_progress_manager",
     ":test_support",
     "//chrome/browser/optimization_guide:test_support",
     "//components/on_device_ai",

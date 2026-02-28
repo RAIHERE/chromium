@@ -29,9 +29,6 @@
 #include "chrome/browser/safe_browsing/download_protection/download_request_maker.h"
 #include "chrome/browser/safe_browsing/safe_browsing_navigation_observer_manager_factory.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
-#include "chrome/browser/ui/browser.h"
-#include "chrome/browser/ui/browser_finder.h"
-#include "chrome/browser/ui/browser_window.h"
 #include "chrome/common/pref_names.h"
 #include "components/download/public/common/download_item.h"
 #include "components/enterprise/common/proto/connectors.pb.h"
@@ -492,7 +489,8 @@ void DeepScanningRequest::StartSingleFileScan() {
       /* delay_opening_file */ false,
       base::BindOnce(&DeepScanningRequest::OnScanComplete,
                      weak_ptr_factory_.GetWeakPtr(), metadata_->GetFullPath()),
-      base::DoNothing(), metadata_->IsObfuscated());
+      base::DoNothing(), metadata_->IsObfuscated(),
+      /* force_sync_hash_computation */ false);
 
   request->set_filename(metadata_->GetTargetFilePath().AsUTF8Unsafe());
 
@@ -565,9 +563,9 @@ void DeepScanningRequest::PopulateRequest(FileAnalysisRequest* request,
                                           const base::FilePath& path) {
   InitializeRequest(request, IsEnterpriseTriggered());
   request->set_analysis_connector(enterprise_connectors::FILE_DOWNLOADED);
-  if (file_metadata_.count(path) &&
-      !file_metadata_.at(path).mime_type.empty()) {
-    request->set_content_type(file_metadata_.at(path).mime_type);
+  if (auto it = file_metadata_.find(path);
+      it != file_metadata_.end() && !it->second.mime_type.empty()) {
+    request->set_content_type(it->second.mime_type);
   }
 }
 

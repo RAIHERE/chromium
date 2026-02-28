@@ -46,6 +46,7 @@
 #include "media/base/media_content_type.h"
 #include "media/base/media_log.h"
 #include "media/base/media_switches.h"
+#include "media/base/media_util.h"
 #include "media/base/memory_dump_provider_proxy.h"
 #include "media/base/output_device_info.h"
 #include "media/base/remoting_constants.h"
@@ -935,6 +936,14 @@ void WebMediaPlayerImpl::DoLoad(LoadType load_type,
     return;
   }
 
+  // `demuxer_manager_` will create a HlsManifestDemuxerEngine for HLS urls
+  // like this based on file extension, which will do a cache-free request for
+  // the manifest. If we request it first here, it will make two requests.
+  if (demuxer_manager_->IsManifestDemuxerURL()) {
+    StartPipeline();
+    return;
+  }
+
   auto data_source = std::make_unique<MultiBufferDataSource>(
       main_task_runner_,
       url_index_->GetByUrl(
@@ -1672,10 +1681,17 @@ void WebMediaPlayerImpl::GetUrlData(
 base::SequenceBound<media::HlsDataSourceProvider>
 WebMediaPlayerImpl::GetHlsDataSourceProvider() {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
+  // Every single HLS fetch (segment or manifest) will create a new DataSource,
+  // which will log it's size, CORS status, and a "started" notice, which can
+  // end up spamming the media log quite heavily. ManifestDemuxer already logs
+  // these things when they change, for example when CORS mode changes from
+  // untainted to tainted. Using a NullMediaLog here prevents the unnecessary
+  // spamming.
+  auto media_log = std::make_unique<media::NullMediaLog>();
   return base::SequenceBound<media::HlsDataSourceProviderImpl>(
       main_task_runner_,
       std::make_unique<MultiBufferDataSourceFactory>(
-          media_log_.get(),
+          media_log.get(),
           blink::BindRepeating(&WebMediaPlayerImpl::GetUrlData,
                                weak_factory_.GetWeakPtr()),
           main_task_runner_, tick_clock_));
@@ -4053,6 +4069,11 @@ void WebMediaPlayerImpl::RecordVideoOcclusionState(
     std::string_view occlusion_state) {
   media_log_->AddEvent<MediaLogEvent::kVideoOcclusionState>(
       std::string(occlusion_state));
+}
+
+void WebMediaPlayerImpl::SetVisibilityRatioAtPlaybackStart(double ratio) {
+  DCHECK(main_task_runner_->BelongsToCurrentThread());
+  media_metrics_provider_->SetVisibilityRatioAtPlaybackStart(ratio);
 }
 
 void WebMediaPlayerImpl::RecordAutoPictureInPictureInfo(

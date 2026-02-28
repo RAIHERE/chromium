@@ -84,7 +84,8 @@ bool IsAllowedCustomUiPromo(const base::Feature& promo_feature) {
   static constexpr auto kAllowedPromoNames =
       base::MakeFixedFlatSet<std::string_view>(
           {"IPH_ExtensionsZeroStatePromo", "IPH_iOSEnhancedBrowsingDesktop",
-           "IPH_iOSLensPromoDesktop", "IPH_iOSPasswordPromoDesktop"});
+           "IPH_iOSLensPromoDesktop", "IPH_iOSPasswordPromoDesktop",
+           "IPH_iOSTabGroupsDesktop", "IPH_iOSPriceTrackingDesktop"});
   return kAllowedPromoNames.contains(promo_feature.name);
 }
 
@@ -101,6 +102,7 @@ bool IsAllowedLegacyPromo(const base::Feature& promo_feature) {
           "IPH_PriceTrackingInSidePanel",
           "IPH_ReadingListDiscovery",
           "IPH_ReadingListInSidePanel",
+          "IPH_ResumptionRail",
           "IPH_TabSearch",
       });
   return kAllowedPromoNames.contains(promo_feature.name);

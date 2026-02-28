@@ -20,6 +20,7 @@ import org.chromium.chrome.browser.tab_group_sync.TabGroupSyncServiceFactory;
 import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tabmodel.AccumulatingTabCreator;
 import org.chromium.chrome.browser.tabmodel.HeadlessTabModelSelectorImpl;
+import org.chromium.chrome.browser.tabmodel.PersistentStoreMigrationManager;
 import org.chromium.chrome.browser.tabmodel.TabCreatorManager;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelSelectorImpl;
@@ -65,17 +66,21 @@ public class HeadlessTabModelOrchestrator implements Destroyable {
         mTabModelSelector = new HeadlessTabModelSelectorImpl(profile, tabCreatorManager);
         TabWindowManager tabWindowManager = TabWindowManagerSingleton.getInstance();
 
+        String windowTag = String.valueOf(windowId);
+        PersistentStoreMigrationManager migrationManager =
+                new PersistentStoreMigrationManagerImpl(windowTag);
         mTabPersistentStore =
                 buildAuthoritativeStore(
                         TabPersistentStoreImpl.CLIENT_TAG_HEADLESS,
+                        migrationManager,
                         policy,
                         mTabModelSelector,
                         tabCreatorManager,
                         tabWindowManager,
+                        windowTag,
                         sCipherInstance,
                         /* recordLegacyTabCountMetrics= */ true);
 
-        String windowTag = String.valueOf(windowId);
         AccumulatingTabCreator regularShadowTabCreator = new AccumulatingTabCreator();
         AccumulatingTabCreator incognitoShadowTabCreator = new AccumulatingTabCreator();
 
@@ -88,6 +93,7 @@ public class HeadlessTabModelOrchestrator implements Destroyable {
         // 3. Headless will not delete or modify the incognito tabs.
         mShadowTabPersistentStore =
                 buildShadowStore(
+                        migrationManager,
                         regularShadowTabCreator,
                         incognitoShadowTabCreator,
                         mTabModelSelector,

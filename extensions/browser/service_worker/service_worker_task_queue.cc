@@ -10,7 +10,6 @@
 #include <utility>
 #include <vector>
 
-#include "base/auto_reset.h"
 #include "base/check.h"
 #include "base/containers/map_util.h"
 #include "base/functional/bind.h"
@@ -31,6 +30,7 @@
 #include "content/public/browser/storage_partition.h"
 #include "extensions/browser/event_router.h"
 #include "extensions/browser/extension_error.h"
+#include "extensions/browser/extension_pref_names.h"
 #include "extensions/browser/extension_prefs.h"
 #include "extensions/browser/extension_registry.h"
 #include "extensions/browser/extension_util.h"
@@ -38,6 +38,7 @@
 #include "extensions/browser/process_manager.h"
 #include "extensions/browser/renderer_startup_helper.h"
 #include "extensions/browser/service_worker/service_worker_task_queue_factory.h"
+#include "extensions/browser/service_worker/worker_id.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension_features.h"
 #include "extensions/common/extension_id.h"
@@ -122,7 +123,7 @@ bool ServiceWorkerTaskQueue::IsStartWorkerFailureUnexpected(
 }
 
 void ServiceWorkerTaskQueue::RendererDidInitializeServiceWorkerContext(
-    int render_process_id,
+    content::ChildProcessId render_process_id,
     const ExtensionId& extension_id,
     int64_t service_worker_version_id,
     int thread_id,
@@ -142,11 +143,8 @@ void ServiceWorkerTaskQueue::RendererDidInitializeServiceWorkerContext(
   // active.
   CHECK(process_host);
 
-  util::InitializeFileSchemeAccessForExtension(render_process_id, extension_id,
-                                               browser_context_);
-  // TODO(jlulejian): Do we need to start tracking this in initialization or
-  // could we start in `RendererDidStartServiceWorkerContext()` instead since
-  // this is for a running (started) worker?
+  util::InitializeFileSchemeAccessForExtension(
+      render_process_id.GetUnsafeValue(), extension_id, browser_context_);
   ProcessManager::Get(browser_context_)
       ->StartTrackingServiceWorkerRunningInstance(
           {extension_id, render_process_id, service_worker_version_id,
@@ -160,13 +158,14 @@ void ServiceWorkerTaskQueue::RendererDidInitializeServiceWorkerContext(
 }
 
 void ServiceWorkerTaskQueue::RendererDidStartServiceWorkerContext(
-    int render_process_id,
+    content::ChildProcessId render_process_id,
     const ExtensionId& extension_id,
     const base::UnguessableToken& activation_token,
     const GURL& service_worker_scope,
     int64_t service_worker_version_id,
     int thread_id) {
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
+
   auto [worker_state, context_id] =
       GetWorkerStateForActivation(extension_id, activation_token);
   if (worker_state) {
@@ -189,7 +188,7 @@ void ServiceWorkerTaskQueue::RenderProcessForWorkerExited(
 }
 
 void ServiceWorkerTaskQueue::RendererDidStopServiceWorkerContext(
-    int render_process_id,
+    content::ChildProcessId render_process_id,
     const ExtensionId& extension_id,
     const base::UnguessableToken& activation_token,
     const GURL& service_worker_scope,
@@ -422,6 +421,13 @@ void ServiceWorkerTaskQueue::OnWorkerStart(const SequencedContextId& context_id,
       "Extensions.ServiceWorkerBackground.StartWorkerRetryAttemptsResult",
       /*success=*/true);
 
+  // Track the fact that the service worker for this extension has run once.
+  if (!browser_context_->IsOffTheRecord()) {
+    ExtensionPrefs::Get(browser_context_)
+        ->UpdateExtensionPref(context_id.extension_id,
+                              kPrefHasStartedServiceWorker, base::Value(true));
+  }
+
   if (g_test_observer) {
     g_test_observer->DidStartWorker(context_id.extension_id);
   }
@@ -442,7 +448,7 @@ void ServiceWorkerTaskQueue::OnWorkerStartFail(
   DCHECK_CURRENTLY_ON(content::BrowserThread::UI);
   if (!IsCurrentActivation(context_id.extension_id, context_id.token)) {
     // This can happen when the registration got unregistered right before we
-    // tried to start it. See crbug.com/999027 for details.
+    // tried to start it. See crbug.com/40642623 for details.
     DCHECK(!GetWorkerState(context_id));
     // In that case, we expect `DeactivateExtension` to have been called
     // already, and for the registration records to have already been cleared.

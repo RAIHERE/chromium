@@ -224,8 +224,6 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
 
   bool IsValidWebMCPForm() const;
   void UpdateMcpDefinitionsIfNeeded();
-  void ExecuteDeclarativeWebMCPFunction(String input_arguments);
-  String UpdateDeclarativeWebMCPInputSchema();
 
   using PastNamesMap = GCedHeapHashMap<AtomicString, Member<Element>>;
 
@@ -262,16 +260,19 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
       CHECK(!tool_name.IsNull() && !tool_description.IsNull());
     }
     String ComputeInputSchema() override;
+    Element* FormElement() const override { return form_; }
     void ExecuteTool(
         String input_arguments,
         base::OnceCallback<void(McpToolCallbackResult)> done_callback) override;
     // Fill form controls with data as provided by `input_arguments`.
     //
-    // If 'true' is returned, then all specified tool parameters (form controls)
-    // were filled successfully. Otherwise, the state of all form controls
-    // are left unchanged.
-    bool FillFormControls(const String& input_arguments,
-                          HTMLFormControlElement** submit_button);
+    // If no error is returned, then all specified tool parameters (form
+    // controls) were filled successfully. Otherwise, the state of all form
+    // controls are left unchanged.
+    std::optional<WebDocument::ScriptToolError> FillFormControls(
+        const String& input_arguments,
+        bool require_submit_button,
+        HTMLFormControlElement** submit_button);
     String ToolName() const { return tool_name_; }
     String ToolDescription() const { return tool_description_; }
     bool IsValidTool() const { return !tool_name_.IsNull(); }
@@ -283,7 +284,7 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
       return active_submit_button_;
     }
     void CallDoneCallback(McpToolCallbackResult result);
-    void Trace(Visitor* visitor) const;
+    void Trace(Visitor* visitor) const override;
 
    private:
     bool is_currently_running_ = false;
@@ -294,17 +295,10 @@ class CORE_EXPORT HTMLFormElement final : public HTMLElement {
     base::OnceCallback<void(McpToolCallbackResult)> done_callback_;
   };
 
-  class RespondWithHandler : public ThenCallable<IDLAny, RespondWithHandler> {
-   public:
-    RespondWithHandler(HTMLFormElement::HTMLFormMcpTool* tool, bool resolved)
-        : tool_(tool), resolved_(resolved) {}
-    void React(ScriptState* script_state, ScriptValue value);
-    void Trace(Visitor* visitor) const override;
-
-   private:
-    Member<HTMLFormMcpTool> tool_;
-    bool resolved_;
-  };
+  void HandleWebMcpToolResponse(HTMLFormMcpTool* tool,
+                                bool resolved,
+                                ScriptState* script_state,
+                                ScriptValue value);
 
   // Used only for (experimental) declarative WebMCP.
   Member<HTMLFormMcpTool> active_webmcp_tool_;

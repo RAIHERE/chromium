@@ -714,10 +714,7 @@ void PasswordsPrivateDelegateImpl::MovePasswordsToAccount(
     credentials_to_move.push_back(*entry);
   }
 
-  saved_passwords_presenter_.MoveCredentialsToAccount(
-      credentials_to_move,
-      password_manager::metrics_util::MoveToAccountStoreTrigger::
-          kExplicitlyTriggeredInSettings);
+  saved_passwords_presenter_.MoveCredentialsToAccount(credentials_to_move);
 }
 
 void PasswordsPrivateDelegateImpl::FetchFamilyMembers(

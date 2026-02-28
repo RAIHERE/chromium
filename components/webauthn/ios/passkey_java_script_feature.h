@@ -6,7 +6,9 @@
 #define COMPONENTS_WEBAUTHN_IOS_PASSKEY_JAVA_SCRIPT_FEATURE_H_
 
 #import "base/no_destructor.h"
+#import "base/values.h"
 #import "components/webauthn/core/browser/passkey_model_utils.h"
+#import "components/webauthn/ios/passkey_request_params.h"
 #import "ios/web/public/js_messaging/java_script_feature.h"
 
 namespace webauthn {
@@ -65,8 +67,14 @@ class PasskeyJavaScriptFeature : public web::JavaScriptFeature {
   // needed.
   static PasskeyJavaScriptFeature* GetInstance();
 
+  // Rejects the current attestation or registration request.
+  void RejectPasskeyRequest(web::WebFrame* web_frame,
+                            std::string_view request_id);
+
   // Yields the current attestation or registration request back to the OS.
-  void DeferToRenderer(web::WebFrame* web_frame, std::string_view request_id);
+  void DeferToRenderer(web::WebFrame* web_frame,
+                       std::string_view request_id,
+                       PasskeyRequestParams::RequestType request_type);
 
   // Resolves the attestation request with a valid passkey.
   void ResolveAttestationRequest(web::WebFrame* web_frame,
@@ -92,6 +100,17 @@ class PasskeyJavaScriptFeature : public web::JavaScriptFeature {
   std::optional<std::string> GetScriptMessageHandlerName() const override;
   void ScriptMessageReceived(web::WebState* web_state,
                              const web::ScriptMessage& message) override;
+
+  // Continues the creation request flow after the Incognito check has passed.
+  void ProcessCreateRequest(web::WebState* web_state,
+                            IOSPasskeyClient::RequestInfo request_info,
+                            base::DictValue dict);
+
+  // Callback handling the user's decision from the interstitial.
+  void OnInterstitialDecision(base::WeakPtr<web::WebState> web_state,
+                              IOSPasskeyClient::RequestInfo request_info,
+                              base::DictValue dict,
+                              bool proceed);
 };
 
 }  // namespace webauthn

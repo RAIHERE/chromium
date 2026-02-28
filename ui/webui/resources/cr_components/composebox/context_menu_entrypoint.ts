@@ -20,10 +20,9 @@ import {CrLitElement} from '//resources/lit/v3_0/lit.rollup.js';
 import type {TabInfo} from '//resources/mojo/components/omnibox/browser/searchbox.mojom-webui.js';
 import type {UnguessableToken} from '//resources/mojo/mojo/public/mojom/base/unguessable_token.mojom-webui.js';
 
-import {recordBoolean, recordContextAdditionMethod, TabUploadOrigin} from './common.js';
+import {GlifAnimationState, recordBoolean, recordContextAdditionMethod, TabUploadOrigin} from './common.js';
 import {getCss} from './context_menu_entrypoint.css.js';
 import {getHtml} from './context_menu_entrypoint.html.js';
-
 
 /** The width of the dropdown menu in pixels. */
 const MENU_WIDTH_PX = 190;
@@ -34,15 +33,15 @@ export interface ContextMenuEntrypointElement {
   };
 }
 
-export enum GlifAnimationState {
-  INELIGIBLE = 'ineligible',
-  SPINNER_ONLY = 'spinner-only',
-  STARTED = 'started',
-  FINISHED = 'finished',
-}
-
 const ContextMenuEntrypointElementBase = I18nMixinLit(CrLitElement);
 
+/*
+ * This class is superceded by the `contextual_entrypoint_button.ts` and
+ * `contextual_action_menu.ts` files which support InputState model controlled
+ * menu action items. See: go/contexual-inputs-menu This class will be
+ * removed once the PEC API InputState feature launches.
+ * @deprecated
+ */
 export class ContextMenuEntrypointElement extends
     ContextMenuEntrypointElementBase {
   static get is() {
@@ -62,7 +61,7 @@ export class ContextMenuEntrypointElement extends
       // =========================================================================
       // Public properties
       // =========================================================================
-      inputsDisabled: {type: Boolean},
+      uploadButtonDisabled: {type: Boolean},
       fileNum: {type: Number},
       showContextMenuDescription: {type: Boolean},
       inCreateImageMode: {
@@ -73,10 +72,8 @@ export class ContextMenuEntrypointElement extends
         reflect: true,
         type: Boolean,
       },
-      hideEntrypointButton: {type: Boolean},
       disabledTabIds: {type: Object},
       tabSuggestions: {type: Array},
-      entrypointName: {type: String},
       searchboxLayoutMode: {type: String},
       glifAnimationState: {type: String, reflect: true},
 
@@ -103,15 +100,13 @@ export class ContextMenuEntrypointElement extends
     };
   }
 
-  accessor inputsDisabled: boolean = false;
+  accessor uploadButtonDisabled: boolean = false;
   accessor fileNum: number = 0;
   accessor showContextMenuDescription: boolean = false;
   accessor inCreateImageMode: boolean = false;
   accessor hasImageFiles: boolean = false;
-  accessor hideEntrypointButton: boolean = false;
   accessor disabledTabIds: Map<number, UnguessableToken> = new Map();
   accessor tabSuggestions: TabInfo[] = [];
-  accessor entrypointName: string = '';
   accessor searchboxLayoutMode: string = '';
   accessor glifAnimationState: GlifAnimationState =
       GlifAnimationState.INELIGIBLE;
@@ -195,9 +190,7 @@ export class ContextMenuEntrypointElement extends
       x: entrypoint.getBoundingClientRect().left,
       y: entrypoint.getBoundingClientRect().bottom,
     });
-    if (this.entrypointName !== 'Omnibox') {
-      this.showMenuAtEntrypoint_();
-    }
+    this.showMenuAtEntrypoint_();
   }
 
   protected onTabClick_(e: Event) {
@@ -231,7 +224,7 @@ export class ContextMenuEntrypointElement extends
       delayUpload: false,
       origin: TabUploadOrigin.CONTEXT_MENU,
     });
-    if (!this.enableMultiTabSelection_ || this.entrypointName === 'Realbox') {
+    if (!this.enableMultiTabSelection_) {
       this.$.menu.close();
     }
   }
@@ -280,7 +273,19 @@ export class ContextMenuEntrypointElement extends
     this.$.menu.close();
   }
 
-  protected onAnimationEnd_(e: AnimationEvent, animationName: string) {
+  protected onDescriptionAnimationEnd_(e: AnimationEvent) {
+    this.onAnimationEnd_(e, 'slide-in');
+  }
+
+  protected onAimBackgroundAnimationEnd_(e: AnimationEvent) {
+    if (this.showContextMenuDescription) {
+      return;
+    }
+
+    this.onAnimationEnd_(e, 'background-fade');
+  }
+
+  private onAnimationEnd_(e: AnimationEvent, animationName: string) {
     if (e.animationName === animationName) {
       this.glifAnimationState = GlifAnimationState.FINISHED;
     }
@@ -294,11 +299,24 @@ export class ContextMenuEntrypointElement extends
     this.fire('context-menu-closed');
   }
 
+  protected getWrapperId_(): string {
+    return this.glifAnimationState !== GlifAnimationState.INELIGIBLE ?
+        'glowWrapper' :
+        '';
+  }
+
+  protected getWrapperCssClass_(): string {
+    return this.glifAnimationState !== GlifAnimationState.INELIGIBLE ?
+        'glow-container' :
+        '';
+  }
+
   private showMenuAtEntrypoint_() {
     const entrypoint =
         this.shadowRoot.querySelector<HTMLElement>('#entrypoint');
     assert(entrypoint);
     entrypoint?.classList.add('menu-open');
+    this.fire('context-menu-opened');
     this.$.menu.showAt(entrypoint, {
       top: entrypoint.getBoundingClientRect().bottom,
       width: MENU_WIDTH_PX,

@@ -180,7 +180,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"First Name",
         @"renderer_id" : @"2"
@@ -199,7 +199,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"Last Name",
         @"renderer_id" : @"3"
@@ -218,7 +218,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"",
         @"renderer_id" : @"4"
@@ -282,7 +282,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms2) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"First Name",
         @"renderer_id" : @"2"
@@ -301,7 +301,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms2) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"Last Name",
         @"renderer_id" : @"3"
@@ -320,7 +320,7 @@ TEST_F(AutofillJavaScriptFeatureTest, ExtractForms2) {
         @"should_autocomplete" : @true,
         @"is_checkable" : @false,
         @"is_focusable" : @true,
-        @"is_user_edited" : @true,
+        @"is_user_edited_deprecated" : @true,
         @"value" : @"",
         @"label" : @"",
         @"renderer_id" : @"4"
@@ -616,12 +616,12 @@ TEST_F(AutofillJavaScriptFeatureTest, UndoForm) {
 
   // Autofills the form so that we can test the value and attribute
   // after the undo fill.
-  base::Value::Dict autofillData;
+  base::DictValue autofillData;
   autofillData.Set("formName", "testform");
   autofillData.Set("formRendererID", 1);
 
-  base::Value::Dict fieldsData;
-  base::Value::Dict firstFieldData;
+  base::DictValue fieldsData;
+  base::DictValue firstFieldData;
   firstFieldData.Set("name", "firstname");
   firstFieldData.Set("identifier", "firstname");
   firstFieldData.Set("value", "Cool User");
@@ -649,12 +649,12 @@ TEST_F(AutofillJavaScriptFeatureTest, UndoForm) {
       }));
 
   // Simulates the undo by filling an empty string with isAutofilled = NO.
-  base::Value::Dict undoAutofillData;
+  base::DictValue undoAutofillData;
   undoAutofillData.Set("formName", "testform");
   undoAutofillData.Set("formRendererID", 1);
 
-  base::Value::Dict undoFieldsData;
-  base::Value::Dict undoFirstFieldData;
+  base::DictValue undoFieldsData;
+  base::DictValue undoFirstFieldData;
   undoFirstFieldData.Set("name", "firstname");
   undoFirstFieldData.Set("identifier", "firstname");
   undoFirstFieldData.Set("value", "");

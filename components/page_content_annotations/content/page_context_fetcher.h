@@ -26,6 +26,7 @@
 #include "content/public/browser/render_widget_host_view.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "third_party/skia/include/core/SkBitmap.h"
+#include "third_party/skia/include/core/SkColor.h"
 #include "ui/gfx/geometry/size.h"
 #include "url/origin.h"
 
@@ -81,6 +82,10 @@ class ScreenshotOptions {
       LIFETIME_BOUND {
     return paint_preview_options_;
   }
+  SkColor4f redaction_color() const { return redaction_color_; }
+  void set_redaction_color_for_testing(SkColor4f redaction_color) {
+    redaction_color_ = redaction_color;
+  }
 
  private:
   // Private constructor to force object creation through static methods.
@@ -94,6 +99,8 @@ class ScreenshotOptions {
   bool capture_full_page_ = false;
   // This field must be set if capture_full_page_ is true.
   std::optional<PaintPreviewOptions> paint_preview_options_ = std::nullopt;
+  // The color to paint for redaction.
+  SkColor4f redaction_color_ = SkColors::kBlack;
 };
 
 struct FetchPageContextOptions {
@@ -163,6 +170,7 @@ enum class FetchPageContextError {
   kWebContentsChanged,
   // The context is not eligible for sharing.
   kPageContextNotEligible,
+  kWebContentsWentAway,
 };
 
 std::string ToString(FetchPageContextError error);
@@ -182,6 +190,9 @@ BASE_DECLARE_FEATURE(kGlicTabScreenshotExperiment);
 
 // Controls whether password fields are redacted from screenshots.
 BASE_DECLARE_FEATURE(kGlicScreenshotPasswordRedaction);
+
+// Controls whether sensitive payment fields are redacted from screenshots.
+BASE_DECLARE_FEATURE(kGlicScreenshotSensitivePaymentRedaction);
 
 extern const base::FeatureParam<int> kMaxScreenshotWidthParam;
 
@@ -241,7 +252,7 @@ class PageContextFetcher : public content::WebContentsObserver {
   void ReceivedViewportBitmap(const content::CopyFromSurfaceResult& result);
 
   void RedactAndEncodeScreenshot(
-      std::vector<gfx::Rect> visible_bounding_boxes_for_password_redaction);
+      std::vector<gfx::Rect> visible_bounding_boxes_for_redaction);
 
   void RedactAndEncodeScreenshotIfNeeded();
 
@@ -274,6 +285,7 @@ class PageContextFetcher : public content::WebContentsObserver {
   // screenshot processing dependencies.
   std::optional<SkBitmap> screenshot_bitmap_;
   bool screenshot_needs_password_redaction_ = false;
+  bool screenshot_needs_sensitive_payment_redaction_ = false;
 
   // Intermediate results:
 
@@ -284,6 +296,7 @@ class PageContextFetcher : public content::WebContentsObserver {
   bool inner_text_done_ = false;
   bool pdf_done_ = false;
   bool annotated_page_content_done_ = false;
+  SkColor4f screenshot_redaction_color_ = SkColors::kBlack;
   // Whether the primary page has changed since context fetching began.
   bool primary_page_changed_ = false;
   std::unique_ptr<FetchPageContextResult> pending_result_;

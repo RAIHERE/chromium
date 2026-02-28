@@ -11,7 +11,6 @@
 
 #include "base/containers/heap_array.h"
 #include "base/containers/span.h"
-#include "base/feature_list.h"
 #include "base/no_destructor.h"
 #include "base/notreached.h"
 #include "build/build_config.h"
@@ -124,6 +123,12 @@ signin::Tribool AccountCapabilities::
       kCanShowHistorySyncOptInsWithoutMinorModeRestrictionsCapabilityName);
 }
 
+#if BUILDFLAG(IS_IOS)
+signin::Tribool AccountCapabilities::can_sign_in_to_chrome() const {
+  return GetCapabilityByName(kCanSignInToChromeCapabilityName);
+}
+#endif
+
 #if BUILDFLAG(IS_CHROMEOS)
 signin::Tribool AccountCapabilities::can_toggle_auto_updates() const {
   return GetCapabilityByName(kCanToggleAutoUpdatesName);
@@ -149,11 +154,9 @@ signin::Tribool AccountCapabilities::can_use_edu_features() const {
 }
 #endif
 
-#if !BUILDFLAG(IS_IOS)
 signin::Tribool AccountCapabilities::can_use_gemini_in_chrome() const {
   return GetCapabilityByName(kCanUseGeminiInChromeCapabilityName);
 }
-#endif
 
 #if BUILDFLAG(IS_CHROMEOS)
 signin::Tribool AccountCapabilities::can_use_generative_ai_in_recorder_app()

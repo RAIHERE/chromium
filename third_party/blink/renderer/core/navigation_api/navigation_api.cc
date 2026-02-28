@@ -19,6 +19,7 @@
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_navigate_event_init.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_navigation_current_entry_change_event_init.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_navigation_defer_page_swap_restore_callback.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_navigation_history_behavior.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_navigation_navigate_options.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_navigation_reload_options.h"
@@ -42,11 +43,12 @@
 #include "third_party/blink/renderer/core/navigation_api/navigation_destination.h"
 #include "third_party/blink/renderer/core/navigation_api/navigation_history_entry.h"
 #include "third_party/blink/renderer/core/navigation_api/navigation_transition.h"
+#include "third_party/blink/renderer/core/navigation_api/navigation_type_util.h"
 #include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/route_matching/route_map.h"
-#include "third_party/blink/renderer/core/timing/soft_navigation_heuristics.h"
 #include "third_party/blink/renderer/platform/bindings/exception_context.h"
 #include "third_party/blink/renderer/platform/bindings/exception_state.h"
+#include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/scheduler/public/task_attribution_info.h"
 #include "third_party/blink/renderer/platform/scheduler/public/task_attribution_tracker.h"
 
@@ -92,22 +94,6 @@ NavigationResult* EarlySuccessResult(ScriptState* script_state,
   return result;
 }
 
-V8NavigationType::Enum DetermineNavigationType(WebFrameLoadType type) {
-  switch (type) {
-    case WebFrameLoadType::kStandard:
-      return V8NavigationType::Enum::kPush;
-    case WebFrameLoadType::kBackForward:
-    case WebFrameLoadType::kRestore:
-      return V8NavigationType::Enum::kTraverse;
-    case WebFrameLoadType::kReload:
-    case WebFrameLoadType::kReloadBypassingCache:
-      return V8NavigationType::Enum::kReload;
-    case WebFrameLoadType::kReplaceCurrentItem:
-      return V8NavigationType::Enum::kReplace;
-  }
-  NOTREACHED();
-}
-
 NavigationApi::NavigationApi(LocalDOMWindow* window)
     : window_(window),
       activation_(MakeGarbageCollected<NavigationActivation>()) {}
@@ -142,7 +128,7 @@ void NavigationApi::UpdateActivation(HistoryItem* previous_item,
   V8NavigationType::Enum navigation_type =
       window_->GetFrame()->GetPage()->IsPrerendering()
           ? V8NavigationType::Enum::kPush
-          : DetermineNavigationType(load_type);
+          : ToV8NavigationType(load_type);
   activation_->Update(currentEntry(), previous_history_entry, navigation_type);
 }
 
@@ -294,7 +280,7 @@ void NavigationApi::UpdateForNavigation(HistoryItem& item,
                             v8::MicrotasksScope::kRunMicrotasks);
 
   auto* init = NavigationCurrentEntryChangeEventInit::Create();
-  init->setNavigationType(DetermineNavigationType(type));
+  init->setNavigationType(ToV8NavigationType(type));
   init->setFrom(old_current);
   DispatchEvent(*NavigationCurrentEntryChangeEvent::Create(
       event_type_names::kCurrententrychange, init));
@@ -386,6 +372,9 @@ void NavigationApi::SetEntriesForRestore(
     if (it == keys_to_indices_.end() || entries_[it->value] != entry)
       disposed_entries->push_back(entry);
   }
+
+  FlushRestoreCallbacks();
+
   window_->GetTaskRunner(TaskType::kInternalDefault)
       ->PostTask(FROM_HERE, BindOnce(&FireDisposeEventsAsync,
                                      WrapPersistent(disposed_entries)));
@@ -782,7 +771,7 @@ NavigationApi::DispatchResult NavigationApi::DispatchNavigateEvent(
 
   auto* init = NavigateEventInit::Create();
   V8NavigationType::Enum navigation_type =
-      DetermineNavigationType(params->frame_load_type);
+      ToV8NavigationType(params->frame_load_type);
   init->setNavigationType(navigation_type);
 
   SerializedScriptValue* destination_state = nullptr;
@@ -848,18 +837,6 @@ NavigationApi::DispatchResult NavigationApi::DispatchNavigateEvent(
       window_, event_type_names::kNavigate, init, controller);
   navigate_event->SetDispatchParams(params);
 
-  std::optional<SoftNavigationHeuristics::EventScope> soft_navigation_scope;
-  if (params->frame_load_type != WebFrameLoadType::kReplaceCurrentItem &&
-      init->userInitiated() && !init->downloadRequest() &&
-      init->canIntercept()) {
-    if (auto* heuristics = window_->GetSoftNavigationHeuristics()) {
-      // If these conditions are met, create a SoftNavigationEventScope to
-      // consider this a "user initiated click", and the dispatched event
-      // handlers as potential soft navigation tasks.
-      soft_navigation_scope = heuristics->CreateNavigationEventScope();
-    }
-  }
-
   CHECK(!ongoing_navigate_event_);
   ongoing_navigate_event_ = navigate_event;
 
@@ -895,6 +872,8 @@ NavigationApi::DispatchResult NavigationApi::DispatchNavigateEvent(
     navigate_event->MaybeCommitImmediately(script_state);
   } else if (params->event_type != NavigateEventType::kCrossDocument) {
     navigate_event->React(script_state);
+  } else {
+    navigate_event->MaybeDeferCrossDocumentCommit(script_state, params);
   }
 
   // Note: we cannot clean up ongoing_navigation_ for cross-document
@@ -998,9 +977,23 @@ void NavigationApi::DidAbort(ScriptValue value) {
   }
   DispatchEvent(*event);
 
+  FlushRestoreCallbacks();
+
   if (transition_) {
     transition_->RejectFinishedPromise(value);
     transition_ = nullptr;
+  }
+}
+
+void NavigationApi::FlushRestoreCallbacks() {
+  HeapVector<Member<V8NavigationDeferPageSwapRestoreCallback>>
+      restore_callback_list;
+  std::swap(restore_callback_list, restore_callback_list_);
+  CHECK(restore_callback_list.empty() ||
+        RuntimeEnabledFeatures::NavigateEventDeferCrossDocumentCommitEnabled());
+
+  for (auto& callback : restore_callback_list) {
+    (void)callback->Invoke(this);
   }
 }
 
@@ -1079,6 +1072,7 @@ void NavigationApi::Trace(Visitor* visitor) const {
   visitor->Trace(upcoming_traverse_api_method_trackers_);
   visitor->Trace(upcoming_non_traverse_api_method_tracker_);
   visitor->Trace(ongoing_navigate_event_);
+  visitor->Trace(restore_callback_list_);
 }
 
 }  // namespace blink

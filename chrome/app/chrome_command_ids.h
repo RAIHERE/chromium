@@ -84,6 +84,7 @@
 #define IDC_MOVE_TAB_TO_NEW_WINDOW      34054
 #define IDC_NEW_SPLIT_TAB               34055
 #define IDC_TOGGLE_VERTICAL_TABS        34056
+#define IDC_VERTICAL_TABS_SEND_FEEDBACK 34057
 
 // Web app window commands
 #define IDC_COPY_URL                    34060
@@ -294,10 +295,6 @@
 #define IDC_TASK_MANAGER_SHORTCUT       40286
 #define IDC_TASK_MANAGER_CONTEXT_MENU   40287
 #define IDC_TASK_MANAGER_MAIN_MENU      40288
-#define IDC_COMPARE_MENU                40289
-#define IDC_SHOW_ALL_COMPARISON_TABLES  40290
-#define IDC_ADD_TO_COMPARISON_TABLE_MENU 40291
-#define IDC_CREATE_NEW_COMPARISON_TABLE_WITH_TAB 40292
 #define IDC_SHOW_HISTORY_SIDE_PANEL     40293
 #define IDC_OPEN_GLIC                   40294
 #define IDC_FIND_EXTENSIONS  40295
@@ -305,6 +302,9 @@
 #define IDC_SHOW_COMMENTS_SIDE_PANEL  40297
 #define IDC_RECENT_TABS_SEE_DEVICE_TABS  40298
 #define IDC_SHOW_AI_MODE_OMNIBOX_BUTTON 40299
+#define IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI 40300
+#define IDC_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS 40301
+#define IDC_REPORT_UNSAFE_SITE 40302
 
 // Spell-check
 // Insert any additional suggestions before _LAST; these have to be consecutive.
@@ -597,6 +597,9 @@
 
 // Glic button context menu and tabstrip context menu
 #define IDC_GLIC_TOGGLE_PIN 53320
+#define IDC_TAB_SEARCH_TOGGLE_PIN 53321
+#define IDC_PROJECTS_PANEL_TOGGLE_PIN 53322
+#define IDC_EVERYTHING_MENU_TOGGLE_PIN 53323
 
 // Show contextual tasks side panel.
 #define IDC_SHOW_CONTEXTUAL_TASKS_SIDE_PANEL                  54000
@@ -606,6 +609,11 @@
 #define IDC_OMNIBOX_CONTEXT_ADD_FILE                          54011
 #define IDC_OMNIBOX_CONTEXT_CREATE_IMAGES                     54012
 #define IDC_OMNIBOX_CONTEXT_DEEP_RESEARCH                     54013
+#define IDC_OMNIBOX_CONTEXT_CANVAS                            54014
+#define IDC_OMNIBOX_CONTEXT_SET_MODEL_AUTO                    54015
+#define IDC_OMNIBOX_CONTEXT_SET_MODEL_THINKING                54016
+#define IDC_OMNIBOX_CONTEXT_SET_MODEL_REGULAR                 54017
+#define IDC_OMNIBOX_CONTEXT_SET_MODEL_PRO_NO_GEN_UI           54018
 
 // NOTE: The last valid command value is 57343 (0xDFFF)
 // See http://msdn.microsoft.com/en-us/library/t2zechd4(VS.71).aspx

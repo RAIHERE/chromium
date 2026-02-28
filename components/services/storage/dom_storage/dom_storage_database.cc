@@ -6,11 +6,13 @@
 
 #include "base/debug/leak_annotations.h"
 #include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
-#include "base/task/bind_post_task.h"
 #include "base/task/thread_pool.h"
+#include "base/types/expected_macros.h"
+#include "components/services/storage/dom_storage/dom_storage_constants.h"
 #include "components/services/storage/dom_storage/features.h"
 #include "components/services/storage/dom_storage/leveldb/dom_storage_database_leveldb.h"
 #include "components/services/storage/dom_storage/leveldb/local_storage_leveldb.h"
@@ -22,6 +24,19 @@
 
 namespace storage {
 namespace {
+
+// Returns true if the SQLite backend should be used for DOMStorage.
+// `kDomStorageSqlite` enables SQLite for both in-memory and on-disk databases.
+// `kDomStorageSqliteInMemory` enables SQLite only for in-memory databases.
+bool ShouldUseSqliteBackend(const base::FilePath& database_path) {
+  if (base::FeatureList::IsEnabled(kDomStorageSqlite)) {
+    return true;
+  }
+  if (database_path.empty()) {
+    return base::FeatureList::IsEnabled(kDomStorageSqliteInMemory);
+  }
+  return false;
+}
 
 // Constructs an absolute path to the session storage database using
 // `storage_partition_dir`.  For LevelDB, the path is a directory:
@@ -96,17 +111,24 @@ bool DomStorageDatabase::KeyValuePair::operator==(
   return std::tie(key, value) == std::tie(rhs.key, rhs.value);
 }
 
-DomStorageDatabase::MapLocator::MapLocator(std::string source_session_id,
-                                           blink::StorageKey source_storage_key)
-    : storage_key_(source_storage_key) {
-  session_ids_.push_back(std::move(source_session_id));
+DomStorageDatabase::MapLocator::MapLocator(blink::StorageKey storage_key)
+    : storage_key_(storage_key) {}
+
+DomStorageDatabase::MapLocator::MapLocator(blink::StorageKey storage_key,
+                                           int64_t map_id)
+    : storage_key_(storage_key), map_id_(map_id) {}
+
+DomStorageDatabase::MapLocator::MapLocator(std::string session_id,
+                                           blink::StorageKey storage_key)
+    : storage_key_(storage_key) {
+  session_ids_.push_back(std::move(session_id));
 }
 
-DomStorageDatabase::MapLocator::MapLocator(std::string source_session_id,
-                                           blink::StorageKey source_storage_key,
-                                           int64_t source_map_id)
-    : storage_key_(source_storage_key), map_id_(source_map_id) {
-  session_ids_.push_back(std::move(source_session_id));
+DomStorageDatabase::MapLocator::MapLocator(std::string session_id,
+                                           blink::StorageKey storage_key,
+                                           int64_t map_id)
+    : storage_key_(storage_key), map_id_(map_id) {
+  session_ids_.push_back(std::move(session_id));
 }
 
 DomStorageDatabase::MapLocator::~MapLocator() = default;
@@ -208,7 +230,7 @@ void DomStorageDatabaseFactory::Open(
 
   switch (storage_type) {
     case StorageType::kLocalStorage: {
-      if (base::FeatureList::IsEnabled(kDomStorageSqlite)) {
+      if (ShouldUseSqliteBackend(database_path)) {
         return CreateSequenceBoundDomStorageDatabase<LocalStorageSqlite>(
             std::move(blocking_task_runner), database_path, memory_dump_id,
             base::BindOnce(&OnDatabaseOpened<LocalStorageSqlite>,
@@ -220,7 +242,7 @@ void DomStorageDatabaseFactory::Open(
                          std::move(callback)));
     }
     case StorageType::kSessionStorage: {
-      if (base::FeatureList::IsEnabled(kDomStorageSqlite)) {
+      if (ShouldUseSqliteBackend(database_path)) {
         return CreateSequenceBoundDomStorageDatabase<SessionStorageSqlite>(
             std::move(blocking_task_runner), database_path, memory_dump_id,
             base::BindOnce(&OnDatabaseOpened<SessionStorageSqlite>,
@@ -309,6 +331,103 @@ void DomStorageDatabaseFactory::CreateSequenceBoundDomStorageDatabase(
 base::PassKey<DomStorageDatabaseFactory>
 DomStorageDatabaseFactory::CreatePassKeyForTesting() {
   return base::PassKey<DomStorageDatabaseFactory>();
+}
+
+DbStatus PurgeOrigins(DomStorageDatabase& database,
+                      std::set<url::Origin> origins) {
+  ASSIGN_OR_RETURN(DomStorageDatabase::Metadata all_metadata,
+                   database.ReadAllMetadata());
+
+  std::vector<blink::StorageKey> metadata_to_delete;
+  std::vector<DomStorageDatabase::MapLocator> maps_to_delete;
+
+  for (const DomStorageDatabase::MapMetadata& metadata :
+       all_metadata.map_metadata) {
+    // Ideally we would be recording last_accessed instead, but there is no
+    // historical data on that. Instead, we will use last_modified as a sanity
+    // check against other data as we try to understand how many 'old' storage
+    // buckets are still in use. This is split into two buckets for greater
+    // resolution on near and far term ages.
+    if (metadata.last_modified && *metadata.last_modified < base::Time::Now()) {
+      const int days_since_last_modified =
+          (base::Time::Now() - *metadata.last_modified).InDays();
+      base::UmaHistogramCustomCounts("LocalStorage.DaysSinceLastModified",
+                                     days_since_last_modified, 1,
+                                     kLocalStorageStaleBucketCutoffInDays, 100);
+    }
+
+    const blink::StorageKey& storage_key = metadata.map_locator.storage_key();
+
+    for (const url::Origin& origin : origins) {
+      if (storage_key.origin() == origin ||
+          (storage_key.IsThirdPartyContext() &&
+           storage_key.top_level_site().IsSameSiteWith(origin))) {
+        metadata_to_delete.push_back(storage_key);
+        maps_to_delete.emplace_back(storage_key);
+        break;
+      }
+    }
+  }
+  return database.DeleteStorageKeysFromSession(/*session_id=*/std::string(),
+                                               std::move(metadata_to_delete),
+                                               std::move(maps_to_delete));
+}
+
+DbStatus MigrateDatabase(DomStorageDatabase& source,
+                         DomStorageDatabase& destination) {
+  ASSIGN_OR_RETURN(DomStorageDatabase::Metadata source_metadata,
+                   source.ReadAllMetadata());
+
+  // Migrate the `next_map_id` metadata.
+  if (source_metadata.next_map_id) {
+    DomStorageDatabase::Metadata map_id_metadata;
+    map_id_metadata.next_map_id = source_metadata.next_map_id;
+    destination.PutMetadata(std::move(map_id_metadata));
+  }
+
+  // Migrate each map in `source_metadata`.
+  for (DomStorageDatabase::MapMetadata& source_map :
+       source_metadata.map_metadata) {
+    // Migrate the map's key/value pairs by reading all entries from
+    // `source_map`.
+    ASSIGN_OR_RETURN((std::map<DomStorageDatabase::Key,
+                               DomStorageDatabase::Value> map_entries),
+                     source.ReadMapKeyValues(source_map.map_locator.Clone()));
+
+    // Then create a batch update to add all key/value pairs to `destination`.
+    DomStorageDatabase::MapBatchUpdate update(source_map.map_locator.Clone());
+    for (auto& [key, value] : map_entries) {
+      update.entries_to_add.emplace_back(std::move(key), std::move(value));
+    }
+
+    // Migrate the map's usage metadata as  part of the batch update.
+    bool has_access_metadata = source_map.last_accessed.has_value();
+    bool has_write_metadata = source_map.last_modified && source_map.total_size;
+    if (has_access_metadata || has_write_metadata) {
+      DomStorageDatabase::MapBatchUpdate::Usage usage;
+      if (has_access_metadata) {
+        usage.SetLastAccessed(*source_map.last_accessed);
+      }
+      if (has_write_metadata) {
+        usage.SetLastModifiedAndTotalSize(*source_map.last_modified,
+                                          *source_map.total_size);
+      }
+      update.map_usage = std::move(usage);
+    } else {
+      // When no usage metadata exists, write the metadata separately to
+      // associate this map's session IDs and storage key with its map ID.
+      DomStorageDatabase::Metadata metadata_to_write;
+      metadata_to_write.map_metadata.push_back(std::move(source_map));
+      DB_RETURN_IF_ERROR(destination.PutMetadata(std::move(metadata_to_write)));
+    }
+
+    // Commit the batch update for `destination`, containing the key/value pairs
+    // and optional usage metadata.
+    std::vector<DomStorageDatabase::MapBatchUpdate> updates;
+    updates.push_back(std::move(update));
+    DB_RETURN_IF_ERROR(destination.UpdateMaps(std::move(updates)));
+  }
+  return DbStatus::OK();
 }
 
 }  // namespace storage

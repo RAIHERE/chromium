@@ -9,6 +9,8 @@
 #include "base/feature_list.h"
 #include "base/memory/ptr_util.h"
 #include "base/no_destructor.h"
+#include "chrome/browser/accessibility_annotator/content_annotator/content_annotator_service_factory.h"
+#include "chrome/browser/accessibility_annotator/content_annotator/content_annotator_tab_helper.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_tab_data.h"
 #include "chrome/browser/actor/ui/actor_ui_tab_controller.h"
@@ -18,6 +20,8 @@
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/contextual_cueing/contextual_cueing_helper.h"
 #include "chrome/browser/enterprise/data_protection/data_protection_navigation_controller.h"
+#include "chrome/browser/enterprise/reporting/reporting_features.h"
+#include "chrome/browser/enterprise/reporting/saas_usage/saas_usage_navigation_observer.h"
 #include "chrome/browser/image_fetcher/image_fetcher_service_factory.h"
 #include "chrome/browser/loader/from_gws_navigation_and_keep_alive_request_observer.h"
 #include "chrome/browser/net/http_auth_cache_status.h"
@@ -26,7 +30,6 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/preloading/bookmarkbar_preload/bookmarkbar_preload_pipeline_manager.h"
 #include "chrome/browser/preloading/new_tab_page_preload/new_tab_page_preload_pipeline_manager.h"
-#include "chrome/browser/privacy_sandbox/privacy_sandbox_tab_observer.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/profiles/profile_key.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
@@ -41,6 +44,7 @@
 #include "chrome/browser/ui/browser_actions.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
+#include "chrome/browser/ui/context_highlight/context_highlight_tab_feature.h"
 #include "chrome/browser/ui/cookie_controls/roll_back_mode_b_infobar_controller.h"
 #include "chrome/browser/ui/lens/lens_overlay_controller.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
@@ -50,6 +54,8 @@
 #include "chrome/browser/ui/performance_controls/tab_resource_usage_tab_helper.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_controller.h"
+#include "chrome/browser/indigo/indigo_page_action_controller.h"
+#include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert_controller.h"
 #include "chrome/browser/ui/tabs/back_to_opener/back_to_opener_controller.h"
@@ -82,7 +88,6 @@
 #include "chrome/browser/ui/views/passwords/manage_passwords_page_action_controller.h"
 #include "chrome/browser/ui/views/side_panel/customize_chrome/side_panel_controller_views.h"
 #include "chrome/browser/ui/views/side_panel/extensions/extension_side_panel_manager.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/views/translate/translate_page_action_controller.h"
 #include "chrome/browser/ui/views/zoom/zoom_view_controller.h"
 #include "chrome/browser/ui/web_applications/pwa_install_page_action.h"
@@ -92,7 +97,10 @@
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || \
     BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/contextual_tasks/contextual_tasks_tab_visit_tracker.h"
+#include "chrome/browser/record_replay/chrome_record_replay_client.h"
+#include "chrome/browser/ui/views/location_bar/record_replay_page_action_controller.h"
 #include "chrome/browser/wallet/chrome_walletable_pass_client.h"
+#include "chrome/common/record_replay/record_replay_features.h"
 #endif
 #include "chrome/browser/skills/skills_ui_tab_controller.h"
 #include "chrome/browser/ui/contextual_search/tab_contextualization_controller.h"
@@ -113,15 +121,17 @@
 #include "net/base/features.h"
 #include "ui/accessibility/accessibility_features.h"
 #include "ui/base/unowned_user_data/user_data_factory.h"
-
-#if BUILDFLAG(ENABLE_GLIC)
 #include "chrome/browser/glic/browser_ui/glic_tab_indicator_helper.h"
 #include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/selection/selection_overlay_controller.h"
 #include "chrome/browser/glic/service/glic_instance_helper.h"
 #include "chrome/browser/ui/views/side_panel/glic/glic_side_panel_coordinator_impl.h"
 
-#endif
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/skills/skills_update_observer.h"
+#include "components/skills/features.h"
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chrome/browser/apps/app_service/app_service_proxy_factory.h"  // nogncheck
@@ -181,16 +191,12 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
         page_actions::PageActionPropertiesProvider());
     page_action_controller_ = std::move(page_action_controller);
 
-    if (IsPageActionMigrated(PageActionIconType::kTranslate)) {
-      translate_page_action_controller_ =
-          std::make_unique<TranslatePageActionController>(tab);
-    }
+    translate_page_action_controller_ =
+        std::make_unique<TranslatePageActionController>(tab);
 
-    if (IsPageActionMigrated(PageActionIconType::kMemorySaver)) {
-      memory_saver_chip_controller_ =
-          std::make_unique<memory_saver::MemorySaverChipController>(
-              *page_action_controller_);
-    }
+    memory_saver_chip_controller_ =
+        std::make_unique<memory_saver::MemorySaverChipController>(
+            *page_action_controller_);
 
     if (IsPageActionMigrated(PageActionIconType::kIntentPicker)) {
       intent_picker_view_page_action_controller_ =
@@ -207,11 +213,9 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           tab, *page_action_controller_);
     }
 
-    if (IsPageActionMigrated(PageActionIconType::kPwaInstall)) {
-      pwa_install_page_action_controller_ =
-          std::make_unique<PwaInstallPageActionController>(
-              tab, *page_action_controller_);
-    }
+    pwa_install_page_action_controller_ =
+        std::make_unique<PwaInstallPageActionController>(
+            tab, *page_action_controller_);
 
     if (IsPageActionMigrated(PageActionIconType::kPriceInsights)) {
       commerce_price_insights_page_action_view_controller_ =
@@ -256,6 +260,15 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
           GetUserDataFactory().CreateInstance<BookmarkPageActionController>(
               tab, tab, profile->GetPrefs(), *page_action_controller_);
     }
+
+#if !BUILDFLAG(IS_ANDROID)
+    if (base::FeatureList::IsEnabled(
+            record_replay::features::kRecordReplayBase)) {
+      record_replay_page_action_controller_ =
+          GetUserDataFactory().CreateInstance<RecordReplayPageActionController>(
+              tab, tab, *page_action_controller_);
+    }
+#endif
 
     js_optimizations_page_action_controller_ =
         std::make_unique<JsOptimizationsPageActionController>(
@@ -307,10 +320,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
     contextual_cueing::ContextualCueingHelper::MaybeCreateForWebContents(
         tab.GetContents());
 
-    privacy_sandbox_tab_observer_ =
-        std::make_unique<privacy_sandbox::PrivacySandboxTabObserver>(
-            tab.GetContents());
-
     if (tab_groups::TabGroupSyncService* tab_group_sync_service =
             tab_groups::TabGroupSyncServiceFactory::GetForProfile(profile)) {
       saved_tab_group_web_contents_listener_ =
@@ -340,7 +349,6 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
                   *collaboration_messaging_tab_data_);
     }
 
-#if BUILDFLAG(ENABLE_GLIC)
     if (glic::GlicEnabling::IsProfileEligible(profile)) {
       glic_instance_helper_ =
           GetUserDataFactory().CreateInstance<glic::GlicInstanceHelper>(tab,
@@ -348,6 +356,9 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
       glic_tab_indicator_helper_ =
           GetUserDataFactory().CreateInstance<glic::GlicTabIndicatorHelper>(
               tab, &tab);
+      glic_selection_overlay_controller_ =
+          GetUserDataFactory().CreateInstance<glic::SelectionOverlayController>(
+              tab, &tab, profile->GetPrefs());
     }
     if (glic::GlicEnabling::IsMultiInstanceEnabled() &&
         glic::GlicKeyedService::Get(profile)) {
@@ -356,9 +367,9 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
               .CreateInstance<glic::GlicSidePanelCoordinatorImpl>(
                   tab, &tab, side_panel_registry_.get());
     }
-#endif  // BUILDFLAG(ENABLE_GLIC)
     // TODO(crbug.com/433973411): Move this logic to a helper function.
-    if (base::FeatureList::IsEnabled(features::kGlicActorUi) &&
+    if (base::FeatureList::IsEnabled(features::kGlicActor) &&
+        base::FeatureList::IsEnabled(features::kGlicActorUi) &&
         profile->IsRegularProfile()) {
       // The associated tab is passed to CreateInstance twice: for dependency
       // injection callbacks and as a direct constructor argument.
@@ -373,6 +384,16 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
       skills_ui_tab_controller_ =
           GetUserDataFactory().CreateInstance<skills::SkillsUiTabController>(
               tab, tab);
+    }
+
+    if (accessibility_annotator::
+            ContentAnnotatorService* content_annotator_service =
+                accessibility_annotator::ContentAnnotatorServiceFactory::
+                    GetForProfile(profile)) {
+      content_annotator_tab_helper_ =
+          std::make_unique<accessibility_annotator::ContentAnnotatorTabHelper>(
+              tab, *content_annotator_service,
+              ChromeTranslateClient::FromWebContents(tab.GetContents()));
     }
   }  // IsInNormalWindow() end.
 
@@ -415,7 +436,7 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
     // ownership of this controller is migrated to ReadAnythingController.
     read_anything_side_panel_controller_ =
         std::make_unique<ReadAnythingSidePanelController>(
-            &tab, side_panel_registry_.get());
+            &tab, side_panel_registry_.get(), tab.GetContents());
   }
 
   // Create the HttpAuthCacheStatus to start observing resource load
@@ -456,7 +477,8 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   inactive_window_mouse_event_controller_ =
       std::make_unique<InactiveWindowMouseEventController>();
 
-  if (base::FeatureList::IsEnabled(wallet::kWalletablePassDetection)) {
+  if (base::FeatureList::IsEnabled(
+          wallet::features::kWalletablePassDetection)) {
     walletable_pass_client_ =
         std::make_unique<wallet::ChromeWalletablePassClient>(&tab);
   }
@@ -482,11 +504,22 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
   bookmarkbar_preload_pipeline_manager_ =
       std::make_unique<BookmarkBarPreloadPipelineManager>(tab.GetContents());
 
+  context_highlight_tab_feature_ =
+      GetUserDataFactory().CreateInstance<ContextHighlightTabFeature>(tab, tab);
+
   new_tab_page_preload_pipeline_manager_ =
       std::make_unique<NewTabPagePreloadPipelineManager>(tab.GetContents());
 
   tab_alert_controller_ =
       GetUserDataFactory().CreateInstance<TabAlertController>(tab, tab);
+
+#if !BUILDFLAG(IS_ANDROID)
+  if (base::FeatureList::IsEnabled(
+          record_replay::features::kRecordReplayBase)) {
+    record_replay_client_ =
+        GetUserDataFactory().CreateInstance<ChromeRecordReplayClient>(tab, tab);
+  }
+#endif
 
   tab_contextualization_controller_ =
       GetUserDataFactory().CreateInstance<lens::TabContextualizationController>(
@@ -507,7 +540,27 @@ void TabFeatures::Init(TabInterface& tab, Profile* profile) {
     back_to_opener_controller_ =
         std::make_unique<back_to_opener::BackToOpenerController>(tab);
   }
+
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN)
+  if (base::FeatureList::IsEnabled(enterprise_reporting::kSaasUsageReporting)) {
+    saas_usage_navigation_observer_ =
+        std::make_unique<enterprise_reporting::SaasUsageNavigationObserver>(
+            tab.GetContents());
+  }
+#endif
+
+#if !BUILDFLAG(IS_ANDROID)
+  if (base::FeatureList::IsEnabled(features::kSkillsEnabled)) {
+    skills_update_observer_ =
+        std::make_unique<skills::SkillsUpdateObserver>(tab);
+  }
+  if (base::FeatureList::IsEnabled(features::kIndigo)) {
+    indigo_page_action_controller_ =
+        std::make_unique<indigo::IndigoPageActionController>(
+            tab, *page_action_controller_);
+  }
 }
+#endif  // !BUILDFLAG(IS_ANDROID)
 
 TabUIHelper* TabFeatures::SetTabUIHelperForTesting(
     std::unique_ptr<TabUIHelper> tab_ui_helper) {
@@ -537,33 +590,19 @@ void TabFeatures::WillDiscardContents(tabs::TabInterface* tab,
 
   Profile* profile = tab->GetBrowserWindowInterface()->GetProfile();
 
-  if (features::IsImmersiveReadAnythingEnabled()) {
-    // TODO(crbug.com/467301642): Handle having the ReadAnythingController
-    // discard internally, rather than having TabFeatures recreate it.
-    read_anything_controller_.reset();
-    read_anything_controller_ =
-        GetUserDataFactory().CreateInstance<ReadAnythingController>(
-            *tab, tab, side_panel_registry_.get());
-  } else {
+  if (!features::IsImmersiveReadAnythingEnabled()) {
     // This method is transiently used to reset features that do not handle tab
     // discarding themselves.
     read_anything_side_panel_controller_->ResetForTabDiscard();
     read_anything_side_panel_controller_.reset();
     read_anything_side_panel_controller_ =
         std::make_unique<ReadAnythingSidePanelController>(
-            tab, side_panel_registry_.get());
+            tab, side_panel_registry_.get(), new_contents);
   }
   // Deregister side-panel entries that are web-contents scoped rather than tab
   // scoped.
   side_panel_registry_->Deregister(
       SidePanelEntry::Key(SidePanelEntry::Id::kAboutThisSite));
-
-  if (privacy_sandbox_tab_observer_) {
-    privacy_sandbox_tab_observer_.reset();
-    privacy_sandbox_tab_observer_ =
-        std::make_unique<privacy_sandbox::PrivacySandboxTabObserver>(
-            new_contents);
-  }
 
   if (web_app::AreWebAppsEnabled(
           tab->GetBrowserWindowInterface()->GetProfile())) {

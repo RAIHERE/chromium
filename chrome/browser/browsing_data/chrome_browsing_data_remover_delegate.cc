@@ -416,7 +416,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
         HistoryServiceFactory::GetForProfile(
             profile_, ServiceAccessType::EXPLICIT_ACCESS);
     if (history_service) {
-      // TODO(dmurph): Support all backends with filter (crbug.com/113621).
+      // TODO(dmurph): Support all backends with filter (crbug.com/40152186).
       base::RecordAction(UserMetricsAction("ClearBrowsingData_History"));
       history_service->DeleteLocalAndRemoteHistoryBetween(
           WebHistoryServiceFactory::GetForProfile(profile_), delete_begin_,
@@ -437,7 +437,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     // The extension activity log contains details of which websites extensions
     // were active on. It therefore indirectly stores details of websites a
     // user has visited so best clean from here as well.
-    // TODO(msramek): Support all backends with filter (crbug.com/589586).
+    // TODO(msramek): Support all backends with filter (crbug.com/40458377).
     extensions::ActivityLog::GetInstance(profile_)->RemoveURLs(
         std::set<GURL>());
 
@@ -469,7 +469,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
         prerender::NoStatePrefetchManagerFactory::GetForBrowserContext(
             profile_);
     if (no_state_prefetch_manager) {
-      // TODO(dmurph): Support all backends with filter (crbug.com/113621).
+      // TODO(dmurph): Support all backends with filter (crbug.com/40152186).
       no_state_prefetch_manager->ClearData(
           prerender::NoStatePrefetchManager::CLEAR_PRERENDER_CONTENTS |
           prerender::NoStatePrefetchManager::CLEAR_PRERENDER_HISTORY);
@@ -477,11 +477,11 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
     base::ThreadPool::PostTaskAndReply(
         FROM_HERE, {base::TaskPriority::USER_VISIBLE, base::MayBlock()},
-        base::BindOnce(
-            &webrtc_logging::DeleteOldAndRecentWebRtcLogFiles,
-            webrtc_logging::TextLogList::
-                GetWebRtcLogDirectoryForBrowserContextPath(profile_->GetPath()),
-            delete_begin_),
+        base::BindOnce(&webrtc_logging::DeleteOldAndRecentWebRtcLogFiles,
+                       webrtc_logging::TextLogList::
+                           GetWebRtcLogDirectoriesForBrowserContextPath(
+                               profile_->GetPath()),
+                       delete_begin_),
         CreateTaskCompletionClosure(TracingDataType::kWebrtcLogs));
 
 #if BUILDFLAG(IS_ANDROID)
@@ -512,7 +512,6 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
     if (lens::features::IsLensOverlayTranslateLanguagesFetchEnabled()) {
       profile_->GetDefaultStoragePartition()->ClearDataForOrigin(
           content::StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE,
-          /*quota_storage_remove_mask=*/0,
           GURL(chrome::kChromeUILensOverlayUntrustedURL), base::DoNothing());
     }
 #endif
@@ -698,8 +697,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
       profile_->GetDefaultStoragePartition()->ClearDataForOrigin(
           content::StoragePartition::REMOVE_DATA_MASK_LOCAL_STORAGE,
-          /*quota_storage_remove_mask=*/0, GURL(chrome::kChromeUINewTabPageURL),
-          base::DoNothing());
+          GURL(chrome::kChromeUINewTabPageURL), base::DoNothing());
     }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
@@ -1036,7 +1034,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
 
   //////////////////////////////////////////////////////////////////////////////
   // DATA_TYPE_FORM_DATA
-  // TODO(dmurph): Support all backends with filter (crbug.com/113621).
+  // TODO(dmurph): Support all backends with filter (crbug.com/40152186).
   if (remove_mask & constants::DATA_TYPE_FORM_DATA) {
     base::RecordAction(UserMetricsAction("ClearBrowsingData_Autofill"));
     scoped_refptr<autofill::AutofillWebDataService> web_data_service =
@@ -1405,10 +1403,7 @@ void ChromeBrowsingDataRemoverDelegate::RemoveEmbedderData(
             ->registrar_unsafe();
     for (const web_app::WebApp& web_app :
          web_app_registrar.GetAppsIncludingStubs()) {
-      if (!web_app_registrar.AppMatches(
-              web_app.app_id(),
-              web_app::WebAppFilter::IsIsolatedWebAppIncludingUninstalling()) ||
-          !filter.Run(web_app.scope())) {
+      if (!filter.Run(web_app.scope())) {
         continue;
       }
       std::vector<content::StoragePartitionConfig> partitions =

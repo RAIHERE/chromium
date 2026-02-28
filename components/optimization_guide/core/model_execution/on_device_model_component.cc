@@ -8,6 +8,7 @@
 #include <utility>
 
 #include "base/check.h"
+#include "base/containers/flat_set.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
 #include "base/memory/ptr_util.h"
@@ -16,6 +17,7 @@
 #include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/no_destructor.h"
+#include "base/power_monitor/power_monitor.h"
 #include "base/sequence_checker.h"
 #include "base/strings/strcat.h"
 #include "base/task/single_thread_task_runner.h"
@@ -33,6 +35,7 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "components/prefs/pref_service.h"
 #include "components/version_info/version_info.h"
+#include "net/base/network_change_notifier.h"
 #include "services/on_device_model/public/cpp/cpu.h"
 #include "services/on_device_model/public/cpp/features.h"
 #include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
@@ -77,6 +80,12 @@ void LogInstallCriteria(
                      criteria.enabled_by_user_setting);
   LogInstallCriteria(event_name, "All",
                      criteria.get_install_mode().has_value());
+  if (criteria.get_install_mode().has_value() &&
+      !criteria.is_already_installing) {
+    LogInstallCriteria(
+        "InitialInstall", "IsBackground",
+        criteria.get_install_mode() == ModelInstallMode::kBackground);
+  }
 }
 
 // Returns the best performance hint for this device based on the supported
@@ -205,7 +214,7 @@ OnDeviceModelComponentState::OnDeviceModelComponentState(
 OnDeviceModelComponentState::~OnDeviceModelComponentState() = default;
 
 OnDeviceModelRegistrationAttributes::OnDeviceModelRegistrationAttributes(
-    std::vector<proto::OnDeviceModelPerformanceHint> supported_hints)
+    base::flat_set<proto::OnDeviceModelPerformanceHint> supported_hints)
     : supported_hints(std::move(supported_hints)) {}
 OnDeviceModelRegistrationAttributes::OnDeviceModelRegistrationAttributes(
     const OnDeviceModelRegistrationAttributes&) = default;
@@ -219,6 +228,21 @@ OnDeviceModelRegistrationAttributes::operator=(
     OnDeviceModelRegistrationAttributes&&) = default;
 OnDeviceModelRegistrationAttributes::~OnDeviceModelRegistrationAttributes() =
     default;
+
+OnDeviceModelComponentStateManager::RegistrationCriteria::
+    RegistrationCriteria() = default;
+OnDeviceModelComponentStateManager::RegistrationCriteria::
+    ~RegistrationCriteria() = default;
+OnDeviceModelComponentStateManager::RegistrationCriteria::RegistrationCriteria(
+    const RegistrationCriteria&) = default;
+OnDeviceModelComponentStateManager::RegistrationCriteria&
+OnDeviceModelComponentStateManager::RegistrationCriteria::operator=(
+    const RegistrationCriteria&) = default;
+OnDeviceModelComponentStateManager::RegistrationCriteria::RegistrationCriteria(
+    RegistrationCriteria&&) = default;
+OnDeviceModelComponentStateManager::RegistrationCriteria&
+OnDeviceModelComponentStateManager::RegistrationCriteria::operator=(
+    RegistrationCriteria&&) = default;
 
 OnDeviceModelComponentStateManager::OnDeviceModelComponentStateManager(
     PrefService* local_state,
@@ -329,8 +353,7 @@ void OnDeviceModelComponentStateManager::InstallerRegistered(
   if (is_already_installed) {
     component_installer_state_ = ComponentInstallerState::kInstalled;
   } else {
-    component_installer_state_ =
-        ComponentInstallerState::kBackgroundDownloading;
+    component_installer_state_ = ComponentInstallerState::kRegistered;
   }
   base::UmaHistogramBoolean(
       "OptimizationGuide.ModelExecution."
@@ -348,7 +371,7 @@ void OnDeviceModelComponentStateManager::UninstallComplete() {
 
 void OnDeviceModelComponentStateManager::OnPerformanceClassAvailable() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  BeginUpdateRegistration();
+  MaybeBeginBackgroundModelDownload();
 }
 
 void OnDeviceModelComponentStateManager::
@@ -430,6 +453,11 @@ OnDeviceModelComponentStateManager::ComputeRegistrationCriteria(
   result.enabled_by_user_setting = local_state_->GetBoolean(
       model_execution::prefs::localstate::kOnDeviceAiUserSettingsEnabled);
 
+  // Treat a null PowerMonitor (for some tests) as being on battery power.
+  result.is_on_external_power =
+      base::PowerMonitor::GetInstance()->IsInitialized() &&
+      !base::PowerMonitor::GetInstance()->IsOnBatteryPower();
+
   auto last_time_eligible =
       local_state_->GetTime(model_execution::prefs::localstate::
                                 kLastTimeEligibleForOnDeviceModelDownload);
@@ -502,7 +530,22 @@ void OnDeviceModelComponentStateManager::UpdateRegistration() {
       component_installer_state_ = ComponentInstallerState::kRegistering;
       delegate_->RegisterInstaller(
           GetWeakPtr(), OnDeviceModelRegistrationAttributes(
-                            performance_classifier_->GetPossibleHints()));
+                            base::flat_set<proto::OnDeviceModelPerformanceHint>(
+                                performance_classifier_->GetPossibleHints())));
+    }
+    return;
+  }
+
+  if (component_installer_state_ == ComponentInstallerState::kRegistered) {
+    if (registration_criteria_->get_install_mode() ==
+        ModelInstallMode::kOnDemand) {
+      component_installer_state_ =
+          ComponentInstallerState::kOnDemandDownloading;
+      delegate_->RequestUpdate(/*is_background=*/false);
+    } else {
+      component_installer_state_ =
+          ComponentInstallerState::kBackgroundDownloading;
+      delegate_->RequestUpdate(/*is_background=*/true);
     }
     return;
   }
@@ -513,7 +556,7 @@ void OnDeviceModelComponentStateManager::UpdateRegistration() {
         ModelInstallMode::kOnDemand) {
       component_installer_state_ =
           ComponentInstallerState::kOnDemandDownloading;
-      delegate_->RequestUpdate();
+      delegate_->RequestUpdate(/*is_background=*/false);
     }
     return;
   }

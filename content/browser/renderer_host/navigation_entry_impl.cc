@@ -115,7 +115,7 @@ void RecursivelyGenerateFrameEntries(
         Referrer(GURL(state.referrer.value_or(std::u16string())),
                  state.referrer_policy),
         state.initiator_origin, initiator_base_url, std::vector<GURL>(),
-        blink::PageState::CreateFromEncodedData(data), "GET", -1,
+        blink::PageState::CreateFromEncodedData(std::move(data)), "GET", -1,
         nullptr /* blob_url_loader_factory */,
         // TODO(crbug.com/40053667): We should restore the policy
         // container.
@@ -608,7 +608,7 @@ blink::PageState NavigationEntryImpl::GetPageState() const {
 
   std::string encoded_data;
   blink::EncodePageState(exploded_state, &encoded_data);
-  return blink::PageState::CreateFromEncodedData(encoded_data);
+  return blink::PageState::CreateFromEncodedData(std::move(encoded_data));
 }
 
 const std::u16string& NavigationEntryImpl::GetTitleForDisplay() const {
@@ -1053,7 +1053,8 @@ NavigationEntryImpl::ConstructCommitNavigationParams(
 #else
           false,
 #endif
-          /*permissions_policy_override=*/std::nullopt);
+          /*permissions_policy_override=*/std::nullopt,
+          /*internal_scroll_to_text_fragment=*/std::nullopt);
 #if BUILDFLAG(IS_ANDROID)
   // `data_url_as_string` is saved in NavigationEntry but should only be used by
   // main frames, because loadData* navigations can only happen on the main

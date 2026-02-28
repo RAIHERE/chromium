@@ -1009,6 +1009,32 @@ TEST_F(VideoOverlayWindowViewsTest,
 }
 #endif  // BUILDFLAG(IS_MAC)
 
+TEST_F(VideoOverlayWindowViewsTest, ReplayAndForward10SecondsOnKeyPress) {
+  overlay_window().ForceControlsVisibleForTesting(true);
+  media_session::MediaPosition media_position(/*playback_rate=*/0,
+                                              /*duration=*/base::Seconds(100),
+                                              /*position=*/base::Seconds(42),
+                                              /*end_of_media=*/false);
+  overlay_window().SetMediaPosition(media_position);
+
+  ui::KeyEvent left_event(ui::EventType::kKeyPressed, ui::VKEY_LEFT,
+                          ui::EF_NONE);
+  ui::KeyEvent right_event(ui::EventType::kKeyPressed, ui::VKEY_RIGHT,
+                           ui::EF_NONE);
+
+  // The left arrow key should seek the video backwards 10 seconds.
+  PictureInPictureWindowManager::GetInstance()
+      ->set_window_controller_for_testing(&pip_window_controller());
+  EXPECT_CALL(pip_window_controller(), SeekTo(base::Seconds(32)));
+  overlay_window().OnKeyEvent(&left_event);
+  testing::Mock::VerifyAndClearExpectations(&pip_window_controller());
+
+  // The right arrow key should seek the video forwards 10 seconds.
+  EXPECT_CALL(pip_window_controller(), SeekTo(base::Seconds(52)));
+  overlay_window().OnKeyEvent(&right_event);
+  testing::Mock::VerifyAndClearExpectations(&pip_window_controller());
+}
+
 TEST_F(VideoOverlayWindowViewsTest, DisplaysFavicon) {
   overlay_window().ForceControlsVisibleForTesting(true);
   views::ImageView* favicon_view = overlay_window().favicon_view_for_testing();
@@ -1540,6 +1566,32 @@ TEST_F(VideoOverlayWindowViewsTest, MouseHoverShowsAllControls) {
   // All controls should now be visible or animating to visible.
   EXPECT_TRUE(overlay_window().AreTitleAndScrimVisibleForTesting());
   EXPECT_TRUE(overlay_window().AreControlsVisible());
+}
+
+TEST_F(VideoOverlayWindowViewsTest, PlaybackControlsContainerVisibility) {
+  overlay_window().ShowInactive();
+  overlay_window().ForceControlsVisibleForTesting(true);
+  overlay_window().SetPlayPauseButtonVisibility(true);
+  WaitForLayout();
+
+  views::View* playback_controls_container =
+      overlay_window().playback_controls_container_for_testing();
+  ASSERT_NE(nullptr, playback_controls_container);
+
+  // Initially, the playback_controls_container should be drawn.
+  EXPECT_TRUE(playback_controls_container->IsDrawn());
+
+  // Verify that the playback_controls_container is hidden.
+  overlay_window().SetPlaybackControlsVisibility(false);
+  WaitForLayout();
+  EXPECT_FALSE(playback_controls_container->IsDrawn());
+
+  // Providing a new surface should restore the playback_controls_container.
+  const viz::SurfaceId surface_id(viz::FrameSinkId(1, 1),
+                                  viz::LocalSurfaceId());
+  overlay_window().SetSurfaceId(surface_id);
+  WaitForLayout();
+  EXPECT_TRUE(playback_controls_container->IsDrawn());
 }
 
 TEST_F(VideoOverlayWindowViewsTest, TopControlsAreAlwaysOnTheRight) {

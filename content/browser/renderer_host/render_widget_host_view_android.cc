@@ -27,6 +27,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/notimplemented.h"
+#include "base/rand_util.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/system/sys_info.h"
@@ -1419,8 +1420,8 @@ void RenderWidgetHostViewAndroid::SendStateOnTouchTransfer(
     return;
   }
 
-  const float y_offset_pix =
-      host()->delegate()->GetCurrentTouchSequenceYOffset();
+  const gfx::PointF web_contents_offset =
+      host()->delegate()->GetCurrentTouchSequenceOffset();
 
   std::optional<std::unique_ptr<ui::MotionEventAndroid>> motion_event_android =
       std::nullopt;
@@ -1430,7 +1431,7 @@ void RenderWidgetHostViewAndroid::SendStateOnTouchTransfer(
             gfx::PointF(event.GetX(0), event.GetY(0)));
   }
   remote->StateOnTouchTransfer(input::mojom::TouchTransferState::New(
-      event.GetRawDownTime(), GetFrameSinkId(), y_offset_pix,
+      event.GetRawDownTime(), GetFrameSinkId(), web_contents_offset,
       view_.GetDipScale(), browser_would_have_handled,
       std::move(motion_event_android)));
 }
@@ -1511,6 +1512,13 @@ void RenderWidgetHostViewAndroid::CleanupDraggingCallback() {
 
 bool RenderWidgetHostViewAndroid::OnTouchEvent(
     const ui::MotionEventAndroid& event) {
+  // A lower sampling rate should work, but we want to get accurate data on
+  // pre-release channels as well.
+  if (base::ShouldRecordSubsampledMetric(0.1)) {
+    UMA_HISTOGRAM_ENUMERATION("Android.Input.TouchEvent.Action",
+                              event.GetAction());
+  }
+
   // WARNING: Adding any code above `FilterRedundantDownEvent` check will likely
   // lead to unexpected behavior in touch sequence handling. Do not modify the
   // position of this check without careful consideration.

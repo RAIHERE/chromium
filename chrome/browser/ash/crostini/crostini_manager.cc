@@ -13,6 +13,7 @@
 #include "ash/constants/ash_features.h"
 #include "base/barrier_callback.h"
 #include "base/barrier_closure.h"
+#include "base/check_is_test.h"
 #include "base/check_op.h"
 #include "base/command_line.h"
 #include "base/feature_list.h"
@@ -68,14 +69,11 @@
 #include "chrome/browser/ash/guest_os/public/guest_os_service.h"
 #include "chrome/browser/ash/guest_os/public/guest_os_service_factory.h"
 #include "chrome/browser/ash/guest_os/public/types.h"
-#include "chrome/browser/browser_process.h"
-#include "chrome/browser/browser_process_platform_part.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/views/crostini/crostini_update_filesystem_view.h"
 #include "chrome/browser/ui/webui/ash/system_web_dialog/system_web_dialog_delegate.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
-#include "chrome/common/webui_url_constants.h"
 #include "chromeos/ash/components/dbus/anomaly_detector/anomaly_detector_client.h"
 #include "chromeos/ash/components/dbus/session_manager/session_manager_client.h"
 #include "chromeos/ash/components/dbus/vm_applications/apps.pb.h"
@@ -85,6 +83,7 @@
 #include "chromeos/ash/components/network/network_state_handler.h"
 #include "chromeos/ash/components/scheduler_config/scheduler_configuration_manager.h"
 #include "chromeos/dbus/common/dbus_callback.h"
+#include "components/component_updater/ash/component_manager_ash.h"
 #include "components/component_updater/component_updater_service.h"
 #include "components/prefs/pref_service.h"
 #include "content/public/browser/browser_task_traits.h"
@@ -265,10 +264,12 @@ class CrostiniManager::CrostiniRestarter
     raw_ptr<RestartObserver> observer;  // optional
   };
 
-  CrostiniRestarter(Profile* profile,
-                    CrostiniManager* crostini_manager,
-                    guest_os::GuestId container_id,
-                    RestartRequest request);
+  CrostiniRestarter(
+      ash::SchedulerConfigurationManager* scheduler_configuration_manager,
+      Profile* profile,
+      CrostiniManager* crostini_manager,
+      guest_os::GuestId container_id,
+      RestartRequest request);
   ~CrostiniRestarter() override;
 
   void AddRequest(RestartRequest request);
@@ -362,6 +363,9 @@ class CrostiniManager::CrostiniRestarter
   void OnConciergeAvailable(std::optional<base::ScopedFD> disk_iamge,
                             bool service_available);
 
+  const raw_ptr<ash::SchedulerConfigurationManager>
+      scheduler_configuration_manager_;
+
   base::OneShotTimer stage_timeout_timer_;
   base::TimeTicks stage_start_;
 
@@ -425,11 +429,13 @@ class CrostiniManager::CrostiniRestarter
 };
 
 CrostiniManager::CrostiniRestarter::CrostiniRestarter(
+    ash::SchedulerConfigurationManager* scheduler_configuration_manager,
     Profile* profile,
     CrostiniManager* crostini_manager,
     guest_os::GuestId container_id,
     RestartRequest request)
-    : profile_(profile),
+    : scheduler_configuration_manager_(scheduler_configuration_manager),
+      profile_(profile),
       crostini_manager_(crostini_manager),
       container_id_(std::move(container_id)) {
   AddRequest(std::move(request));
@@ -809,15 +815,14 @@ void CrostiniManager::CrostiniRestarter::CreateDiskImageFinished(
   crostini_manager_->EmitVmDiskTypeMetric(container_id_.vm_name);
   disk_path_ = result_path;
 
-  auto* scheduler_configuration_manager =
-      g_browser_process->platform_part()->scheduler_configuration_manager();
+  CHECK(scheduler_configuration_manager_);
   std::optional<std::pair<bool, size_t>> scheduler_configuration =
-      scheduler_configuration_manager->GetLastReply();
+      scheduler_configuration_manager_->GetLastReply();
   if (!scheduler_configuration) {
     // Wait for the configuration to become available.
     LOG(WARNING) << "Scheduler configuration is not yet ready";
     scheduler_configuration_manager_observation_.Observe(
-        scheduler_configuration_manager);
+        scheduler_configuration_manager_.get());
     return;
   }
   OnConfigurationSet(scheduler_configuration->first,
@@ -984,6 +989,7 @@ void CrostiniManager::CrostiniRestarter::WaitUntilBaguetteReady(
     base::UmaHistogramMediumTimes(
         "Crostini.BaguetteReadyWait",
         kBaguetteVmReadyWaitTimeout - remaining_wait_time);
+    crostini_manager_->SetCreateOptionsUsed(DefaultBaguetteContainerId());
     FinishRestart(result);
     return;
   }
@@ -1285,21 +1291,37 @@ void CrostiniManager::AddRunningContainerForTesting(std::string vm_name,
 
 void CrostiniManager::UpdateLaunchMetricsForEnterpriseReporting() {
   PrefService* const profile_prefs = profile_->GetPrefs();
-  const component_updater::ComponentUpdateService* const update_service =
-      g_browser_process->component_updater();
   const base::Clock* const clock = base::DefaultClock::GetInstance();
-  WriteMetricsForReportingToPrefsIfEnabled(profile_prefs, update_service,
-                                           clock);
+  WriteMetricsForReportingToPrefsIfEnabled(
+      profile_prefs, component_update_service_.get(), clock);
 }
 
 CrostiniManager* CrostiniManager::GetForProfile(Profile* profile) {
   return CrostiniManagerFactory::GetForProfile(profile);
 }
 
-CrostiniManager::CrostiniManager(Profile* profile)
-    : profile_(profile),
+CrostiniManager::CrostiniManager(
+    const component_updater::ComponentUpdateService* component_update_service,
+    scoped_refptr<network::SharedURLLoaderFactory> shared_url_loader_factory,
+    scoped_refptr<component_updater::ComponentManagerAsh> component_manager_ash,
+    ash::SchedulerConfigurationManager* scheduler_configuration_manager,
+    Profile* profile)
+    : component_update_service_(component_update_service),
+      component_manager_ash_(component_manager_ash),
+      scheduler_configuration_manager_(scheduler_configuration_manager),
+      profile_(profile),
       owner_id_(CryptohomeIdForProfile(profile)),
-      baguette_installer_(profile_, *profile_->GetPrefs()) {
+      termina_installer_(std::move(component_manager_ash)),
+      baguette_installer_(profile_, std::move(shared_url_loader_factory)) {
+  if (!component_update_service_) {
+    CHECK_IS_TEST();
+  }
+  if (!component_manager_ash_) {
+    CHECK_IS_TEST();
+  }
+  if (!scheduler_configuration_manager_) {
+    CHECK_IS_TEST();
+  }
   DCHECK(!profile_->IsOffTheRecord());
   GetCiceroneClient()->AddObserver(this);
   GetConciergeClient()->AddVmObserver(this);
@@ -1748,14 +1770,13 @@ void CrostiniManager::SetUpBaguetteUser(
 
 namespace {
 
-std::string GetImageServer() {
+std::string GetImageServer(
+    component_updater::ComponentManagerAsh* component_manager_ash) {
   std::string image_server_url;
-  scoped_refptr<component_updater::ComponentManagerAsh> component_manager =
-      g_browser_process->platform_part()->component_manager_ash();
-  if (component_manager) {
-    image_server_url =
-        component_manager->GetCompatiblePath("cros-crostini-image-server-url")
-            .value();
+  if (component_manager_ash) {
+    image_server_url = component_manager_ash
+                           ->GetCompatiblePath("cros-crostini-image-server-url")
+                           .value();
   }
   return image_server_url.empty() ? kCrostiniDefaultImageServerUrl
                                   : image_server_url;
@@ -1801,7 +1822,8 @@ void CrostiniManager::CreateLxdContainer(
   request.set_vm_name(container_id.vm_name);
   request.set_container_name(container_id.container_name);
   request.set_owner_id(owner_id_);
-  request.set_image_server(opt_image_server_url.value_or(GetImageServer()));
+  request.set_image_server(opt_image_server_url.value_or(
+      GetImageServer(component_manager_ash_.get())));
   request.set_image_alias(opt_image_alias.value_or(GetImageAlias()));
 
   VLOG(1) << "image_server_url = " << request.image_server()
@@ -2484,6 +2506,11 @@ CrostiniManager::RestartId CrostiniManager::RestartCrostiniWithOptions(
       create_options.share_paths.emplace_back(path);
     }
     obsolete_create_options = FetchCreateOptions(container_id, &create_options);
+    // Baguette installs explicitly need to 'remember' the creation username.
+    if (container_id.vm_type == vm_tools::apps::BAGUETTE &&
+        create_options.container_username.has_value()) {
+      options.container_username = create_options.container_username;
+    }
   }
 
   RestartId restart_id = next_restart_id_++;
@@ -2498,8 +2525,9 @@ CrostiniManager::RestartId CrostiniManager::RestartCrostiniWithOptions(
   if (it == restarters_by_container_.end()) {
     VLOG(1) << "Creating new restarter for " << container_id;
     restarters_by_container_[container_id] =
-        std::make_unique<CrostiniRestarter>(profile_, this, container_id,
-                                            std::move(request));
+        std::make_unique<CrostiniRestarter>(
+            scheduler_configuration_manager_.get(), profile_, this,
+            container_id, std::move(request));
     // In some cases this will synchronously finish the restart and cause it to
     // be deleted and removed from the map.
     restarters_by_container_[container_id]->Restart();
@@ -2681,13 +2709,9 @@ void CrostiniManager::OnStartTerminaVm(
 
   // If the vm is already marked "running" run the callback.
   if (response->status() == vm_tools::concierge::VM_STATUS_RUNNING) {
-    if (running_vms_.contains(vm_name)) {
-      running_vms_[vm_name] =
-          VmInfo{VmState::STARTED, std::move(response->vm_info()), true};
-    } else {
-      running_vms_[vm_name] =
-          VmInfo{VmState::STARTED, std::move(response->vm_info()), false};
-    }
+    auto [it, inserted] = running_vms_.try_emplace(vm_name);
+    it->second =
+        VmInfo{VmState::STARTED, std::move(response->vm_info()), !inserted};
     std::move(callback).Run(/*success=*/true);
     return;
   }
@@ -3740,7 +3764,7 @@ void CrostiniManager::SuspendImminent(
     return;
   }
 
-  // Block suspend and try to unmount sshfs (https://crbug.com/968060).
+  // Block suspend and try to unmount sshfs (https://crbug.com/40629613).
   auto token = base::UnguessableToken::Create();
   chromeos::PowerManagerClient::Get()->BlockSuspend(token, "CrostiniManager");
   crostini_sshfs_->UnmountCrostiniFiles(
@@ -3750,14 +3774,24 @@ void CrostiniManager::SuspendImminent(
 }
 
 void CrostiniManager::SuspendDone(base::TimeDelta sleep_duration) {
-  // https://crbug.com/968060.  Sshfs is unmounted before suspend,
+  // https://crbug.com/40629613.  Sshfs is unmounted before suspend,
   // call RestartCrostini to force remount if container is running.
   guest_os::GuestId container_id = DefaultContainerId();
-  bool running = guest_os::GuestOsSessionTrackerFactory::GetForProfile(profile_)
-                     ->IsRunning(container_id);
+  guest_os::GuestOsSessionTracker* tracker =
+      guest_os::GuestOsSessionTrackerFactory::GetForProfile(profile_);
+  bool running = tracker->IsRunning(container_id);
   if (running) {
-    // TODO(crbug/1142321): Double-check if anything breaks if we change this
-    // to just remount the sshfs mounts, in particular check 9p mounts.
+    std::optional<vm_tools::concierge::VmInfo> info =
+        tracker->GetVmInfo(kCrostiniDefaultVmName);
+    // GuestId equality does not consider vm type, and this assumption is baked
+    // in so we have to figure it out manually here.
+    if (info.has_value() &&
+        info->vm_type() ==
+            vm_tools::concierge::VmInfo_VmType::VmInfo_VmType_BAGUETTE) {
+      container_id = DefaultBaguetteContainerId();
+    }
+    // TODO(crbug.com/215260524): Double-check if anything breaks if we change
+    // this to just remount the sshfs mounts, in particular check 9p mounts.
     RestartCrostini(container_id, base::DoNothing());
   }
 }

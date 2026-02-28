@@ -10,15 +10,17 @@
 #include "base/run_loop.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/task_environment.h"
-#include "chrome/test/base/chrome_render_view_host_test_harness.h"
+#include "components/feature_engagement/test/mock_tracker.h"
 #include "components/os_crypt/async/browser/test_utils.h"
 #include "components/page_content_annotations/content/page_content_extraction_service.h"
 #include "components/page_content_annotations/core/page_content_annotations_features.h"
+#include "content/public/browser/browser_context.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/mock_navigation_handle.h"
 #include "content/public/test/navigation_simulator.h"
+#include "content/public/test/test_renderer_host.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/blink/public/mojom/content_extraction/ai_page_content.mojom.h"
 
@@ -29,17 +31,19 @@ class TestPageContentExtractionService : public PageContentExtractionService {
   explicit TestPageContentExtractionService(
       os_crypt_async::OSCryptAsync* os_crypt_async,
       const base::FilePath& profile_path)
-      : PageContentExtractionService(os_crypt_async, profile_path) {}
+      : PageContentExtractionService(os_crypt_async,
+                                     profile_path,
+                                     &mock_tracker_) {}
   ~TestPageContentExtractionService() override = default;
 
   void OnPageContentExtracted(
       content::Page& page,
-      const optimization_guide::proto::AnnotatedPageContent&
+      scoped_refptr<const RefCountedAnnotatedPageContent>
           annotated_page_content,
       const std::vector<uint8_t>& screenshot_data,
       std::optional<int> tab_id) override {
     last_extracted_content_ = ExtractedPageContentResult(
-        annotated_page_content, base::Time::Now(), false, screenshot_data);
+        std::move(annotated_page_content), base::Time::Now(), false, screenshot_data);
     extraction_count_++;
     if (quit_closure_) {
       std::move(quit_closure_).Run();
@@ -59,22 +63,24 @@ class TestPageContentExtractionService : public PageContentExtractionService {
  private:
   int extraction_count_ = 0;
   std::optional<ExtractedPageContentResult> last_extracted_content_;
-
+  feature_engagement::test::MockTracker mock_tracker_;
   base::OnceClosure quit_closure_;
 };
 
-class AnnotatePageContentRequestTest : public ChromeRenderViewHostTestHarness {
+class AnnotatePageContentRequestTest
+    : public content::RenderViewHostTestHarness {
  public:
   AnnotatePageContentRequestTest()
-      : ChromeRenderViewHostTestHarness(
+      : content::RenderViewHostTestHarness(
             base::test::TaskEnvironment::TimeSource::MOCK_TIME) {}
 
   void SetUp() override {
-    ChromeRenderViewHostTestHarness::SetUp();
+    content::RenderViewHostTestHarness::SetUp();
 
     os_crypt_async_ = os_crypt_async::GetTestOSCryptAsyncForTesting();
 
-    extraction_service_.emplace(os_crypt_async_.get(), profile()->GetPath());
+    extraction_service_.emplace(os_crypt_async_.get(),
+                                browser_context()->GetPath());
 
     request_ = AnnotatedPageContentRequest::Create(
         web_contents(), extraction_service_.value(),
@@ -98,7 +104,7 @@ class AnnotatePageContentRequestTest : public ChromeRenderViewHostTestHarness {
     request_.reset();
     extraction_service_.reset();
     os_crypt_async_.reset();
-    ChromeRenderViewHostTestHarness::TearDown();
+    content::RenderViewHostTestHarness::TearDown();
   }
 
   void SetTriggeringMode(const std::string& mode) {

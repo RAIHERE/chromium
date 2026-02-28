@@ -411,13 +411,17 @@ public class ArchivedTabModelOrchestrator extends TabModelOrchestrator implement
                         // Intentional no-op.
                     }
                 };
+
+        mMigrationManager = new PersistentStoreMigrationManagerImpl(ARCHIVED_WINDOW_TAG);
         mTabPersistentStore =
                 buildAuthoritativeStore(
                         TabPersistentStoreImpl.CLIENT_TAG_ARCHIVED,
+                        mMigrationManager,
                         mTabPersistencePolicy,
                         mTabModelSelector,
                         mArchivedTabCreatorManager,
                         mTabWindowManager,
+                        ARCHIVED_WINDOW_TAG,
                         cipherFactory,
                         /* recordLegacyTabCountMetrics= */ false);
 
@@ -465,7 +469,7 @@ public class ArchivedTabModelOrchestrator extends TabModelOrchestrator implement
     /**
      * Begins the process of decluttering tabs if it hasn't been started already.
      *
-     * @param regularSelector The regular {@link TabModelSelecltor} to do a declutter pass for.
+     * @param orchestrator Contains the regular {@link TabModelSelector} to do a declutter pass for.
      */
     public void doDeclutterPass(TabbedModeTabModelOrchestrator orchestrator) {
         ThreadUtils.assertOnUiThread();
@@ -580,6 +584,7 @@ public class ArchivedTabModelOrchestrator extends TabModelOrchestrator implement
 
         mShadowTabPersistentStore =
                 buildNonOtrShadowStore(
+                        mMigrationManager,
                         mShadowTabCreator,
                         mTabModelSelector,
                         mTabPersistencePolicy,

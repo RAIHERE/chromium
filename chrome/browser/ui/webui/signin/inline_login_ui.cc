@@ -39,11 +39,11 @@
 #include "ash/constants/ash_features.h"
 #include "ash/constants/ash_pref_names.h"
 #include "ash/webui/settings/public/constants/routes.mojom.h"
+#include "ash/webui/settings/public/constants/routes_util.h"
 #include "chrome/browser/ash/account_manager/account_apps_availability.h"
 #include "chrome/browser/ash/profiles/profile_helper.h"
 #include "chrome/browser/prefs/incognito_mode_prefs.h"
 #include "chrome/browser/profiles/profiles_state.h"
-#include "chrome/browser/ui/chrome_pages.h"
 #include "chrome/browser/ui/webui/ash/edu_coexistence/edu_coexistence_login_handler.h"
 #include "chrome/browser/ui/webui/signin/ash/edu_account_login_handler.h"
 #include "chrome/browser/ui/webui/signin/ash/inline_login_handler_impl.h"
@@ -212,7 +212,7 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
       "accountManagerDialogWelcomeBody",
       l10n_util::GetStringFUTF16(
           message_id,
-          base::UTF8ToUTF16(chrome::GetOSSettingsUrl(
+          base::UTF8ToUTF16(chromeos::settings::GetOSSettingsUrl(
                                 chromeos::settings::mojom::kPeopleSectionPath)
                                 .spec()),
           ui::GetChromeOSDeviceName()));
@@ -224,10 +224,10 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
       ash::ProfileHelper::Get()->GetUserByProfile(profile);
   DCHECK(user);
   source->AddString("userName", user->GetGivenName());
-  source->AddString(
-      "accountManagerOsSettingsUrl",
-      chrome::GetOSSettingsUrl(chromeos::settings::mojom::kPeopleSectionPath)
-          .spec());
+  source->AddString("accountManagerOsSettingsUrl",
+                    chromeos::settings::GetOSSettingsUrl(
+                        chromeos::settings::mojom::kPeopleSectionPath)
+                        .spec());
 
   source->OverrideContentSecurityPolicy(
       network::mojom::CSPDirectiveName::FrameSrc,
@@ -239,8 +239,12 @@ void CreateAndAddWebUIDataSource(Profile* profile) {
 #endif  // BUILDFLAG(IS_CHROMEOS)
 }
 
-// Returns whether |url| can be displayed in a chrome://chrome-signin web
+// Returns whether `url` can be displayed in a chrome://chrome-signin web
 // contents, depending on the signin reason that is encoded in the url.
+// For testing purposes on Windows, loading `chrome://chrome-signin/?reason=6`
+// (mapping `signin_metrics::Reason::kFetchLstOnly`) would allow to load the
+// page in a tab. On ChromeOS, any reason (or no reason) would work.
+// If the reason is not valid, the page should not be loaded.
 bool IsValidChromeSigninReason(const GURL& url) {
 #if BUILDFLAG(IS_CHROMEOS)
   return true;
@@ -256,22 +260,26 @@ bool IsValidChromeSigninReason(const GURL& url) {
     case signin_metrics::Reason::kSigninPrimaryAccount:
     case signin_metrics::Reason::kAddSecondaryAccount:
     case signin_metrics::Reason::kUnknownReason:
-      NOTREACHED();
+      // This can happen if the page is loaded directly into a tab, which may
+      // not contain the right reason parameter. In this case, do not load the
+      // page instead of crashing. Check crbug.com/479741617.
+      return false;
   }
-#endif  // BUILDFLAG(IS_CHROMEOS)
+#endif  // BUILDFLAG(IS_WIN)
 }
 
 }  // namespace
 
 InlineLoginUI::InlineLoginUI(content::WebUI* web_ui) : WebDialogUI(web_ui) {
+  if (!IsValidChromeSigninReason(web_ui->GetWebContents()->GetVisibleURL())) {
+    // Do not load the page is the reason is not valid.
+    return;
+  }
+
   // Always instantiate the WebUIDataSource so that tests pulling deps from
   // from chrome://chrome-signin/gaia_auth_host/ can work.
   Profile* profile = Profile::FromWebUI(web_ui);
   CreateAndAddWebUIDataSource(profile);
-
-  if (!IsValidChromeSigninReason(web_ui->GetWebContents()->GetVisibleURL())) {
-    return;
-  }
 
 #if BUILDFLAG(IS_CHROMEOS)
   web_ui->AddMessageHandler(

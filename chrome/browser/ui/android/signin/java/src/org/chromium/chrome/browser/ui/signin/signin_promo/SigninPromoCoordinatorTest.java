@@ -47,6 +47,7 @@ import org.mockito.junit.MockitoRule;
 import org.mockito.quality.Strictness;
 
 import org.chromium.base.ThreadUtils;
+import org.chromium.base.supplier.SupplierUtils;
 import org.chromium.base.test.BaseActivityTestRule;
 import org.chromium.base.test.params.MethodParamAnnotationRule;
 import org.chromium.base.test.params.ParameterAnnotations;
@@ -174,6 +175,7 @@ public class SigninPromoCoordinatorTest {
     private PersonalizedSigninPromoView mPromoView;
     private SigninPromoCoordinator mPromoCoordinator;
     private SigninPromoDelegate mDelegate;
+    private boolean mIsSetupListActive;
 
     @Before
     public void setUp() {
@@ -234,7 +236,7 @@ public class SigninPromoCoordinatorTest {
     @MediumTest
     @ParameterAnnotations.UseMethodParameter(AccessPointParams.class)
     public void testPromoNotShownWhenAccountsNotAvailable(@SigninAccessPoint int accessPoint) {
-        try (var unused = mSigninTestRule.blockGetAccountsUpdate(false)) {
+        try (var unused = mSigninTestRule.blockGetAccountsUpdate()) {
             setUpSignInPromo(accessPoint);
             ThreadUtils.runOnUiThreadBlocking(
                     () -> {
@@ -1156,6 +1158,15 @@ public class SigninPromoCoordinatorTest {
                                 SigninAccessPoint.NTP_FEED_TOP_PROMO, nightModeEnabled));
     }
 
+    @Test
+    @MediumTest
+    public void testNtpPromoSuppressed_setupListActive() {
+        mIsSetupListActive = true;
+        setUpSignInPromo(SigninAccessPoint.NTP_FEED_TOP_PROMO);
+
+        ThreadUtils.runOnUiThreadBlocking(() -> assertFalse(mPromoCoordinator.canShowPromo()));
+    }
+
     private void setUpSignInPromo(@SigninAccessPoint int accessPoint) {
         @LayoutRes int layoutResId = SigninPromoCoordinator.getLayoutResId(accessPoint);
         ThreadUtils.runOnUiThreadBlocking(
@@ -1180,7 +1191,7 @@ public class SigninPromoCoordinatorTest {
                                     mProfile,
                                     mActivityResultTracker,
                                     mLauncher,
-                                    mBottomSheetController,
+                                    SupplierUtils.of(mBottomSheetController),
                                     mModalDialogManagerSupplier,
                                     mSnackbarManager,
                                     mDeviceLockActivityLauncher,
@@ -1203,11 +1214,17 @@ public class SigninPromoCoordinatorTest {
                             mOnPromoStateChange,
                             /* isCreatedInCct= */ false);
             case SigninAccessPoint.NTP_FEED_TOP_PROMO ->
-                    new NtpSigninPromoDelegate(activity, mProfile, mLauncher, mOnPromoStateChange);
+                    new NtpSigninPromoDelegate(
+                            activity,
+                            mProfile,
+                            mLauncher,
+                            mOnPromoStateChange,
+                            () -> mIsSetupListActive);
             case SigninAccessPoint.RECENT_TABS ->
                     new RecentTabsSigninPromoDelegate(
                             activity, mProfile, mLauncher, mOnPromoStateChange);
-            default -> throw new IllegalArgumentException("Invalid sign-in promo access point");
+            default -> throw new IllegalArgumentException(
+                    "Invalid sign-in promo access point: " + accessPoint);
         };
     }
 
@@ -1217,7 +1234,8 @@ public class SigninPromoCoordinatorTest {
             case SigninAccessPoint.HISTORY_PAGE -> "HistoryPage";
             case SigninAccessPoint.NTP_FEED_TOP_PROMO -> "NtpFeedTopPromo";
             case SigninAccessPoint.RECENT_TABS -> "RecentTabs";
-            default -> throw new IllegalArgumentException("Invalid sign-in promo access point");
+            default -> throw new IllegalArgumentException(
+                    "Invalid sign-in promo access point: " + accessPoint);
         };
     }
 
@@ -1243,7 +1261,8 @@ public class SigninPromoCoordinatorTest {
                     .SigninPromoAccessPointId.NTP;
             case SigninAccessPoint.RECENT_TABS -> SigninPreferencesManager.SigninPromoAccessPointId
                     .RECENT_TABS;
-            default -> throw new IllegalArgumentException("Invalid sign-in promo access point");
+            default -> throw new IllegalArgumentException(
+                    "Invalid sign-in promo access point: " + accessPoint);
         };
     }
 
@@ -1255,7 +1274,8 @@ public class SigninPromoCoordinatorTest {
                     .SIGNIN_PROMO_HISTORY_PAGE_DECLINED;
             case SigninAccessPoint.NTP_FEED_TOP_PROMO -> ChromePreferenceKeys
                     .SIGNIN_PROMO_NTP_PROMO_DISMISSED;
-            default -> throw new IllegalArgumentException("Invalid sign-in promo access point");
+            default -> throw new IllegalArgumentException(
+                    "Invalid sign-in promo access point: " + accessPoint);
         };
     }
 
@@ -1268,7 +1288,8 @@ public class SigninPromoCoordinatorTest {
                     .createKey(SigninPreferencesManager.SigninPromoAccessPointId.HISTORY_PAGE);
             case SigninAccessPoint.NTP_FEED_TOP_PROMO -> ChromePreferenceKeys.SYNC_PROMO_SHOW_COUNT
                     .createKey(SigninPreferencesManager.SigninPromoAccessPointId.NTP);
-            default -> throw new IllegalArgumentException("Invalid sign-in promo access point");
+            default -> throw new IllegalArgumentException(
+                    "Invalid sign-in promo access point: " + accessPoint);
         };
     }
 

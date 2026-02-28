@@ -44,13 +44,23 @@ GdmRemoteDisplayManager::GdmRemoteDisplayManager() {
 
 GdmRemoteDisplayManager::~GdmRemoteDisplayManager() = default;
 
-void GdmRemoteDisplayManager::Init(Observer* observer, Callback callback) {
+void GdmRemoteDisplayManager::Init(GDBusConnectionRef connection,
+                                   Observer* observer,
+                                   Callback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK_EQ(initialization_state_, InitializationState::NOT_INITIALIZED);
+  DCHECK(connection.is_initialized());
 
+  connection_ = connection;
   observer_ = observer;
-  GDBusConnectionRef::CreateForSystemBus(
-      base::BindOnce(&GdmRemoteDisplayManager::OnCreateDbusConnectionResult,
+  initialization_state_ = InitializationState::INITIALIZING;
+  SubscribeSignals();
+
+  // Get all remote displays that have already been created before the
+  // initialization.
+  connection_.Call<org_freedesktop_DBus_ObjectManager::GetManagedObjects>(
+      kGdmBusName, kGdmDisplaysPath, std::tuple(),
+      base::BindOnce(&GdmRemoteDisplayManager::OnGetAllRemoteDisplaysResult,
                      weak_ptr_factory_.GetWeakPtr(), std::move(callback)));
 }
 
@@ -71,7 +81,7 @@ void GdmRemoteDisplayManager::CreateRemoteDisplay(ObjectPath remote_id,
 
 void GdmRemoteDisplayManager::SubscribeSignals() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-  DCHECK_EQ(initialization_state_, InitializationState::INITIALIZED);
+  DCHECK_EQ(initialization_state_, InitializationState::INITIALIZING);
 
   interfaces_added_subscription_ =
       connection_
@@ -87,43 +97,27 @@ void GdmRemoteDisplayManager::SubscribeSignals() {
                           weak_ptr_factory_.GetWeakPtr()));
 }
 
-void GdmRemoteDisplayManager::OnCreateDbusConnectionResult(
+void GdmRemoteDisplayManager::OnGetAllRemoteDisplaysResult(
     Callback init_callback,
-    base::expected<GDBusConnectionRef, Loggable> result) {
+    base::expected<std::tuple<GVariantRef<"a{oa{sa{sv}}}">>, Loggable> result) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+  DCHECK_EQ(initialization_state_, InitializationState::INITIALIZING);
 
   if (!result.has_value()) {
     initialization_state_ = InitializationState::NOT_INITIALIZED;
     std::move(init_callback).Run(base::unexpected(result.error()));
     return;
   }
+
   initialization_state_ = InitializationState::INITIALIZED;
-  connection_ = std::move(result.value());
-  SubscribeSignals();
-
-  // Get all remote displays that have already been created before the
-  // initialization.
-  connection_.Call<org_freedesktop_DBus_ObjectManager::GetManagedObjects>(
-      kGdmBusName, kGdmDisplaysPath, std::tuple(),
-      base::BindOnce(&GdmRemoteDisplayManager::OnGetAllRemoteDisplaysResult,
-                     weak_ptr_factory_.GetWeakPtr(), std::move(init_callback)));
-}
-
-void GdmRemoteDisplayManager::OnGetAllRemoteDisplaysResult(
-    Callback init_callback,
-    base::expected<std::tuple<GVariantRef<"a{oa{sa{sv}}}">>, Loggable> result) {
-  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
-
-  if (!result.has_value()) {
-    std::move(init_callback).Run(base::unexpected(result.error()));
-    return;
-  }
 
   auto [interfaces] = result.value();
 
   for (auto [display_path, interfaces_and_properties] : interfaces) {
+    // Don't notify observers of the pre-existing remote displays.
     OnInterfacesAddedInternal(display_path.Into<ObjectPath>(),
-                              interfaces_and_properties);
+                              interfaces_and_properties,
+                              /*notify_observer=*/false);
   }
 
   std::move(init_callback).Run(base::ok());
@@ -141,7 +135,8 @@ void GdmRemoteDisplayManager::OnCreateRemoteDisplayResult(
 
 void GdmRemoteDisplayManager::OnInterfacesAddedInternal(
     const ObjectPath& display_path,
-    GVariantRef<"a{sa{sv}}"> interfaces_and_properties) {
+    GVariantRef<"a{sa{sv}}"> interfaces_and_properties,
+    bool notify_observer) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   auto properties = interfaces_and_properties.LookUp(
@@ -181,7 +176,9 @@ void GdmRemoteDisplayManager::OnInterfacesAddedInternal(
   RemoteDisplay& new_display = remote_displays_[display_path];
   new_display.remote_id = remote_id;
   new_display.session_id = session_id;
-  observer_->OnRemoteDisplayCreated(display_path, new_display);
+  if (notify_observer) {
+    observer_->OnRemoteDisplayCreated(display_path, new_display);
+  }
 
   // Subscribe to property changes for this remote display.
   remote_display_property_subscription_ =
@@ -198,7 +195,8 @@ void GdmRemoteDisplayManager::OnInterfacesAdded(
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   auto [display_path, interfaces_and_properties] = args;
-  OnInterfacesAddedInternal(display_path, interfaces_and_properties);
+  OnInterfacesAddedInternal(display_path, interfaces_and_properties,
+                            /*notify_observer=*/true);
 }
 
 void GdmRemoteDisplayManager::OnInterfacesRemoved(

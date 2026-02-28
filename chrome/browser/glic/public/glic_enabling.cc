@@ -8,11 +8,13 @@
 
 #include "base/command_line.h"
 #include "base/feature_list.h"
+#include "base/metrics/histogram_functions.h"
 #include "base/strings/string_split.h"
 #include "base/strings/string_util.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/enterprise/browser_management/browser_management_service.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
+#include "chrome/browser/glic/glic_enums.h"
 #include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/glic/glic_user_status_code.h"
 #include "chrome/browser/glic/glic_user_status_fetcher.h"
@@ -20,6 +22,7 @@
 #include "chrome/browser/glic/host/glic.mojom.h"
 #include "chrome/browser/glic/host/glic_features.mojom-features.h"
 #include "chrome/browser/glic/host/glic_synthetic_trial_manager.h"
+#include "chrome/browser/glic/public/features.h"
 #include "chrome/browser/global_features.h"
 #include "chrome/browser/metrics/chrome_feature_list_creator.h"
 #include "chrome/browser/profiles/profile.h"
@@ -29,7 +32,6 @@
 #include "chrome/browser/startup_data.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_service_factory.h"
-#include "chrome/browser/ui/ui_features.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/common/pref_names.h"
@@ -66,7 +68,7 @@ namespace glic {
 
 // Comma separated list of countries to enable GLIC, by default, if country
 // filtering is enabled.
-constexpr char kDefaultEnabledCountries[] = "us,ca";
+constexpr char kDefaultEnabledCountries[] = "us";
 
 // Feature flag kGlicLocaleFiltering controls whether locale filtering is
 // applied client side. Two finch params are used to control this, both are a
@@ -93,24 +95,6 @@ signin::Tribool CanUseGeminiInChrome(AccountCapabilities& capabilities) {
 #endif
 }
 
-bool HasGoogleInternalProfile() {
-  ProfileManager* profile_manager = g_browser_process->profile_manager();
-  if (!profile_manager) {
-    return false;
-  }
-  std::vector<Profile*> profiles = profile_manager->GetLoadedProfiles();
-  for (Profile* profile : profiles) {
-    auto* identity_manager = IdentityManagerFactory::GetForProfile(profile);
-    if (!identity_manager) {
-      continue;
-    }
-    if (IsPrimaryAccountGoogleInternal(*identity_manager)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 std::vector<std::string> GetFieldTrialParamAsSplitString(
     const base::Feature& feature,
     const std::string& param_name,
@@ -121,10 +105,12 @@ std::vector<std::string> GetFieldTrialParamAsSplitString(
                            base::SPLIT_WANT_NONEMPTY);
 }
 
-std::optional<bool> GetCountryEnablement(
-    GlicGlobalEnabling::Delegate& delegate) {
+bool GetCountryEnablement(GlicGlobalEnabling::Delegate& delegate) {
   if (!base::FeatureList::IsEnabled(features::kGlicCountryFiltering)) {
-    return std::nullopt;
+    base::UmaHistogramEnumeration(
+        "Glic.CountryFilteringResult",
+        GlicFilteringResult::kAllowedFilteringDisabled);
+    return true;
   }
   std::vector<std::string> enabled_countries = GetFieldTrialParamAsSplitString(
       features::kGlicCountryFiltering, "enabled_countries",
@@ -139,20 +125,36 @@ std::optional<bool> GetCountryEnablement(
   };
 
   if (std::ranges::any_of(disabled_countries, country_matches)) {
+    base::UmaHistogramEnumeration("Glic.CountryFilteringResult",
+                                  GlicFilteringResult::kBlockedInExclusionList);
     return false;
   }
 
   if (enabled_countries.size() == 1 && enabled_countries[0] == "*") {
+    base::UmaHistogramEnumeration(
+        "Glic.CountryFilteringResult",
+        GlicFilteringResult::kAllowedWildcardInclusion);
     return true;
   }
 
-  return std::ranges::any_of(enabled_countries, country_matches);
+  if (std::ranges::any_of(enabled_countries, country_matches)) {
+    base::UmaHistogramEnumeration("Glic.CountryFilteringResult",
+                                  GlicFilteringResult::kAllowedInInclusionList);
+    return true;
+  }
+
+  base::UmaHistogramEnumeration(
+      "Glic.CountryFilteringResult",
+      GlicFilteringResult::kBlockedNotInInclusionList);
+  return false;
 }
 
-std::optional<bool> GetLocaleEnablement(
-    GlicGlobalEnabling::Delegate& delegate) {
+bool GetLocaleEnablement(GlicGlobalEnabling::Delegate& delegate) {
   if (!base::FeatureList::IsEnabled(features::kGlicLocaleFiltering)) {
-    return std::nullopt;
+    base::UmaHistogramEnumeration(
+        "Glic.LocaleFilteringResult",
+        GlicFilteringResult::kAllowedFilteringDisabled);
+    return true;
   }
   auto normalize_locale = [&](const std::string& locale) {
     std::string out;
@@ -173,14 +175,28 @@ std::optional<bool> GetLocaleEnablement(
   };
 
   if (std::ranges::any_of(disabled_locales, matches_locale)) {
+    base::UmaHistogramEnumeration("Glic.LocaleFilteringResult",
+                                  GlicFilteringResult::kBlockedInExclusionList);
     return false;
   }
 
   if (enabled_locales.size() == 1 && enabled_locales[0] == "*") {
+    base::UmaHistogramEnumeration(
+        "Glic.LocaleFilteringResult",
+        GlicFilteringResult::kAllowedWildcardInclusion);
     return true;
   }
 
-  return std::ranges::any_of(enabled_locales, matches_locale);
+  if (std::ranges::any_of(enabled_locales, matches_locale)) {
+    base::UmaHistogramEnumeration("Glic.LocaleFilteringResult",
+                                  GlicFilteringResult::kAllowedInInclusionList);
+    return true;
+  }
+
+  base::UmaHistogramEnumeration(
+      "Glic.LocaleFilteringResult",
+      GlicFilteringResult::kBlockedNotInInclusionList);
+  return false;
 }
 
 bool g_bypass_enablement_checks_for_testing = false;
@@ -299,6 +315,10 @@ GlicEnabling::ProfileEnablement GlicEnabling::EnablementForProfile(
     result.live_disallowed =
         primary_account.capabilities.can_use_model_execution_features() !=
         signin::Tribool::kTrue;
+
+    result.share_image_disallowed =
+        primary_account.capabilities.can_use_model_execution_features() !=
+        signin::Tribool::kTrue;
   }
 
   if (profile->GetPrefs()->GetInteger(::prefs::kGeminiSettings) !=
@@ -341,22 +361,27 @@ GlicGlobalEnabling::GlicGlobalEnabling(Delegate& delegate) {
 GlicGlobalEnabling::~GlicGlobalEnabling() = default;
 
 bool GlicGlobalEnabling::IsEnabledByFlags() {
+  // It is important that this value not change at runtime in production. Any
+  // future updates to this function must maintain that property.
   bool is_enabled = base::FeatureList::IsEnabled(features::kGlic) &&
-                    features::HasTabSearchToolbarButton() &&
                     locale_enablement_.value_or(true) &&
                     country_enablement_.value_or(true);
 #if BUILDFLAG(IS_CHROMEOS)
-  constexpr base::ByteCount kMinimumMemoryThreshold = base::GiB(8);
+  static const bool supported_system_requirements = [] {
+    constexpr base::ByteCount kMinimumMemoryThreshold = base::GiB(8);
 
-  // TODO(b:468055370): Remove the bypassing once the glic is fully launched.
-  const bool bypass_cbx_requirement =
-      base::FeatureList::IsEnabled(
-          chromeos::features::kGlicEnableFor8GbDevices) &&
-      base::SysInfo::AmountOfPhysicalMemory() >= kMinimumMemoryThreshold;
+    // TODO(b:468055370): Remove the bypassing once the glic is fully launched.
+    const bool bypass_cbx_requirement =
+        base::FeatureList::IsEnabled(
+            chromeos::features::kGlicEnableFor8GbDevices) &&
+        base::SysInfo::AmountOfPhysicalMemory() >= kMinimumMemoryThreshold;
 
-  is_enabled = is_enabled && (bypass_cbx_requirement ||
-                              base::FeatureList::IsEnabled(
-                                  chromeos::features::kFeatureManagementGlic));
+    return (bypass_cbx_requirement ||
+            base::FeatureList::IsEnabled(
+                chromeos::features::kFeatureManagementGlic));
+  }();
+
+  is_enabled = is_enabled && supported_system_requirements;
 #endif  // BUILDFLAG(IS_CHROMEOS)
   return is_enabled;
 }
@@ -440,7 +465,8 @@ mojom::ProfileReadyState GlicEnabling::GetProfileReadyState(Profile* profile) {
     return mojom::ProfileReadyState::kIneligible;
   }
 
-  if (enablement.not_consented && !IsTrustFirstOnboardingEnabled()) {
+  if (enablement.not_consented &&
+      !IsTrustFirstOnboardingEnabledForProfile(profile)) {
     return mojom::ProfileReadyState::kIneligible;
   }
 
@@ -477,9 +503,17 @@ bool GlicEnabling::IsUnifiedFreEnabled(Profile* profile) {
          base::FeatureList::IsEnabled(features::kGlicUnifiedFreScreen);
 }
 
-bool GlicEnabling::IsTrustFirstOnboardingEnabled() {
-  return IsMultiInstanceEnabled() &&
+bool GlicEnabling::IsTrustFirstOnboardingEnabledForProfile(Profile* profile) {
+  return IsMultiInstanceEnabled() && !HasConsentedForProfile(profile) &&
          base::FeatureList::IsEnabled(features::kGlicTrustFirstOnboarding);
+}
+
+bool GlicEnabling::ShouldBypassFreUi(
+    Profile* profile,
+    mojom::InvocationSource invocation_source) {
+  return invocation_source == mojom::InvocationSource::kAutoOpenedForPdf &&
+         base::FeatureList::IsEnabled(features::kAutoOpenGlicForPdf) &&
+         !HasConsentedForProfile(profile);
 }
 
 bool GlicEnabling::IsMultiInstanceEnabledByFlags() {
@@ -502,60 +536,9 @@ bool GlicEnabling::IsMultiInstanceEnabledByFlags() {
 }
 
 bool GlicEnabling::IsShareImageEnabledForProfile(Profile* profile) {
-  if (!IsEnabledForProfile(profile) ||
-      !base::FeatureList::IsEnabled(features::kGlicShareImage)) {
-    return false;
-  }
-
-  if (base::FeatureList::IsEnabled(features::kGlicShareImageEnterprise)) {
-    return true;
-  }
-
-  auto* identity_manager = IdentityManagerFactory::GetForProfile(profile);
-  if (!identity_manager) {
-    return false;
-  }
-  if (base::CommandLine::ForCurrentProcess()->HasSwitch(::switches::kGlicDev) &&
-      HasGoogleInternalProfile()) {
-    return true;
-  }
-
-  auto* browser_management_service =
-      policy::ManagementServiceFactory::GetForProfile(profile);
-  const bool is_managed =
-      browser_management_service && browser_management_service->IsManaged();
-  if (is_managed) {
-    return false;
-  }
-
-  // LINT.IfChange(GlicCachedUserStatusScope)
-
-  // See GlicUserStatusFetcher for details on when we update the cached value
-  // and when we skip updating.
-  if (base::FeatureList::IsEnabled(features::kGlicUserStatusCheck) &&
-      GlicUserStatusFetcher::GetCachedUserStatus(profile).has_value()) {
-    return false;
-  }
-
-  // LINT.ThenChange(//chrome/browser/glic/glic_user_status_fetcher.cc:GlicCachedUserStatusScope)
-
-  auto account_managed_status_finder = signin::AccountManagedStatusFinder(
-      identity_manager,
-      identity_manager->GetPrimaryAccountInfo(signin::ConsentLevel::kSignin),
-      base::DoNothing());
-
-  switch (account_managed_status_finder.GetOutcome()) {
-    case signin::AccountManagedStatusFinderOutcome::kConsumerGmail:
-    case signin::AccountManagedStatusFinderOutcome::kConsumerWellKnown:
-    case signin::AccountManagedStatusFinderOutcome::kConsumerNotWellKnown:
-      return true;
-    case signin::AccountManagedStatusFinderOutcome::kPending:
-    case signin::AccountManagedStatusFinderOutcome::kEnterpriseGoogleDotCom:
-    case signin::AccountManagedStatusFinderOutcome::kEnterprise:
-    case signin::AccountManagedStatusFinderOutcome::kError:
-    case signin::AccountManagedStatusFinderOutcome::kTimeout:
-      return false;
-  }
+  auto enablement = EnablementForProfile(profile);
+  return enablement.IsEnabled() && enablement.EligibleForShareImage() &&
+         base::FeatureList::IsEnabled(features::kGlicShareImage);
 }
 
 bool GlicEnabling::IsMultiInstanceEnabled() {

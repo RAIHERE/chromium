@@ -19,7 +19,7 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
 #include "components/autofill/core/browser/foundations/test_autofill_client.h"
 #include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_utils.h"
-#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
+#include "components/autofill/core/browser/test_utils/entity_data_test_utils.h"
 #include "components/autofill/core/browser/webdata/autofill_ai/entity_table.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_backend.h"
 #include "components/autofill/core/browser/webdata/autofill_webdata_service_test_helper.h"
@@ -98,6 +98,7 @@ TEST_F(EntityDataManagerTest, InitialPopulation) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator_data_adapter=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US"));
   EXPECT_THAT(entity_data_manager.GetEntityInstances(), IsEmpty());
 
@@ -126,6 +127,7 @@ TEST_F(EntityDataManagerTest, StorageMetrics) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator_data_adapter=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US"));
   helper().WaitUntilIdle();
   EXPECT_THAT(entity_data_manager.GetEntityInstances(),
@@ -160,6 +162,7 @@ TEST_F(EntityDataManagerTest, OptInMetric) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator_data_adapter=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Autofill.Ai.OptIn.Status.Startup"),
@@ -173,6 +176,7 @@ TEST_F(EntityDataManagerTest, OptInMetric) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator_data_adapter=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Autofill.Ai.OptIn.Status.Startup"),
@@ -190,6 +194,7 @@ class EntityDataManagerTest_InitiallyEmpty : public EntityDataManagerTest {
             helper().autofill_webdata_service(),
             /*history_service=*/nullptr,
             /*strike_database=*/nullptr,
+            /*accessibility_annotator_data_adapter=*/nullptr,
             /*variation_country_code=*/GeoIpCountryCode("US")) {}
 
   EntityDataManager& entity_data_manager() { return entity_data_manager_; }
@@ -468,6 +473,7 @@ TEST_F(EntityDataManagerTest,
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator_data_adapter=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
 
   // Opt the user in.
@@ -478,6 +484,7 @@ TEST_F(EntityDataManagerTest,
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
   EXPECT_TRUE(prefs::IsAutofillAiSyncedOptInStatusEnabled(client().GetPrefs()));
   // The first construction of the `EntityDataManager` triggered no migration
@@ -506,6 +513,7 @@ TEST_F(EntityDataManagerTest, SyncablePrefIsOn_DoNotMigrate) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
 
   // Opt the user in.
@@ -519,6 +527,7 @@ TEST_F(EntityDataManagerTest, SyncablePrefIsOn_DoNotMigrate) {
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
   // The first construction of the `EntityDataManager` triggered no migration
   // because the user was not opted-in.
@@ -545,6 +554,7 @@ TEST_F(
       helper().autofill_webdata_service(),
       /*history_service=*/nullptr,
       /*strike_database=*/nullptr,
+      /*accessibility_annotator=*/nullptr,
       /*variation_country_code=*/GeoIpCountryCode("US")));
   histogram_tester.ExpectTotalCount("Autofill.Ai.OptIn.PrefMigration", 0);
 }

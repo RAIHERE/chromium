@@ -39,6 +39,7 @@
 #include "third_party/blink/renderer/core/dom/shadow_root.h"
 #include "third_party/blink/renderer/core/frame/web_feature.h"
 #include "third_party/blink/renderer/core/html/forms/html_data_list_options_collection.h"
+#include "third_party/blink/renderer/core/html/forms/html_input_element.h"
 #include "third_party/blink/renderer/core/html/forms/html_select_element.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
@@ -97,6 +98,95 @@ void HTMLDataListElement::DidMoveToNewDocument(Document& old_doc) {
 
 void HTMLDataListElement::Prefinalize() {
   GetDocument().DecrementDataListCount();
+}
+
+void HTMLDataListElement::ShowPopoverInternal(Element* invoker,
+                                              ExceptionState* exception_state) {
+  HTMLElement::ShowPopoverInternal(invoker, exception_state);
+  if (!RuntimeEnabledFeatures::CustomizableComboboxEnabled()) {
+    return;
+  }
+
+  if (auto* input = DynamicTo<HTMLInputElement>(invoker)) {
+    GetDocument().UpdateStyleAndLayout(DocumentUpdateReason::kPopover);
+    if (input->DataList() == this && input->IsAppearanceBase() &&
+        IsAppearanceBase()) {
+      for (Element* element_option : *options()) {
+        HTMLOptionElement* option = To<HTMLOptionElement>(element_option);
+        if (option->SupportsActiveOptionPseudo()) {
+          CHECK(!active_option_);
+          active_option_ = option;
+          active_option_->PseudoStateChanged(CSSSelector::kPseudoActiveOption);
+          break;
+        }
+      }
+    }
+  }
+}
+
+PopoverHideResult HTMLDataListElement::HidePopoverInternal(
+    Element* invoker,
+    HidePopoverFocusBehavior focus_behavior,
+    HidePopoverTransitionBehavior event_firing,
+    ExceptionState* exception_state) {
+  PopoverHideResult result = HTMLElement::HidePopoverInternal(
+      invoker, focus_behavior, event_firing, exception_state);
+
+  if (RuntimeEnabledFeatures::CustomizableComboboxEnabled() &&
+      result != PopoverHideResult::kForcedOpenByInspector && active_option_) {
+    active_option_->PseudoStateChanged(CSSSelector::kPseudoActiveOption);
+    active_option_ = nullptr;
+  }
+
+  return result;
+}
+
+void HTMLDataListElement::Trace(Visitor* visitor) const {
+  HTMLElement::Trace(visitor);
+  visitor->Trace(active_option_);
+}
+
+void HTMLDataListElement::MoveActiveOption(Direction direction) {
+  CHECK(RuntimeEnabledFeatures::CustomizableComboboxEnabled());
+  CHECK(IsAppearanceBase());
+  CHECK(active_option_);
+
+  auto* option_list = options();
+  unsigned active_option_index = 0;
+  while (option_list->Item(active_option_index) != active_option_) {
+    active_option_index++;
+    if (active_option_index >= option_list->length()) {
+      NOTREACHED() << " option is not in list: " << active_option_;
+    }
+  }
+
+  unsigned index = active_option_index;
+  while (true) {
+    if (direction == Direction::kForwards) {
+      index++;
+      if (index == option_list->length()) {
+        index = 0;
+      }
+    } else {
+      if (index == 0) {
+        index = option_list->length() - 1;
+      } else {
+        index--;
+      }
+    }
+    if (index == active_option_index) {
+      return;
+    }
+
+    HTMLOptionElement* next_option = option_list->Item(index);
+    CHECK(next_option);
+    if (next_option->SupportsActiveOptionPseudo()) {
+      active_option_ = next_option;
+      active_option_->PseudoStateChanged(CSSSelector::kPseudoActiveOption);
+      next_option->PseudoStateChanged(CSSSelector::kPseudoActiveOption);
+      return;
+    }
+  }
 }
 
 }  // namespace blink

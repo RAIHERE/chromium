@@ -7,37 +7,29 @@
 
 #include "ui/views/layout/flex_layout_view.h"
 
-class BrowserWindowInterface;
-class VerticalTabStripFlatEdgeButton;
+class TabStripFlatEdgeButton;
 
 namespace tabs {
 class VerticalTabStripStateController;
 }  // namespace tabs
 
-namespace tab_groups {
-class STGEverythingMenu;
-}  // namespace tab_groups
-
 namespace views {
 class ActionViewController;
-class MenuButtonController;
 }  // namespace views
 
-// Bottom container of the vertical tab strip, manages the new tab and tab group
-// buttons.
+// Bottom container of the vertical tab strip which includes the new tab button.
 class VerticalTabStripBottomContainer : public views::FlexLayoutView {
   METADATA_HEADER(VerticalTabStripBottomContainer, views::View)
  public:
   VerticalTabStripBottomContainer(
       tabs::VerticalTabStripStateController* state_controller,
       actions::ActionItem* root_action_item,
-      BrowserWindowInterface* browser);
+      base::RepeatingClosure record_new_tab_button_pressed);
   ~VerticalTabStripBottomContainer() override;
 
-  VerticalTabStripFlatEdgeButton* AddChildButtonFor(
-      actions::ActionId action_id);
+  TabStripFlatEdgeButton* AddChildButtonFor(actions::ActionId action_id);
 
-  void ShowEverythingMenu();
+  bool IsPositionInWindowCaption(const gfx::Point& point);
 
   void OnCollapsedStateChanged(
       tabs::VerticalTabStripStateController* state_controller);
@@ -47,13 +39,10 @@ class VerticalTabStripBottomContainer : public views::FlexLayoutView {
       tabs::VerticalTabStripStateController* state_controller);
 
   raw_ptr<actions::ActionItem> root_action_item_ = nullptr;
-  raw_ptr<VerticalTabStripFlatEdgeButton> new_tab_button_ = nullptr;
-  raw_ptr<VerticalTabStripFlatEdgeButton> tab_group_button_ = nullptr;
-  raw_ptr<BrowserWindowInterface> browser_ = nullptr;
-  raw_ptr<views::MenuButtonController> everything_menu_controller_ = nullptr;
+  raw_ptr<TabStripFlatEdgeButton> new_tab_button_ = nullptr;
   base::CallbackListSubscription collapsed_state_changed_subscription_;
+  base::CallbackListSubscription new_tab_button_pressed_subscription_;
 
-  std::unique_ptr<tab_groups::STGEverythingMenu> everything_menu_;
   std::unique_ptr<views::ActionViewController> action_view_controller_;
 };
 

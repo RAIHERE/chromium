@@ -12,6 +12,7 @@
 #import "base/test/scoped_mock_clock_override.h"
 #import "base/test/simple_test_clock.h"
 #import "base/threading/thread_restrictions.h"
+#import "components/feature_engagement/public/event_constants.h"
 #import "components/feature_engagement/public/tracker.h"
 #import "components/prefs/scoped_user_pref_update.h"
 #import "components/safe_browsing/core/common/safe_browsing_prefs.h"
@@ -67,6 +68,16 @@ using startup_metric_utils::FirstRunSentinelCreationResult;
                                         completion:(ProceduralBlock)completion {
   completion();
 }
+
+// Allow registering the stub as a SceneCommands handler.
+// Any call to one of these methods will crash.
+- (BOOL)conformsToProtocol:(Protocol*)protocol {
+  if (protocol == @protocol(SceneCommands)) {
+    return YES;
+  }
+  return [super conformsToProtocol:protocol];
+}
+
 @end
 
 class TipsNotificationClientTest : public PlatformTest {
@@ -294,7 +305,7 @@ class TipsNotificationClientTest : public PlatformTest {
         AuthenticationServiceFactory::GetForProfile(profile_.get());
     identity_manager->AddIdentity([FakeSystemIdentity fakeIdentity1]);
     authentication_service->SignIn([FakeSystemIdentity fakeIdentity1],
-                                   signin_metrics::AccessPoint::kUnknown);
+                                   signin_metrics::AccessPoint::kStartPage);
   }
 
   web::WebTaskEnvironment task_environment_;
@@ -482,20 +493,6 @@ TEST_F(TipsNotificationClientTest, SetUpListContinuationHandle) {
   histogram_tester_.ExpectUniqueSample(
       "IOS.Notifications.Tips.Interaction",
       TipsNotificationType::kSetUpListContinuation, 1);
-}
-
-// Tests that the client handles a Docking promo notification response.
-TEST_F(TipsNotificationClientTest, DockingHandle) {
-  StubPrepareToPresentModal();
-  id mock_handler = MockHandler(@protocol(DockingPromoCommands));
-  OCMExpect([mock_handler showDockingPromo:YES]);
-
-  mock_response_ = MockRequestResponse(TipsNotificationType::kDocking);
-  client_->HandleNotificationInteraction(mock_response_);
-
-  EXPECT_OCMOCK_VERIFY(mock_handler);
-  histogram_tester_.ExpectUniqueSample("IOS.Notifications.Tips.Interaction",
-                                       TipsNotificationType::kDocking, 1);
 }
 
 // Tests that the client handles an Omnibox Position promo notification
@@ -827,7 +824,7 @@ TEST_F(TipsNotificationClientTest,
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(kIOSOneTimeDefaultBrowserNotification);
   SetFalseChromeLikelyDefaultBrowser();
-  tracker_->NotifyEvent("default_browser_fre_shown");
+  tracker_->NotifyEvent(feature_engagement::events::kIOSDefaultBrowserFREShown);
   RecordDefaultBrowserPromoLastAction(IOSDefaultBrowserPromoAction::kCancel);
 
   StubGetPendingRequests(nil);
@@ -846,7 +843,7 @@ TEST_F(TipsNotificationClientTest,
   base::test::ScopedFeatureList feature_list;
   feature_list.InitAndEnableFeature(kIOSOneTimeDefaultBrowserNotification);
   SetFalseChromeLikelyDefaultBrowser();
-  tracker_->NotifyEvent("default_browser_fre_shown");
+  tracker_->NotifyEvent(feature_engagement::events::kIOSDefaultBrowserFREShown);
   test_clock_.Advance(base::Days(8));
   RecordDefaultBrowserPromoLastAction(IOSDefaultBrowserPromoAction::kCancel);
 

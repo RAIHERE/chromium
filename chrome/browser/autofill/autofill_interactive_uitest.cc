@@ -693,14 +693,20 @@ class AutofillInteractiveTestBase : public AutofillUiTest {
 
   void CreateTestProfile() {
     AutofillProfile profile(AddressCountryCode(kDefaultAddressValues.country));
-    test::SetProfileInfo(
-        &profile, kDefaultAddressValues.first_name,
-        kDefaultAddressValues.middle_name, kDefaultAddressValues.last_name,
-        kDefaultAddressValues.email, kDefaultAddressValues.company,
-        kDefaultAddressValues.address1, kDefaultAddressValues.address2,
-        kDefaultAddressValues.city, kDefaultAddressValues.state,
-        kDefaultAddressValues.zip, kDefaultAddressValues.country,
-        kDefaultAddressValues.phone);
+    test::SetProfileInfo(&profile, test::SetProfileInfoOptionsBuilder()
+                                       .with_first_name(kDefaultAddressValues.first_name)
+                                       .with_middle_name(kDefaultAddressValues.middle_name)
+                                       .with_last_name(kDefaultAddressValues.last_name)
+                                       .with_email(kDefaultAddressValues.email)
+                                       .with_company(kDefaultAddressValues.company)
+                                       .with_address1(kDefaultAddressValues.address1)
+                                       .with_address2(kDefaultAddressValues.address2)
+                                       .with_city(kDefaultAddressValues.city)
+                                       .with_state(kDefaultAddressValues.state)
+                                       .with_zipcode(kDefaultAddressValues.zip)
+                                       .with_country(kDefaultAddressValues.country)
+                                       .with_phone(kDefaultAddressValues.phone)
+                                       .Build());
     profile.usage_history().set_use_count(
         9999999);  // We want this to be the first profile.
     AddTestProfile(browser()->profile(), profile);
@@ -708,10 +714,20 @@ class AutofillInteractiveTestBase : public AutofillUiTest {
 
   void CreateSecondTestProfile() {
     AutofillProfile profile(AddressCountryCode("US"));
-    test::SetProfileInfo(&profile, "Alice", "M.", "Wonderland",
-                         "alice@wonderland.com", "Magic", "333 Cat Queen St.",
-                         "Rooftop", "Liliput", "CA", "10003", "US",
-                         "15166900292");
+    test::SetProfileInfo(&profile, test::SetProfileInfoOptionsBuilder()
+                                       .with_first_name("Alice")
+                                       .with_middle_name("M.")
+                                       .with_last_name("Wonderland")
+                                       .with_email("alice@wonderland.com")
+                                       .with_company("Magic")
+                                       .with_address1("333 Cat Queen St.")
+                                       .with_address2("Rooftop")
+                                       .with_city("Liliput")
+                                       .with_state("CA")
+                                       .with_zipcode("10003")
+                                       .with_country("US")
+                                       .with_phone("15166900292")
+                                       .Build());
     AddTestProfile(browser()->profile(), profile);
   }
 
@@ -1015,10 +1031,18 @@ IN_PROC_BROWSER_TEST_F(AutofillInteractiveTest, ModifyTextNotifiesObserver) {
   // OnAfterTextFieldValueChanged will eventually be called with the final text
   // "Montreal".
   EventWaiter<bool> waiter({true});
-  EXPECT_CALL(observer, OnAfterTextFieldValueChanged(_, _, _, _))
-      .WillRepeatedly([&](AutofillManager&, FormGlobalId, FieldGlobalId,
-                          std::u16string text_value) {
-        if (text_value == u"Montreal") {
+  EXPECT_CALL(observer, OnAfterTextFieldValueChanged)
+      .WillRepeatedly([&](AutofillManager& manager, FormGlobalId form_id,
+                          FieldGlobalId field_id) {
+        const FormStructure* form = manager.FindCachedFormById(form_id);
+        if (!form) {
+          return;
+        }
+        const AutofillField* field = form->GetFieldById(field_id);
+        if (!field) {
+          return;
+        }
+        if (field->value() == u"Montreal") {
           waiter.OnEvent(true);
         }
       });
@@ -1056,10 +1080,18 @@ IN_PROC_BROWSER_TEST_F(AutofillInteractiveTest,
   autofill_manager->AddObserver(&observer);
 
   EventWaiter<bool> waiter({true});
-  EXPECT_CALL(observer, OnAfterTextFieldValueChanged(_, _, _, _))
-      .WillRepeatedly([&](AutofillManager&, FormGlobalId, FieldGlobalId,
-                          std::u16string text_value) {
-        if (text_value == u"My Address") {
+  EXPECT_CALL(observer, OnAfterTextFieldValueChanged)
+      .WillRepeatedly([&](AutofillManager& manager, FormGlobalId form_id,
+                          FieldGlobalId field_id) {
+        const FormStructure* form = manager.FindCachedFormById(form_id);
+        if (!form) {
+          return;
+        }
+        const AutofillField* field = form->GetFieldById(field_id);
+        if (!field) {
+          return;
+        }
+        if (field->value() == u"My Address") {
           waiter.OnEvent(true);
         }
       });
@@ -1282,7 +1314,7 @@ IN_PROC_BROWSER_TEST_F(AutofillInteractiveTest, OnSelectOptionFromDatalist) {
 
 // Test that an <input> field with a <datalist> has a working drop down even if
 // it was dynamically changed to <input type="password"> temporarily. This is a
-// regression test for crbug.com/918351.
+// regression test for crbug.com/41433560.
 IN_PROC_BROWSER_TEST_F(
     AutofillInteractiveTest,
     OnSelectOptionFromDatalistTurningToPasswordFieldAndBack) {
@@ -1309,8 +1341,8 @@ IN_PROC_BROWSER_TEST_F(
       content::ExecJs(GetWebContents(),
                       "document.getElementById('firstname').type = 'search';"));
 
-  // Regression test for crbug.com/918351 whether the datalist becomes available
-  // again.
+  // Regression test for crbug.com/41433560 whether the datalist becomes
+  // available again.
   ASSERT_TRUE(AutofillFlow(GetElementById("firstname"), this,
                            {.num_profile_suggestions = 0, .target_index = 1}));
   // Pressing the down arrow preselects the first item. Pressing it again
@@ -2060,7 +2092,7 @@ IN_PROC_BROWSER_TEST_F(AutofillInteractiveTest,
 
 // Test that Chrome doesn't crash when autocomplete is disabled while the user
 // is interacting with the form.  This is a regression test for
-// http://crbug.com/160476
+// http://crbug.com/40293849
 IN_PROC_BROWSER_TEST_F(AutofillInteractiveTest,
                        DisableAutocompleteWhileFilling) {
   CreateTestProfile();
@@ -3188,7 +3220,7 @@ class AutofillInteractiveTestChromeVox
   void TearDownOnMainThread() override {
     chromevox_test_utils_.reset();
     // Unload the ChromeVox extension so the browser doesn't try to respond to
-    // in-flight requests during test shutdown. https://crbug.com/923090
+    // in-flight requests during test shutdown. https://crbug.com/41436231
     ash::AccessibilityManager::Get()->EnableSpokenFeedback(false);
     AutomationManagerAura::GetInstance()->Disable();
     AutofillInteractiveTestBase::TearDownOnMainThread();

@@ -11,8 +11,8 @@
 #include <utility>
 #include <vector>
 
-#include "base/base_switches.h"
 #include "base/command_line.h"
+#include "base/files/file_path.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/location.h"
@@ -20,6 +20,7 @@
 #include "base/memory/ref_counted.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/notimplemented.h"
+#include "base/path_service.h"
 #include "base/process/process.h"
 #include "base/strings/utf_string_conversions.h"
 #include "base/task/single_thread_task_runner.h"
@@ -33,19 +34,24 @@
 #include "mojo/public/cpp/system/message_pipe.h"
 #include "remoting/base/auto_thread.h"
 #include "remoting/base/auto_thread_task_runner.h"
+#include "remoting/base/branding.h"
 #include "remoting/base/crash/crash_reporting_breakpad.h"
 #include "remoting/base/logging.h"
+#include "remoting/base/username.h"
 #include "remoting/host/base/host_exit_codes.h"
 #include "remoting/host/base/screen_resolution.h"
 #include "remoting/host/base/switches.h"
-#include "remoting/host/branding.h"
 #include "remoting/host/chromoting_host_services_server.h"
 #include "remoting/host/host_config.h"
 #include "remoting/host/host_main.h"
 #include "remoting/host/ipc_constants.h"
+#include "remoting/host/linux/desktop_session_factory_linux.h"
+#include "remoting/host/linux/linux_process_launcher_delegate.h"
+#include "remoting/host/linux/passwd_utils.h"
 #include "remoting/host/mojom/chromoting_host_services.mojom.h"
 #include "remoting/host/mojom/remoting_host.mojom.h"
 #include "remoting/host/usage_stats_consent.h"
+#include "remoting/host/worker_process_launcher.h"
 
 namespace remoting {
 
@@ -70,12 +76,13 @@ class DaemonProcessLinux : public DaemonProcess {
       int session_id,
       mojo::ScopedMessagePipeHandle desktop_pipe) override;
 
- protected:
+  void StartDesktopSessionFactory();
+
+ private:
   // DaemonProcess implementation.
   std::unique_ptr<DesktopSession> DoCreateDesktopSession(
       int terminal_id,
-      const ScreenResolution& resolution,
-      bool is_curtained) override;
+      const mojom::DesktopSessionOptions& options) override;
   void DoCrashNetworkProcess(const base::Location& location) override;
   void LaunchNetworkProcess() override;
   void SendHostConfigToNetworkProcess(
@@ -83,7 +90,9 @@ class DaemonProcessLinux : public DaemonProcess {
   void SendTerminalDisconnected(int terminal_id) override;
   void StartChromotingHostServices() override;
 
- private:
+  void OnStartDesktopSessionFactoryResult(
+      base::expected<void, Loggable> result);
+
   void BindChromotingHostServices(
       mojo::PendingReceiver<mojom::ChromotingHostServices> receiver,
       base::ProcessId peer_pid);
@@ -93,7 +102,11 @@ class DaemonProcessLinux : public DaemonProcess {
   // never shut down cleanly.
   mojo::core::ScopedIPCSupport ipc_support_;
 
+  std::unique_ptr<WorkerProcessLauncher> network_launcher_;
+
   std::unique_ptr<ChromotingHostServicesServer> ipc_server_;
+
+  DesktopSessionFactoryLinux desktop_session_factory_;
 
   mojo::AssociatedRemote<mojom::DesktopSessionConnectionEvents>
       desktop_session_connection_events_;
@@ -108,12 +121,22 @@ DaemonProcessLinux::DaemonProcessLinux(
                     io_task_runner,
                     std::move(stopped_callback)),
       ipc_support_(io_task_runner->task_runner(),
-                   mojo::core::ScopedIPCSupport::ShutdownPolicy::FAST) {}
+                   mojo::core::ScopedIPCSupport::ShutdownPolicy::FAST),
+      desktop_session_factory_(io_task_runner) {}
 
 DaemonProcessLinux::~DaemonProcessLinux() = default;
 
 void DaemonProcessLinux::OnChannelConnected(int32_t peer_pid) {
-  NOTIMPLEMENTED();
+  // Typically the Daemon process is responsible for disconnecting the remote
+  // however in cases where the network process crashes, we want to ensure that
+  // |remoting_host_control_| is reset so it can be reused after the network
+  // process is relaunched.
+  remoting_host_control_.reset();
+  network_launcher_->GetRemoteAssociatedInterface(
+      remoting_host_control_.BindNewEndpointAndPassReceiver());
+  desktop_session_connection_events_.reset();
+  network_launcher_->GetRemoteAssociatedInterface(
+      desktop_session_connection_events_.BindNewEndpointAndPassReceiver());
 
   DaemonProcess::OnChannelConnected(peer_pid);
 }
@@ -139,14 +162,21 @@ bool DaemonProcessLinux::OnDesktopSessionAgentAttached(
   return true;
 }
 
-std::unique_ptr<DesktopSession> DaemonProcessLinux::DoCreateDesktopSession(
-    int terminal_id,
-    const ScreenResolution& resolution,
-    bool is_curtained) {
+void DaemonProcessLinux::StartDesktopSessionFactory() {
   DCHECK(caller_task_runner()->BelongsToCurrentThread());
 
-  NOTIMPLEMENTED();
-  return nullptr;
+  desktop_session_factory_.Start(
+      base::BindOnce(&DaemonProcessLinux::OnStartDesktopSessionFactoryResult,
+                     base::Unretained(this)));
+}
+
+std::unique_ptr<DesktopSession> DaemonProcessLinux::DoCreateDesktopSession(
+    int terminal_id,
+    const mojom::DesktopSessionOptions& options) {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+
+  return desktop_session_factory_.CreateDesktopSession(terminal_id, this,
+                                                       options);
 }
 
 void DaemonProcessLinux::DoCrashNetworkProcess(const base::Location& location) {
@@ -158,7 +188,46 @@ void DaemonProcessLinux::DoCrashNetworkProcess(const base::Location& location) {
 void DaemonProcessLinux::LaunchNetworkProcess() {
   DCHECK(caller_task_runner()->BelongsToCurrentThread());
 
-  NOTIMPLEMENTED();
+  // TODO: crbug.com/475611769 - See if we need a dedicated desktop process
+  // binary.
+  base::FilePath this_exe;
+  if (!base::PathService::Get(base::BasePathKey::FILE_EXE, &this_exe)) {
+    LOG(ERROR) << "Failed to get the current executable path.";
+    Stop();
+    return;
+  }
+
+  auto user_info = GetPasswdUserInfo(GetNetworkProcessUsername());
+  if (!user_info.has_value()) {
+    LOG(ERROR) << user_info.error();
+    Stop();
+    return;
+  }
+
+  base::CommandLine command_line(this_exe);
+  command_line.AppendSwitchASCII(kProcessTypeSwitchName, kProcessTypeNetwork);
+
+  LinuxWorkerProcessLauncherDelegate::LaunchOptions options(command_line);
+  options.new_session = true;
+  options.uid = user_info->uid;
+  options.gid = user_info->gid;
+  // The home directory of the network user is /nonexistent, so we just change
+  // the working directory to /tmp instead.
+  base::FilePath temp_dir;
+  if (!base::PathService::Get(base::DIR_TEMP, &temp_dir)) {
+    LOG(ERROR) << "Failed to get the temporary directory path.";
+    Stop();
+    return;
+  }
+  options.working_dir = temp_dir;
+  options.environment_variables = {
+      {"LOGNAME", GetNetworkProcessUsername().data()},
+      {"USER", GetNetworkProcessUsername().data()},
+  };
+  network_launcher_ = std::make_unique<WorkerProcessLauncher>(
+      std::make_unique<LinuxWorkerProcessLauncherDelegate>(std::move(options),
+                                                           io_task_runner()),
+      this);
 }
 
 void DaemonProcessLinux::SendHostConfigToNetworkProcess(
@@ -197,12 +266,27 @@ void DaemonProcessLinux::StartChromotingHostServices() {
   HOST_LOG << "ChromotingHostServices IPC server has been started.";
 }
 
+void DaemonProcessLinux::OnStartDesktopSessionFactoryResult(
+    base::expected<void, Loggable> result) {
+  DCHECK(caller_task_runner()->BelongsToCurrentThread());
+
+  if (!result.has_value()) {
+    LOG(ERROR) << result.error();
+    Stop();
+  }
+}
+
 std::unique_ptr<DaemonProcess> DaemonProcess::Create(
     scoped_refptr<AutoThreadTaskRunner> caller_task_runner,
     scoped_refptr<AutoThreadTaskRunner> io_task_runner,
     base::OnceClosure stopped_callback) {
   auto daemon_process = std::make_unique<DaemonProcessLinux>(
       caller_task_runner, io_task_runner, std::move(stopped_callback));
+
+  // TODO: crbug.com/475611769 - set ACL on the pairing registry directory for
+  // the network user.
+
+  daemon_process->StartDesktopSessionFactory();
 
   // Finishes configuring the Daemon process and launches the network process.
   daemon_process->Initialize();

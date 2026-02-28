@@ -131,6 +131,8 @@ public class KeyboardShortcuts {
         KeyboardShortcutsSemanticMeaning.OPEN_MENU,
         KeyboardShortcutsSemanticMeaning.CUSTOM_EXTENSION_SHORTCUT,
         KeyboardShortcutsSemanticMeaning.TOGGLE_MULTISELECT,
+        KeyboardShortcutsSemanticMeaning.ZOOM_IN_LEGACY,
+        KeyboardShortcutsSemanticMeaning.ZOOM_OUT_LEGACY,
         KeyboardShortcutsSemanticMeaning.MAX_VALUE
     })
     @Retention(RetentionPolicy.SOURCE)
@@ -234,8 +236,12 @@ public class KeyboardShortcuts {
         // Tab strip shortcuts.
         int TOGGLE_MULTISELECT = 62;
 
+        // Visual (Legacy) zoom controls.
+        int ZOOM_IN_LEGACY = 63;
+        int ZOOM_OUT_LEGACY = 64;
+
         // Max value.
-        int MAX_VALUE = 63;
+        int MAX_VALUE = 65;
     }
 
     // LINT.ThenChange(//tools/metrics/histograms/metadata/accessibility/enums.xml:KeyboardShortcutsSemanticMeaning, //tools/metrics/histograms/metadata/accessibility/histograms.xml:KeyboardShortcutsSemanticMeaning)
@@ -680,13 +686,7 @@ public class KeyboardShortcuts {
                 R.string.keyboard_shortcut_webpage_group_header,
                 new KeyCombo[] {
                     new KeyCombo(KeyEvent.KEYCODE_ZOOM_IN, NO_MODIFIER),
-                    new KeyCombo(KeyEvent.KEYCODE_EQUALS, KeyEvent.META_CTRL_ON),
-                    new KeyCombo(
-                            KeyEvent.KEYCODE_PLUS,
-                            (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON)),
-                    new KeyCombo(
-                            KeyEvent.KEYCODE_EQUALS,
-                            (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON))
+                    new KeyCombo(KeyEvent.KEYCODE_EQUALS, KeyEvent.META_CTRL_ON)
                 });
         new KeyboardShortcutDefinition(
                 KeyboardShortcutsSemanticMeaning.ZOOM_OUT,
@@ -694,6 +694,23 @@ public class KeyboardShortcuts {
                 R.string.keyboard_shortcut_zoom_out,
                 R.string.keyboard_shortcut_webpage_group_header,
                 new KeyCombo[] {new KeyCombo(KeyEvent.KEYCODE_ZOOM_OUT, NO_MODIFIER)});
+        new KeyboardShortcutDefinition(
+                KeyboardShortcutsSemanticMeaning.ZOOM_IN_LEGACY,
+                new KeyCombo(
+                        KeyEvent.KEYCODE_PLUS, (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON)),
+                R.string.keyboard_shortcut_zoom_in,
+                R.string.keyboard_shortcut_webpage_group_header,
+                new KeyCombo[] {
+                    new KeyCombo(
+                            KeyEvent.KEYCODE_EQUALS,
+                            (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON))
+                });
+        new KeyboardShortcutDefinition(
+                KeyboardShortcutsSemanticMeaning.ZOOM_OUT_LEGACY,
+                new KeyCombo(
+                        KeyEvent.KEYCODE_MINUS, (KeyEvent.META_CTRL_ON | KeyEvent.META_SHIFT_ON)),
+                R.string.keyboard_shortcut_zoom_out,
+                R.string.keyboard_shortcut_webpage_group_header);
         new KeyboardShortcutDefinition(
                 KeyboardShortcutsSemanticMeaning.ZOOM_RESET,
                 new KeyCombo(KeyEvent.KEYCODE_0, KeyEvent.META_CTRL_ON),
@@ -1002,8 +1019,8 @@ public class KeyboardShortcuts {
 
         RecordHistogram.recordEnumeratedHistogram(
                 AccessibilityState.isKnownScreenReaderEnabled()
-                        ? "Accessibility.Android.KeyboardShortcut.ScreenReaderRunning3"
-                        : "Accessibility.Android.KeyboardShortcut.NoScreenReader3",
+                        ? "Accessibility.Android.KeyboardShortcut.ScreenReaderRunning5"
+                        : "Accessibility.Android.KeyboardShortcut.NoScreenReader5",
                 semanticMeaning,
                 KeyboardShortcuts.KeyboardShortcutsSemanticMeaning.MAX_VALUE);
 
@@ -1170,13 +1187,19 @@ public class KeyboardShortcuts {
                     menuOrKeyboardActionController.onMenuOrKeyboardAction(R.id.print_id, false);
                     return true;
                 case KeyboardShortcutsSemanticMeaning.ZOOM_IN:
-                    ZoomController.zoomIn(currentWebContents);
+                    ZoomController.zoomInPage(currentWebContents);
                     return true;
                 case KeyboardShortcutsSemanticMeaning.ZOOM_OUT:
-                    ZoomController.zoomOut(currentWebContents);
+                    ZoomController.zoomOutPage(currentWebContents);
+                    return true;
+                case KeyboardShortcutsSemanticMeaning.ZOOM_IN_LEGACY:
+                    ZoomController.zoomInVisual(currentWebContents);
+                    return true;
+                case KeyboardShortcutsSemanticMeaning.ZOOM_OUT_LEGACY:
+                    ZoomController.zoomOutVisual(currentWebContents);
                     return true;
                 case KeyboardShortcutsSemanticMeaning.ZOOM_RESET:
-                    ZoomController.zoomReset(currentWebContents, browserContextHandle);
+                    ZoomController.zoomResetPage(currentWebContents, browserContextHandle);
                     return true;
                 case KeyboardShortcutsSemanticMeaning.RELOAD_TAB:
                     if (currentTab != null) {

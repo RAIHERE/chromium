@@ -16,7 +16,7 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_instance.h"
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
-#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
+#include "components/autofill/core/browser/test_utils/entity_data_test_utils.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/strings/grit/components_strings.h"
@@ -140,7 +140,7 @@ TEST_F(AutofillAiSaveUpdateEntityPromptControllerTest,
        PromptUiStrings_SaveLocalEntity) {
   CreateController();
   EXPECT_EQ(l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE),
+                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID),
             prompt_controller().GetTitle());
   EXPECT_EQ(l10n_util::GetStringUTF16(
                 IDS_AUTOFILL_PREDICTION_IMPROVEMENTS_SAVE_DIALOG_SAVE_BUTTON),
@@ -160,7 +160,7 @@ TEST_F(AutofillAiSaveUpdateEntityPromptControllerTest,
   CreateController(EntityInstance::RecordType::kLocal,
                    /*entity_updated=*/true);
   EXPECT_EQ(l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE),
+                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID),
             prompt_controller().GetTitle());
   EXPECT_EQ(l10n_util::GetStringUTF16(
                 IDS_AUTOFILL_PREDICTION_IMPROVEMENTS_SAVE_DIALOG_SAVE_BUTTON),
@@ -181,7 +181,7 @@ TEST_F(AutofillAiSaveUpdateEntityPromptControllerTest,
              signin::ConsentLevel::kSignin);
   CreateController(EntityInstance::RecordType::kServerWallet);
   EXPECT_EQ(l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE),
+                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID),
             prompt_controller().GetTitle());
   EXPECT_EQ(l10n_util::GetStringUTF16(
                 IDS_AUTOFILL_PREDICTION_IMPROVEMENTS_SAVE_DIALOG_SAVE_BUTTON),

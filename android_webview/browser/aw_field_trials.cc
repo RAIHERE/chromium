@@ -18,6 +18,7 @@
 #include "components/payments/content/android/payment_feature_map.h"
 #include "components/permissions/features.h"
 #include "components/safe_browsing/core/common/features.h"
+#include "components/stylus_handwriting/android/stylus_handwriting_feature_map.h"
 #include "components/variations/feature_overrides.h"
 #include "components/viz/common/features.h"
 #include "content/public/common/content_features.h"
@@ -82,7 +83,7 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
   aw_feature_overrides.DisableFeature(ui::kAndroidHDR);
 
   // Disable launch_handler on WebView.
-  aw_feature_overrides.DisableFeature(::features::kAndroidWebAppLaunchHandler);
+  aw_feature_overrides.DisableFeature(blink::features::kWebAppLaunchQueue);
 
   // Disable Reducing User Agent minor version on WebView.
   aw_feature_overrides.DisableFeature(
@@ -232,7 +233,6 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
 
   // Disabling the permission element as it needs embedder support in order to
   // function and the webview permission manager cannot support it.
-  aw_feature_overrides.DisableFeature(blink::features::kPermissionElement);
   aw_feature_overrides.DisableFeature(blink::features::kGeolocationElement);
   aw_feature_overrides.DisableFeature(blink::features::kUserMediaElement);
   aw_feature_overrides.DisableFeature(blink::features::kInstallElement);
@@ -312,4 +312,16 @@ void AwFieldTrials::RegisterFeatureOverrides(base::FeatureList* feature_list) {
 
   // Don't pass the data about browser window position on screen to WebView.
   aw_feature_overrides.DisableFeature(ui::kAndroidUseCorrectWindowBounds);
+
+  // Launched for WebView. Experimentation needed for Chrome on Android.
+  aw_feature_overrides.EnableFeature(
+      stylus_handwriting::android::kProbeStylusWritingInBackground);
+
+  // As WebSettings.setAllowContentAccess() allows this to be controlled by
+  // the WebView's host, we keep the old behavior for content:// URLs.
+  aw_feature_overrides.DisableFeature(blink::features::kContentSchemeIsLocal);
+
+  // Disable No-Vary-Search in disk cache on WebView.
+  // See https://crbug.com/382394774.
+  aw_feature_overrides.DisableFeature(net::features::kHttpCacheNoVarySearch);
 }

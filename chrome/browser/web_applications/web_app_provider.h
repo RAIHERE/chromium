@@ -61,7 +61,7 @@ class WebAppTranslationManager;
 class WebAppUiManager;
 class WebContentsManager;
 class WebAppProfileDeletionManager;
-enum class FetchManifestAndUpdateResult;
+struct FetchManifestAndUpdateCompletionInfo;
 
 #if BUILDFLAG(IS_CHROMEOS)
 class WebAppRunOnOsLoginManager;
@@ -92,9 +92,6 @@ class IwaBundleCacheManager;
 // - Similarly, in destruction, subsystems should not refer to each other.
 class WebAppProvider : public KeyedService {
  public:
-  // Deprecated: Use GetForWebApps instead.
-  static WebAppProvider* GetDeprecated(Profile* profile);
-
   // This returns a WebAppProvider for the given `profile`, or `nullptr` if
   // installed web apps are not supported on the given `profile`. Use
   // `web_app::AreWebAppsEnabled` to determine if web apps are supported on a
@@ -286,8 +283,9 @@ class WebAppProvider : public KeyedService {
 
   void DoDelayedPostStartupWork();
 
-  void OnDefaultAppUpdateComplete(const webapps::AppId& app_id,
-                                  FetchManifestAndUpdateResult result);
+  void OnDefaultAppUpdateComplete(
+      const webapps::AppId& app_id,
+      FetchManifestAndUpdateCompletionInfo completion_info);
 
   std::unique_ptr<AbstractWebAppDatabaseFactory> database_factory_;
   std::unique_ptr<WebAppRegistrarMutable> registrar_;

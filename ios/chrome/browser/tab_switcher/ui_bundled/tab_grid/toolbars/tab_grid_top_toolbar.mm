@@ -93,6 +93,7 @@ CGFloat HorizontalMargin() {
 
   BOOL _undoActive;
   BOOL _selectTabsActionEnabled;
+  BOOL _closeAllActionEnabled;
   BOOL _closeOtherTabsEnabled;
 
   BOOL _scrolledToEdge;
@@ -111,17 +112,6 @@ CGFloat HorizontalMargin() {
   if (self) {
     [self setupViews];
     [self setButtonsForTraitCollection:self.traitCollection];
-    NSArray<UITrait>* traits = TraitCollectionSetForTraits(
-        @[ UITraitVerticalSizeClass.class, UITraitHorizontalSizeClass.class ]);
-    __weak TabGridTopToolbar* weakSelf = self;
-    [weakSelf
-        registerForTraitChanges:traits
-                    withHandler:^(id<UITraitEnvironment> traitEnvironment,
-                                  UITraitCollection* previousCollection) {
-                      [weakSelf
-                          setButtonsForTraitCollection:weakSelf
-                                                           .traitCollection];
-                    }];
   }
   return self;
 }
@@ -189,6 +179,11 @@ CGFloat HorizontalMargin() {
   _overflowMenuButton.menu = [self createOverflowMenu];
 }
 
+- (void)setCloseAllActionEnabled:(BOOL)enabled {
+  _closeAllActionEnabled = enabled;
+  _overflowMenuButton.menu = [self createOverflowMenu];
+}
+
 - (void)setCloseOtherTabsEnabled:(BOOL)enabled {
   _closeOtherTabsEnabled = enabled;
   _overflowMenuButton.menu = [self createOverflowMenu];
@@ -244,18 +239,18 @@ CGFloat HorizontalMargin() {
 
 - (void)hide {
   if (@available(iOS 26, *)) {
-  } else {
-    self.backgroundColor = UIColor.blackColor;
+    return;
   }
+  self.backgroundColor = UIColor.blackColor;
 
   self.pageControl.alpha = 0.0;
 }
 
 - (void)show {
   if (@available(iOS 26, *)) {
-  } else {
-    self.backgroundColor = UIColor.clearColor;
+    return;
   }
+  self.backgroundColor = UIColor.clearColor;
 
   self.pageControl.alpha = 1.0;
 }
@@ -341,6 +336,18 @@ CGFloat HorizontalMargin() {
           .active = YES;
     }
   }
+
+  NSArray<UITrait>* traits = TraitCollectionSetForTraits(
+      @[ UITraitVerticalSizeClass.class, UITraitHorizontalSizeClass.class ]);
+  __weak TabGridTopToolbar* weakSelf = self;
+  [weakSelf
+      registerForTraitChanges:traits
+                  withHandler:^(id<UITraitEnvironment> traitEnvironment,
+                                UITraitCollection* previousCollection) {
+                    [weakSelf
+                        setButtonsForTraitCollection:weakSelf.traitCollection];
+                  }];
+
   [super didMoveToSuperview];
 }
 
@@ -365,7 +372,7 @@ CGFloat HorizontalMargin() {
     buttonConfiguration.image = image;
     button = [UIButton buttonWithConfiguration:buttonConfiguration
                                  primaryAction:nil];
-    button.tintColor = TabGridGlassButtonTintColor();
+    button.tintColor = UIColor.clearColor;
   } else {
     button = [UIButton systemButtonWithPrimaryAction:nil];
     button.tintColor = UIColor.whiteColor;
@@ -430,6 +437,7 @@ CGFloat HorizontalMargin() {
         _searchRegularWidthConstraint.active = NO;
         _searchBar.hidden = NO;
         _cancelSearchButton.hidden = NO;
+        _overflowMenuButton.hidden = YES;
         break;
       case TabGridMode::kSelection:
         _selectAllButton.hidden = NO;
@@ -467,6 +475,7 @@ CGFloat HorizontalMargin() {
         _searchRegularWidthConstraint.active = YES;
         _searchBar.hidden = NO;
         _cancelSearchButton.hidden = NO;
+        _overflowMenuButton.hidden = YES;
         break;
       case TabGridMode::kSelection:
         _selectAllButton.hidden = NO;
@@ -485,9 +494,9 @@ CGFloat HorizontalMargin() {
   [self setStandardAppearance:appearance];
 
   self.translatesAutoresizingMaskIntoConstraints = NO;
+  self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
   if (@available(iOS 26, *)) {
   } else {
-    self.overrideUserInterfaceStyle = UIUserInterfaceStyleDark;
     [self createScrolledBackgrounds];
     [self setShadowImage:[[UIImage alloc] init]
         forToolbarPosition:UIBarPositionAny];
@@ -616,15 +625,18 @@ CGFloat HorizontalMargin() {
                     }]];
     }
 
-    UIButton* currentOverflowMenuButton = _overflowMenuButton;
-    [menuElements addObject:[actionFactory actionToCloseAllTabsWithBlock:^{
-                    TabGridTopToolbar* strongSelf = weakSelf;
-                    if (!strongSelf) {
-                      return;
-                    }
-                    [strongSelf.buttonsDelegate
-                        closeAllButtonTapped:currentOverflowMenuButton];
-                  }]];
+    // Only display the Close All Tabs button if there are open tabs or groups.
+    if (_closeAllActionEnabled) {
+      UIButton* currentOverflowMenuButton = _overflowMenuButton;
+      [menuElements addObject:[actionFactory actionToCloseAllTabsWithBlock:^{
+                      TabGridTopToolbar* strongSelf = weakSelf;
+                      if (!strongSelf) {
+                        return;
+                      }
+                      [strongSelf.buttonsDelegate
+                          closeAllButtonTapped:currentOverflowMenuButton];
+                    }]];
+    }
 
     if (_closeOtherTabsEnabled) {
       UIAction* closeOtherTabsAction =

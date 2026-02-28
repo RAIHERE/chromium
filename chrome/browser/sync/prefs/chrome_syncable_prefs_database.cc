@@ -9,7 +9,8 @@
 #include "base/containers/fixed_flat_map.h"
 #include "build/build_config.h"
 #include "chrome/browser/accessibility/tree_fixing/pref_names.h"
-#include "chrome/browser/promos/promos_pref_names.h"
+#include "chrome/browser/desktop_to_mobile_promos/promos_pref_names.h"
+#include "chrome/browser/glic/glic_pref_names.h"
 #include "chrome/browser/subscription_eligibility/subscription_eligibility_prefs.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
@@ -40,10 +41,6 @@
 #if BUILDFLAG(ENABLE_EXTENSIONS_CORE)
 #include "components/supervised_user/core/common/pref_names.h"
 #include "extensions/browser/pref_names.h"  // nogncheck
-#endif
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/glic_pref_names.h"
 #endif
 
 namespace browser_sync {
@@ -294,7 +291,7 @@ enum {
   kAccessibilityReadAnythingVoiceName = 100228,
   kAccessibilityReadAnythingSpeechRate = 100229,
   kAccessibilityReadAnythingHighlightGranularity = 100230,
-  kAccessibilityReadAnythingHighlightColor = 100231,
+  // kAccessibilityReadAnythingHighlightColor = 100231, (deprecated, never used)
   kPinnedActions = 100232,
   kPinnedSearchCompanionMigrationComplete = 100233,
   kTouchpadInternalSettings = 100234,
@@ -394,7 +391,7 @@ enum {
   kPinSplitTabButton = 100327,
   kGlicRolloutEligibility = 100328,
   kShelfNotebookLmAppPinRolls = 100329,
-  kVerticalTabsEnabled = 100330,
+  // kVerticalTabsEnabled = 100330, (no longer synced)
   kSplitViewDragAndDropEnabled = 100331,
   kDesktopToiOSEnhancedBrowsingPromoLastImpressionTimestamp = 100332,
   kDesktopToiOSEnhancedBrowsingPromoImpressionsCounter = 100333,
@@ -436,6 +433,14 @@ enum {
   kPinContextualTaskButton = 100369,
   kAccessibilityReadAnythingOmniboxChipIgnoredCount = 100370,
   kAccessibilityReadAnythingLineFocus = 100371,
+  kProjectsPanelEntrypointEnabled = 100372,
+  kDesktopToiOSTabGroupsPromoLastImpressionTimestamp = 100373,
+  kDesktopToiOSTabGroupsPromoImpressionsCounter = 100374,
+  kDesktopToiOSTabGroupsPromoOptOut = 100375,
+  kDesktopToiOSPriceTrackingPromoLastImpressionTimestamp = 100376,
+  kDesktopToiOSPriceTrackingPromoImpressionsCounter = 100377,
+  kDesktopToiOSPriceTrackingPromoOptOut = 100378,
+  kAccessibilityReadAnythingLastNonDisabledLineFocus = 100379,
   // See components/sync_preferences/README.md about adding new entries here.
   // vvvvv IMPORTANT! vvvvv
   // Note to the reviewer: IT IS YOUR RESPONSIBILITY to ensure that new syncable
@@ -528,10 +533,6 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
      {syncable_prefs_ids::kAccessibilityReadAnythingHighlightGranularity,
       syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-    {prefs::kAccessibilityReadAnythingHighlightColor,
-     {syncable_prefs_ids::kAccessibilityReadAnythingHighlightColor,
-      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
-      sync_preferences::MergeBehavior::kNone}},
     {prefs::kAccessibilityReadAnythingLinksEnabled,
      {syncable_prefs_ids::kAccessibilityReadAnythingLinksEnabled,
       syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
@@ -550,6 +551,10 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
       sync_preferences::MergeBehavior::kNone}},
     {prefs::kAccessibilityReadAnythingLineFocus,
      {syncable_prefs_ids::kAccessibilityReadAnythingLineFocus,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {prefs::kAccessibilityReadAnythingLastNonDisabledLineFocus,
+     {syncable_prefs_ids::kAccessibilityReadAnythingLastNonDisabledLineFocus,
       syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
     {prefs::kLensRegionSearchEnabled,
@@ -632,8 +637,8 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
      {syncable_prefs_ids::kTabSearchMigrationComplete, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-    {prefs::kVerticalTabsEnabled,
-     {syncable_prefs_ids::kVerticalTabsEnabled, syncer::PREFERENCES,
+    {prefs::kProjectsPanelEntrypointEnabled,
+     {syncable_prefs_ids::kProjectsPanelEntrypointEnabled, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -1225,11 +1230,11 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
      {syncable_prefs_ids::kChromeOSReleaseNotesVersion, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-    {prefs::kLanguageEnabledImesSyncable,
+    {ash::prefs::kLanguageEnabledImesSyncable,
      {syncable_prefs_ids::kLanguageEnabledImesSyncable, syncer::OS_PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-    {prefs::kLanguagePreloadEnginesSyncable,
+    {ash::prefs::kLanguagePreloadEnginesSyncable,
      {syncable_prefs_ids::kLanguagePreloadEnginesSyncable,
       syncer::OS_PREFERENCES, sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
@@ -1867,12 +1872,35 @@ constexpr auto kChromeSyncablePrefsAllowlist = base::MakeFixedFlatMap<
      {syncable_prefs_ids::kDesktopToiOSLensPromoOptOut, syncer::PREFERENCES,
       sync_preferences::PrefSensitivity::kNone,
       sync_preferences::MergeBehavior::kNone}},
-#if BUILDFLAG(ENABLE_GLIC)
+    {promos_prefs::kDesktopToiOSTabGroupsPromoLastImpressionTimestamp,
+     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoLastImpressionTimestamp,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {promos_prefs::kDesktopToiOSTabGroupsPromoImpressionsCounter,
+     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoImpressionsCounter,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {promos_prefs::kDesktopToiOSTabGroupsPromoOptOut,
+     {syncable_prefs_ids::kDesktopToiOSTabGroupsPromoOptOut,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {promos_prefs::kDesktopToiOSPriceTrackingPromoLastImpressionTimestamp,
+     {syncable_prefs_ids::
+          kDesktopToiOSPriceTrackingPromoLastImpressionTimestamp,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {promos_prefs::kDesktopToiOSPriceTrackingPromoImpressionsCounter,
+     {syncable_prefs_ids::kDesktopToiOSPriceTrackingPromoImpressionsCounter,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
+    {promos_prefs::kDesktopToiOSPriceTrackingPromoOptOut,
+     {syncable_prefs_ids::kDesktopToiOSPriceTrackingPromoOptOut,
+      syncer::PREFERENCES, sync_preferences::PrefSensitivity::kNone,
+      sync_preferences::MergeBehavior::kNone}},
     {glic::prefs::kGlicRolloutEligibility,
      {syncable_prefs_ids::kGlicRolloutEligibility, syncer::PRIORITY_PREFERENCES,
       sync_preferences::PrefSensitivity::kExemptFromUserControlWhileSignedIn,
       sync_preferences::MergeBehavior::kNone}},
-#endif  // BUILDFLAG(ENABLE_GLIC)
     {subscription_eligibility::prefs::kAiSubscriptionTier,
      {syncable_prefs_ids::kSubscriptionEligibilityAiSubscriptionTier,
       syncer::PRIORITY_PREFERENCES,

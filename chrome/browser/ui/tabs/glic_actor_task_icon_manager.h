@@ -38,6 +38,10 @@ class GlicActorTaskIconManager : public KeyedService {
   // waiting for user action.
   static bool RequiresAttention(actor::ActorTask::State state);
 
+  // Returns true if the task requires attention, was recently completed, or
+  // failed.
+  static bool RequiresTaskProcessing(actor::ActorTask::State state);
+
   // Register for this callback to get task nudge state change notifications.
   using TaskNudgeChangeCallback = base::RepeatingCallback<void(
       actor::ui::ActorTaskNudgeState actor_task_nudge_state)>;
@@ -84,7 +88,11 @@ class GlicActorTaskIconManager : public KeyedService {
   TaskListBubbleChangeCallbackList task_list_bubble_change_callback_list_;
 
   actor::ui::ActorTaskNudgeState current_actor_task_nudge_state_;
+  // TODO(b/482378011): stored_bubble_row_task_count_ be removed once nudge
+  // fixes are enabled without any issues.
   size_t stored_bubble_row_task_count_ = 0;
+  size_t stored_bubble_row_need_processing_task_count_ = 0;
+  size_t stored_bubble_row_inactive_task_count_ = 0;
 
   raw_ptr<Profile> profile_;
   raw_ptr<actor::ActorKeyedService> actor_service_;

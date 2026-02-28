@@ -112,6 +112,14 @@
   _navigationMediator.consumer = _viewController;
   _navigationMediator.delegate = self;
 
+  if (experimental_flags::IsOmniboxDebuggingEnabled()) {
+    _debuggerCoordinator = [[ComposeboxDebuggerCoordinator alloc]
+        initWithBaseViewController:_viewController
+                           browser:self.browser];
+    _debuggerCoordinator.delegate = self;
+    [_debuggerCoordinator start];
+  }
+
   _aimComposeboxCoordinator = [[ComposeboxInputPlateCoordinator alloc]
       initWithBaseViewController:self.baseViewController
                          browser:self.browser
@@ -121,6 +129,7 @@
                            theme:[self createTheme]
                       modeHolder:_modeHolder];
   _aimComposeboxCoordinator.omniboxPopupPresenterDelegate = _viewController;
+  _aimComposeboxCoordinator.debugLogger = _debuggerCoordinator;
   [_aimComposeboxCoordinator start];
 
   [_viewController
@@ -130,14 +139,10 @@
     [self checkClipboardContent];
   }
 
-  if (experimental_flags::IsOmniboxDebuggingEnabled()) {
-    _debuggerCoordinator = [[ComposeboxDebuggerCoordinator alloc]
-        initWithBaseViewController:_viewController
-                           browser:self.browser];
-    _debuggerCoordinator.delegate = self;
-    [_debuggerCoordinator start];
-  }
-
+  [_debuggerCoordinator
+      logEvent:[ComposeboxDebuggerEvent
+                   composeboxGeneralEvent:composebox_debugger::event::
+                                              Composebox::kOpened]];
   [self.baseViewController presentViewController:_viewController
                                         animated:YES
                                       completion:nil];
@@ -171,6 +176,12 @@
 - (void)cleanup {
   _viewController = nil;
 
+  [_debuggerCoordinator
+      logEvent:[ComposeboxDebuggerEvent
+                   composeboxGeneralEvent:composebox_debugger::event::
+                                              Composebox::kClosed]];
+  [_debuggerCoordinator stop];
+
   [_aimComposeboxCoordinator stop];
   _aimComposeboxCoordinator = nil;
 
@@ -181,6 +192,7 @@
 
   [_navigationMediator disconnect];
   _navigationMediator = nil;
+  _modeHolder = nil;
 }
 
 - (BOOL)isPresented {
@@ -197,6 +209,8 @@
     ComposeboxiPadAnimator* animator = [[ComposeboxiPadAnimator alloc] init];
     animator.layoutGuideCenter = LayoutGuideCenterForBrowser(self.browser);
     animator.presenting = YES;
+    animator.shouldUseLargeLayout =
+        IsRegularXRegularSizeClass(self.baseViewController.traitCollection);
     return animator;
   }
   ComposeboxPresentAnimator* animator =
@@ -212,6 +226,8 @@
     ComposeboxiPadAnimator* animator = [[ComposeboxiPadAnimator alloc] init];
     animator.layoutGuideCenter = LayoutGuideCenterForBrowser(self.browser);
     animator.presenting = NO;
+    animator.shouldUseLargeLayout =
+        IsRegularXRegularSizeClass(self.baseViewController.traitCollection);
     return animator;
   }
   return [[ComposeboxDismissAnimator alloc]
@@ -244,6 +260,16 @@
 - (void)composeboxViewControllerDidTapCloseButton:
     (ComposeboxInputPlateViewController*)viewController {
   [self dismissComposebox];
+}
+
+- (void)composeboxHorizontalSizeClassDidChange {
+  _viewController.view.hidden = YES;
+  __weak __typeof(self) weakSelf = self;
+  [self.baseViewController
+      dismissViewControllerAnimated:NO
+                         completion:^{
+                           [weakSelf representViewController];
+                         }];
 }
 
 #pragma mark - ComposeboxNavigationMediatorDelegate
@@ -320,6 +346,14 @@
          UIDevice.currentDevice.userInterfaceIdiom == UIUserInterfaceIdiomPad &&
          (base::ios::IsRunningOnIOS26OrLater() ||
           IsRegularXRegularSizeClass(self.baseViewController.traitCollection));
+}
+
+// Represents the coordinator's view controller with no animation.
+- (void)representViewController {
+  _viewController.view.hidden = NO;
+  [self.baseViewController presentViewController:_viewController
+                                        animated:NO
+                                      completion:nil];
 }
 
 #pragma mark - Clipboard checks

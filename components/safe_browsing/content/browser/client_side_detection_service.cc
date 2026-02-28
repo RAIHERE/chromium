@@ -271,10 +271,13 @@ void ClientSideDetectionService::StartClientReportPhishingRequest(
     return;
   }
 
-  // Record that we made a request. Logged before the request is made
-  // to ensure it gets recorded. If this returns false due to being at ping cap
-  // or prefs are null, abandon the request.
-  if (!AddPhishingReport(base::Time::Now())) {
+  // If the report was not requested by the user, record that we made a request.
+  // Logged before the request is made to ensure it gets recorded. If this
+  // returns false due to being at ping cap or prefs are null, abandon the
+  // request.
+  if (request->client_side_detection_type() !=
+          ClientSideDetectionType::USER_REPORT &&
+      !AddPhishingReport(base::Time::Now())) {
     if (!callback.is_null()) {
       std::move(callback).Run(GURL(request->url()), false, std::nullopt,
                               std::nullopt);
@@ -329,9 +332,6 @@ void ClientSideDetectionService::StartClientReportPhishingRequest(
           })");
   auto resource_request = std::make_unique<network::ResourceRequest>();
   if (!access_token.empty()) {
-    LogAuthenticatedCookieResets(
-        *resource_request,
-        SafeBrowsingAuthenticatedEndpoint::kClientSideDetection);
     SetAccessToken(resource_request.get(), access_token);
   }
 
@@ -813,7 +813,8 @@ void ClientSideDetectionService::ClassifyPhishingThroughThresholds(
           similarity.value() >= target_image_embedding.threshold) {
         verdict->set_is_phishing(true);
         ClientPhishingRequest::EmbeddingMatchMetadata embedding_match_metadata;
-        const auto& value_floats = feature_vector.value_float();
+        const auto& value_floats =
+            target_image_embedding.embedding.value_float();
         embedding_match_metadata.set_id(
             ClientSidePhishingModel::GetHashFromEmbedding(
                 std::vector<float>(value_floats.begin(), value_floats.end())));

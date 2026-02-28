@@ -383,7 +383,7 @@ TabHoverCardBubbleView::TabHoverCardBubbleView(
     HoverCardAnchorTarget* anchor_target,
     const InitParams& params)
     : BubbleDialogDelegateView(anchor_target->GetAnchorView(),
-                               views::BubbleBorder::TOP_LEFT,
+                               anchor_target->GetAnchorPosition(),
                                views::BubbleBorder::STANDARD_SHADOW),
       tab_style_(TabStyle::Get()),
       bubble_params_(params) {
@@ -610,6 +610,16 @@ void TabHoverCardBubbleView::UpdateCardContent(
   title_label_->SetData({title, is_filename});
   domain_label_->SetData({domain, false, gfx::ELIDE_HEAD});
 
+  if (bubble_params_.show_domain) {
+    const bool domain_visible = !domain.empty();
+    domain_label_->SetVisible(domain_visible);
+    gfx::Insets title_margins = kTextMargins;
+    if (domain_visible) {
+      title_margins.set_bottom(0);
+    }
+    title_label_->SetProperty(views::kMarginsKey, title_margins);
+  }
+
   CollaborationMessagingRowData collaboration_messaging_data =
       GetCollaborationMessagingData(tab_data);
   bool show_collaboration_messaging =
@@ -710,6 +720,13 @@ gfx::Size TabHoverCardBubbleView::CalculatePreferredSize(
   DCHECK(!preferred_size.IsEmpty());
   return preferred_size;
 }
+
+// We do not want the hover card to reposition itself according to the anchor
+// view that it is observing. It is usually undergoing slide or fade animations.
+// When in the middle of those animations, reacting to changes to the anchor
+// view can cause visual flickering with the hover card bounds.
+// See crbug.com/486948335 for an example.
+void TabHoverCardBubbleView::OnAnchorBoundsChanged() {}
 
 BEGIN_METADATA(TabHoverCardBubbleView)
 END_METADATA

@@ -11,6 +11,10 @@
 #include "base/test/mock_callback.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/values.h"
+#include "chrome/browser/glic/host/glic_features.mojom.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/browser/glic/test_support/glic_test_environment.h"
 #include "chrome/browser/policy/policy_test_utils.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/browser.h"
@@ -49,13 +53,6 @@
 #include "ui/base/ui_base_features.h"
 #include "ui/base/window_open_disposition.h"
 #include "url/gurl.h"
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/host/glic_features.mojom.h"
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "chrome/browser/glic/test_support/glic_test_environment.h"
-#endif
 
 using testing::_;
 
@@ -296,7 +293,7 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest,
       }
     }
 
-    std::optional<TabStripModelChange::RemoveReason> remove_reason() const {
+    std::optional<TabRemovedReason> remove_reason() const {
       return remove_reason_;
     }
     std::optional<tabs::TabInterface::DetachReason> tab_detach_reason() const {
@@ -304,7 +301,7 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest,
     }
 
    private:
-    std::optional<TabStripModelChange::RemoveReason> remove_reason_;
+    std::optional<TabRemovedReason> remove_reason_;
     std::optional<tabs::TabInterface::DetachReason> tab_detach_reason_;
   };
 
@@ -327,7 +324,7 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest,
                   tabs::TabInterface::DetachReason::kDelete));
   std::unique_ptr<content::WebContents> extracted_contents =
       tab_strip_model->DetachWebContentsAtForInsertion(1);
-  EXPECT_EQ(TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip,
+  EXPECT_EQ(TabRemovedReason::kInsertedIntoOtherTabStrip,
             removed_observer.remove_reason());
   EXPECT_EQ(tabs::TabInterface::DetachReason::kDelete,
             removed_observer.tab_detach_reason());
@@ -507,7 +504,6 @@ IN_PROC_BROWSER_TEST_F(TabStripModelBrowserTest, CommandDuplicateSelected) {
             GetTabStripStateString(tab_strip_model));
 }
 
-#if BUILDFLAG(ENABLE_GLIC)
 class TabStripModelGlicMultiTabBrowserTest : public TabStripModelBrowserTest {
  public:
   TabStripModelGlicMultiTabBrowserTest() {
@@ -685,5 +681,3 @@ IN_PROC_BROWSER_TEST_F(TabStripModelTestTabGroupEntryPointsEnabled,
   tab_strip_controller->RemoveTabFromGroup(2);
   EXPECT_FALSE(tab_group_model->GetMostRecentTabGroupId());
 }
-
-#endif  // BUILDFLAG(ENABLE_GLIC)

@@ -28,7 +28,7 @@
 #include "chrome/browser/apps/link_capturing/link_capturing_navigation_throttle.h"
 #include "chrome/browser/apps/link_capturing/link_capturing_tab_data.h"
 #include "chrome/browser/apps/link_capturing/metrics/intent_handling_metrics.h"
-#include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_contents_delegate.h"  // nogncheck https://crbug.com/1474116
+#include "chrome/browser/preloading/prefetch/no_state_prefetch/chrome_no_state_prefetch_contents_delegate.h"
 #include "chrome/browser/profiles/keep_alive/profile_keep_alive_types.h"  // nogncheck https://crbug.com/1474116
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"  // nogncheck https://crbug.com/1474116
 #include "chrome/browser/profiles/profile.h"
@@ -130,19 +130,6 @@ IntentHandlingMetrics::Platform GetMetricsPlatform(AppType app_type) {
     case AppType::kExtension:
     case AppType::kBruschetta:
       NOTREACHED();
-  }
-}
-
-bool IsNavigationUserInitiated(content::NavigationHandle* handle) {
-  switch (handle->GetNavigationInitiatorActivationAndAdStatus()) {
-    case blink::mojom::NavigationInitiatorActivationAndAdStatus::
-        kDidNotStartWithTransientActivation:
-      return false;
-    case blink::mojom::NavigationInitiatorActivationAndAdStatus::
-        kStartedWithTransientActivationFromNonAd:
-    case blink::mojom::NavigationInitiatorActivationAndAdStatus::
-        kStartedWithTransientActivationFromAd:
-      return true;
   }
 }
 
@@ -635,7 +622,7 @@ bool ChromeOsReimplNavigationCapturingThrottle::
          // This can be used for user clicked buttons as well as redirects.
          // Check whether the action was in the context of a user activation to
          // distinguish redirects from click event handlers.
-         !IsNavigationUserInitiated(navigation_handle());
+         !navigation_handle()->StartedWithTransientActivation();
 }
 
 }  // namespace apps

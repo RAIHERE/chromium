@@ -405,6 +405,57 @@ TEST_F(AdTrackerSimTest, AdResourceDetectedByContext) {
       ad_tracker_->RequestWithUrlTaggedAsAd("https://example.com/foo.css"));
 }
 
+// `eval()` creates a new script id, so it's important to follow the eval
+// back to the script that created it, which the AdTracker should do.
+TEST_F(AdTrackerSimTest, AdScriptEvalIsAlsoAdScript) {
+  SimSubresourceRequest ad_script("https://example.com/ad_script.js",
+                                  "text/javascript");
+  SimRequest ad_iframe("https://example.com/ad_frame.html", "text/html");
+
+  main_resource_->Complete("<body><script src='ad_script.js'></script></body>");
+  ad_script.Complete(R"SCRIPT(
+      eval(`
+        var frame = document.createElement("iframe");
+        frame.src = "ad_frame.html";
+        document.body.appendChild(frame);
+      `);
+    )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+  ad_iframe.Complete("");
+
+  auto* child_frame =
+      To<LocalFrame>(GetDocument().GetFrame()->Tree().FirstChild());
+  // Verify that the new frame is considered created by ad script.
+  EXPECT_TRUE(child_frame->IsFrameCreatedByAdScript());
+}
+
+// Verify that nested `eval()`s are followed to the underlying ad script.
+TEST_F(AdTrackerSimTest, AdScriptNestedEvalIsAlsoAdScript) {
+  SimSubresourceRequest ad_script("https://example.com/ad_script.js",
+                                  "text/javascript");
+  SimRequest ad_iframe("https://example.com/ad_frame.html", "text/html");
+
+  main_resource_->Complete("<body><script src='ad_script.js'></script></body>");
+  ad_script.Complete(R"SCRIPT(
+    eval(`
+      eval(\`
+        var frame = document.createElement("iframe");
+        frame.src = "ad_frame.html";
+        document.body.appendChild(frame);
+      \`);
+    `);
+    )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+  ad_iframe.Complete("");
+
+  auto* child_frame =
+      To<LocalFrame>(GetDocument().GetFrame()->Tree().FirstChild());
+  // Verify that the new frame is considered created by ad script.
+  EXPECT_TRUE(child_frame->IsFrameCreatedByAdScript());
+}
+
 // When inline script in an ad frame inserts an iframe into a non-ad frame, the
 // new frame should be considered as created by ad script (and would therefore
 // be tagged as an ad).
@@ -474,7 +525,7 @@ TEST_F(AdTrackerSimTest, ImageLoadedWhileExecutingAdScriptAsyncEnabled) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   vanilla_image.Complete(gif);
 
@@ -518,7 +569,7 @@ TEST_F(AdTrackerSimTest, PromiseResolveDetected) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   image.Complete(gif);
 
@@ -549,7 +600,7 @@ TEST_F(AdTrackerSimTest, PromiseRejectDetected) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   image.Complete(gif);
 
@@ -582,7 +633,7 @@ TEST_F(AdTrackerSimTest, PromiseChain) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   image.Complete(gif);
 
@@ -630,7 +681,7 @@ TEST_F(AdTrackerSimTest, BrokenPromiseScript) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   image.Complete(gif);
 
@@ -664,7 +715,7 @@ TEST_F(AdTrackerSimTest, VanillaPromiseNotDetected) {
   // Put the gif bytes in a Vector to avoid difficulty with
   // non null-terminated char*.
   Vector<char> gif;
-  gif.AppendSpan(base::span(kSmallGifData));
+  gif.append_range(kSmallGifData);
 
   image.Complete(gif);
 
@@ -2083,9 +2134,9 @@ TEST_F(AdTrackerSimTest, SelectivePermissionsInterventionOn) {
   )SCRIPT");
   EXPECT_TRUE(
       base::test::RunUntil([&]() { return ConsoleMessages().size() == 3; }));
-  EXPECT_TRUE(ConsoleMessages()[0].StartsWith(
+  EXPECT_TRUE(ConsoleMessages()[0].starts_with(
       "Blocked call to geolocation because ad-script"));
-  EXPECT_TRUE(ConsoleMessages()[1].StartsWith(
+  EXPECT_TRUE(ConsoleMessages()[1].starts_with(
       "Permissions policy violation: Geolocation"));
   EXPECT_EQ("Failed", ConsoleMessages()[2]);
 }
@@ -3117,6 +3168,293 @@ TEST_F(AdTrackerSimTest, IgnoreMonkeyPatchHeuristic_FirstProxiedCall_IsNotAd) {
   // The heuristic identifies the monkeypatch and, for this first call, assumes
   // the ad script is a proxy and returns false.
   EXPECT_FALSE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Tests that the monkey-patch heuristic correctly distinguishes between the
+// actual monkey-patched API function and a different function that happens
+// to share the same internal name and script ID.
+TEST_F(AdTrackerSimTest,
+       IgnoreMonkeyPatchHeuristic_DifferentFunctionSameName_IsAd) {
+  String ad_script_url = "https://example.com/script.js?ad=true";
+  String vanilla_script_url = "https://example.com/script.js";
+  SimSubresourceRequest ad_script(ad_script_url, "text/javascript");
+  SimSubresourceRequest vanilla_script(vanilla_script_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body><script src="script.js?ad=true"></script>
+          <script src="script.js"></script></body>
+  )HTML");
+
+  // 1. The ad script monkey-patches history.pushState using a function
+  //    explicitly named "pushState".
+  // 2. The ad script also defines an unrelated function internally named
+  //    "pushState", exposed globally as `window.doAdWork`.
+  ad_script.Complete(R"SCRIPT(
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function pushState(...args) {
+      originalPushState.apply(window.history, args);
+    };
+
+    window.doAdWork = function pushState() {
+      // Trigger AdTracker's stack inspection by calling the native API
+      // directly (bypassing the monkeypatch).
+      originalPushState.apply(window.history, [{}, '', '/ad-url']);
+    };
+  )SCRIPT");
+
+  // The vanilla script calls the unrelated ad function.
+  vanilla_script.Complete(R"SCRIPT(
+    window.doAdWork();
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+
+  // The heuristic inspects the stack at the ad/non-ad boundary and sees
+  // `window.doAdWork` (internally named "pushState"). By comparing function
+  // object identities rather than just names and script IDs, the AdTracker
+  // correctly recognizes that `doAdWork` is NOT the monkeypatch wrapper.
+  // Therefore, it does not ignore the ad script and correctly flags the
+  // call as ad-related.
+  EXPECT_TRUE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Tests that a call is flagged as an ad when an ad script calls an API that
+// has been monkey-patched by a non-ad script.
+TEST_F(AdTrackerSimTest,
+       IgnoreMonkeyPatchHeuristic_AdScriptCallsNonAdPatch_IsAd) {
+  String vanilla_patch_url = "https://example.com/patch.js";
+  String ad_caller_url = "https://example.com/caller.js?ad=true";
+  SimSubresourceRequest vanilla_patch(vanilla_patch_url, "text/javascript");
+  SimSubresourceRequest ad_caller(ad_caller_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body><script src="patch.js"></script>
+          <script src="caller.js?ad=true"></script></body>
+  )HTML");
+
+  // The non-ad script monkeypatches history.pushState.
+  vanilla_patch.Complete(R"SCRIPT(
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      originalPushState.apply(window.history, args);
+    };
+  )SCRIPT");
+
+  // The ad script calls the monkeypatched API.
+  ad_caller.Complete(R"SCRIPT(
+    window.history.pushState({}, '', '/new-url');
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+
+  // The call should be flagged as an ad because the initiator is an ad script.
+  EXPECT_TRUE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Tests a scenario where an ad script calls a non-ad monkey patch, but the
+// non-ad patch adds an extra layer of indirection (stack depth).
+// Since the heuristic only checks the top 2 stack frames for ad scripts,
+// and both top frames belong to the non-ad script, the call is NOT flagged
+// as an ad.
+TEST_F(AdTrackerSimTest,
+       IgnoreMonkeyPatchHeuristic_AdScriptCallsDeepNonAdPatch_IsNotAd) {
+  String vanilla_patch_url = "https://example.com/patch.js";
+  String ad_caller_url = "https://example.com/caller.js?ad=true";
+  SimSubresourceRequest vanilla_patch(vanilla_patch_url, "text/javascript");
+  SimSubresourceRequest ad_caller(ad_caller_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body><script src="patch.js"></script>
+          <script src="caller.js?ad=true"></script></body>
+  )HTML");
+
+  // The non-ad script monkeypatches history.pushState.
+  // Crucially, it uses an internal helper function to invoke the original API.
+  // This creates the following stack structure:
+  // 0. Native pushState
+  // 1. internalHelper (patch.js - Non-Ad)
+  // 2. window.history.pushState wrapper (patch.js - Non-Ad)
+  // 3. Global Scope (caller.js - Ad)
+  vanilla_patch.Complete(R"SCRIPT(
+    const originalPushState = window.history.pushState;
+
+    function internalHelper(args) {
+      originalPushState.apply(window.history, args);
+    }
+
+    window.history.pushState = function(...args) {
+      internalHelper(args);
+    };
+  )SCRIPT");
+
+  // The ad script calls the monkeypatched API.
+  ad_caller.Complete(R"SCRIPT(
+    window.history.pushState({}, '', '/new-url');
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+
+  // The call should NOT be flagged as an ad.
+  // The AdTracker heuristic inspects the top 2 frames. It sees 'internalHelper'
+  // (non-ad) and the 'pushState' wrapper (non-ad). It does not look deep enough
+  // to find the Ad Script initiator.
+  EXPECT_FALSE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Tests that the monkey-patch heuristic incorrectly identifies an ad when a
+// non-ad script calls an API that has been monkey-patched by a non-ad script,
+// which in turn wraps an ad monkey patch.
+//
+// Flow: Non-Ad Caller -> Non-Ad Patch (Global API) -> Ad Patch -> Native API
+//
+// TODO(crbug.com/484065170): This is a regression test for a known false
+// positive.
+TEST_F(AdTrackerSimTest,
+       IgnoreMonkeyPatchHeuristic_NonAdCallsNonAdPatchOnAdPatch_FalsePositive) {
+  String ad_patch_url = "https://example.com/patch.js?ad=true";
+  String vanilla_patch_url = "https://example.com/patch.js";
+  String vanilla_caller_url = "https://example.com/caller.js";
+
+  SimSubresourceRequest ad_patch(ad_patch_url, "text/javascript");
+  SimSubresourceRequest vanilla_patch(vanilla_patch_url, "text/javascript");
+  SimSubresourceRequest vanilla_caller(vanilla_caller_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body>
+      <script src="patch.js?ad=true"></script>
+      <script src="patch.js"></script>
+      <script src="caller.js"></script>
+    </body>
+  )HTML");
+
+  // 1. Ad script monkeypatches history.pushState first.
+  ad_patch.Complete(R"SCRIPT(
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      originalPushState.apply(window.history, args);
+    };
+  )SCRIPT");
+
+  // 2. Non-ad script monkeypatches history.pushState on top of the previous
+  // patch.
+  vanilla_patch.Complete(R"SCRIPT(
+    const previousPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      previousPushState.apply(window.history, args);
+    };
+  )SCRIPT");
+
+  // 3. Non-ad script calls the API.
+  vanilla_caller.Complete(R"SCRIPT(
+    window.history.pushState({}, '', '/new-url');
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+
+  // The AdTracker heuristic inspects the stack above the top-most non-ad script
+  // and sees `ad_patch` executing. It compares the ScriptID of
+  // `ad_patch` against the current Global API's ScriptID (`vanilla_patch`).
+  //
+  // Because the IDs do not match, the heuristic incorrectly assumes the
+  // executing function is NOT the API we are tracking. We assert TRUE here to
+  // document the current broken behavior.
+  EXPECT_TRUE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Tests that the monkey-patch heuristic fails to identify an ad when an ad
+// script calls an API that has been monkey-patched by an ad script, which in
+// turn wraps a non-ad monkey patch.
+//
+// Flow: Ad Caller -> Ad Patch (Global API) -> Non-Ad Patch -> Native API
+//
+// TODO(crbug.com/484065170): This is a regression test for a known false
+// negative.
+TEST_F(AdTrackerSimTest,
+       IgnoreMonkeyPatchHeuristic_AdCallsAdPatchOnNonAdPatch_FalseNegative) {
+  String vanilla_patch_url = "https://example.com/patch.js";
+  String ad_patch_url = "https://example.com/patch.js?ad=true";
+  String ad_caller_url = "https://example.com/caller.js?ad=true";
+
+  SimSubresourceRequest vanilla_patch(vanilla_patch_url, "text/javascript");
+  SimSubresourceRequest ad_patch(ad_patch_url, "text/javascript");
+  SimSubresourceRequest ad_caller(ad_caller_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body>
+      <script src="patch.js"></script>
+      <script src="patch.js?ad=true"></script>
+      <script src="caller.js?ad=true"></script>
+    </body>
+  )HTML");
+
+  // 1. Non-ad script monkeypatches history.pushState first.
+  vanilla_patch.Complete(R"SCRIPT(
+    const originalPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      originalPushState.apply(window.history, args);
+    };
+  )SCRIPT");
+
+  // 2. Ad script monkeypatches history.pushState on top of the previous patch.
+  ad_patch.Complete(R"SCRIPT(
+    const previousPushState = window.history.pushState;
+    window.history.pushState = function(...args) {
+      previousPushState.apply(window.history, args);
+    };
+  )SCRIPT");
+
+  // 3. Ad script calls the API.
+  ad_caller.Complete(R"SCRIPT(
+    window.history.pushState({}, '', '/new-url');
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+
+  // The AdTracker heuristic inspects the stack above the top-most ad script
+  // and sees `vanilla_patch` executing. It compares the ScriptID of
+  // `vanilla_patch` against the current Global API's ScriptID (`ad_patch`).
+  //
+  // Because the IDs do not match, the heuristic incorrectly assumes the
+  // executing function is NOT the API we are tracking. We assert FALSE here to
+  // document the current broken behavior.
+  EXPECT_FALSE(ad_tracker_->last_is_ad_script_in_stack_result());
+}
+
+// Test that an iframe is not tagged as an ad if non-ads script created it via
+// appendChild but ad script monkeypatched it.
+TEST_F(AdTrackerSimTest, IgnoreMonkeyPatchHeuristic_AppendChild_Iframe) {
+  String ad_script_url = "https://example.com/script.js?ad=true";
+  String vanilla_script_url = "https://example.com/script.js";
+  SimSubresourceRequest ad_script(ad_script_url, "text/javascript");
+  SimSubresourceRequest vanilla_script(vanilla_script_url, "text/javascript");
+
+  main_resource_->Complete(R"HTML(
+    <body><script src="script.js?ad=true"></script>
+          <script src="script.js"></script></body>
+  )HTML");
+
+  // The ad script monkeypatches appendChild.
+  ad_script.Complete(R"SCRIPT(
+    const originalAppendChild = Node.prototype.appendChild;
+    Node.prototype.appendChild = function(child) {
+      return originalAppendChild.call(this, child);
+    };
+  )SCRIPT");
+
+  // The vanilla script creates an iframe and appends it, so that the ad
+  // script's appendChild is at the top of the stack.
+  vanilla_script.Complete(R"SCRIPT(
+    let iframe = document.createElement("iframe");
+    document.body.appendChild(iframe);
+  )SCRIPT");
+
+  base::RunLoop().RunUntilIdle();
+  auto* child_frame =
+      To<LocalFrame>(GetDocument().GetFrame()->Tree().FirstChild());
+
+  // The monkeypatch exception should allow this iframe to be created without
+  // being tagged as an ad frame.
+  EXPECT_FALSE(child_frame->IsFrameCreatedByAdScript());
 }
 
 // Tests that the heuristic correctly ignores the first call to a monkeypatched

@@ -26,6 +26,7 @@
 #include "components/autofill/core/browser/logging/log_manager.h"
 #include "components/autofill/core/browser/suggestions/suggestion_type.h"
 #include "components/autofill/core/common/password_generation_util.h"
+#include "components/password_manager/core/browser/features/password_features.h"
 #include "components/password_manager/core/browser/password_bubble_experiment.h"
 #include "components/password_manager/core/browser/password_form.h"
 #include "components/password_manager/core/browser/password_form_digest.h"
@@ -35,6 +36,7 @@
 #include "components/password_manager/core/browser/password_manager_driver.h"
 #include "components/password_manager/core/browser/password_manager_metrics_util.h"
 #include "components/password_manager/core/browser/password_store/password_store_interface.h"
+#include "components/password_manager/core/browser/password_store/password_store_util.h"
 #include "components/password_manager/core/common/password_manager_pref_names.h"
 #include "components/prefs/pref_service.h"
 #include "components/signin/public/base/signin_metrics.h"
@@ -121,12 +123,12 @@ bool IsAbleToSavePasswords(password_manager::PasswordManagerClient* client) {
     // saving passwords when sync is enabled. If either of conditions above is
     // not satisfied fallback to ProfilePasswordStore.
     return client->GetAccountPasswordStore() &&
-           client->GetAccountPasswordStore()->IsAbleToSavePasswords();
+           IsAbleToSavePasswords(client->GetAccountPasswordStore()->GetError());
   }
 #endif
   // TODO(b/324054761): Check AccountPasswordStore store when needed.
   return client->GetProfilePasswordStore() &&
-         client->GetProfilePasswordStore()->IsAbleToSavePasswords();
+         IsAbleToSavePasswords(client->GetProfilePasswordStore()->GetError());
 }
 
 std::string_view GetSignonRealmWithProtocolExcluded(const PasswordForm& form) {
@@ -452,5 +454,18 @@ std::u16string GetHumanReadableRealm(const std::string& signon_realm) {
   }
   return base::UTF8ToUTF16(signon_realm);
 }
+
+#if !BUILDFLAG(IS_IOS)
+bool ShouldUploadActorLoginMqls() {
+  return base::FeatureList::IsEnabled(
+             password_manager::features::kActorLoginQualityLogs) &&
+         // Disable MQLS upload if FedCM support is enabled while prototyping to
+         // not upload wrong logs.
+         // TODO(crbug.com/480920277): Remove this check once the prototyping is
+         // complete.
+         !base::FeatureList::IsEnabled(
+             password_manager::features::kActorLoginFederatedLoginSupport);
+}
+#endif  // !BUILDFLAG(IS_IOS)
 
 }  // namespace password_manager_util

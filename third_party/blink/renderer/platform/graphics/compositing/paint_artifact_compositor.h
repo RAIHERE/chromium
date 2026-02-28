@@ -13,7 +13,6 @@
 #include "cc/layers/content_layer_client.h"
 #include "cc/layers/layer_collections.h"
 #include "cc/layers/picture_layer.h"
-#include "cc/paint/canvas_draw_element_ids.h"
 #include "cc/trees/property_tree.h"
 #include "third_party/blink/renderer/platform/graphics/compositing/layers_as_json.h"
 #include "third_party/blink/renderer/platform/graphics/compositing/pending_layer.h"
@@ -191,9 +190,7 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   void Update(const PaintArtifact& artifact,
               const ViewportProperties& viewport_properties,
               const StackScrollTranslationVector& scroll_translation_nodes,
-              Vector<std::unique_ptr<cc::ViewTransitionRequest>> requests,
-              cc::AllCanvasDrawElementIds all_canvas_draw_element_ids =
-                  cc::AllCanvasDrawElementIds());
+              Vector<std::unique_ptr<cc::ViewTransitionRequest>> requests);
 
   bool DirectlyUpdateCompositedOpacityValue(const EffectPaintPropertyNode&);
   bool DirectlyUpdateScrollOffsetTransform(const TransformPaintPropertyNode&);
@@ -219,6 +216,9 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
   cc::Layer* RootLayer() const { return root_layer_.get(); }
 
   void SetTracksRasterInvalidations(bool);
+
+  std::optional<CanvasChildPaintRecord> GetCanvasChildPaintRecord(
+      DOMNodeId child_id) const;
 
   // Called when the local frame view that owns this compositor is
   // going to be removed from its frame.
@@ -338,6 +338,7 @@ class PLATFORM_EXPORT PaintArtifactCompositor final
 
   class OldPendingLayerMatcher;
   PendingLayers pending_layers_;
+  HashMap<DOMNodeId, wtf_size_t> canvas_child_layer_map_;
 
   class Layerizer;
 

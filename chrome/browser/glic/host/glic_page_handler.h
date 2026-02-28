@@ -47,6 +47,8 @@ class GlicPageHandler : public glic::mojom::PageHandler,
 
   void NotifyWindowIntentToShow();
 
+  void Zoom(mojom::ZoomAction zoom_action);
+
   // Returns the main frame of the guest view that lives within this WebUI. May
   // be null.
   content::RenderFrameHost* GetGuestMainFrame();
@@ -89,6 +91,11 @@ class GlicPageHandler : public glic::mojom::PageHandler,
 
   void GetInternalsDataPayload(
       GetInternalsDataPayloadCallback callback) override;
+
+  void SetGuestUrlPresets(const GURL& autopush_url,
+                          const GURL& staging_url,
+                          const GURL& preprod_url,
+                          const GURL& prod_url) override;
 
   // PanelStateObserver implementation.
   void PanelStateChanged(const glic::mojom::PanelState& panel_state,

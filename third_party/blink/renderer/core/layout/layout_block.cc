@@ -90,14 +90,6 @@ void LayoutBlock::Trace(Visitor* visitor) const {
   LayoutBox::Trace(visitor);
 }
 
-void LayoutBlock::RemoveFromGlobalMaps() {
-  NOT_DESTROYED();
-  if (HasSVGTextDescendants()) {
-    View()->SvgTextDescendantsMap().erase(this);
-    SetHasSVGTextDescendants(false);
-  }
-}
-
 void LayoutBlock::WillBeDestroyed() {
   NOT_DESTROYED();
 
@@ -109,17 +101,7 @@ void LayoutBlock::WillBeDestroyed() {
   if (TextAutosizer* text_autosizer = GetDocument().GetTextAutosizer())
     text_autosizer->Destroy(this);
 
-  RemoveFromGlobalMaps();
-
   LayoutBox::WillBeDestroyed();
-}
-
-void LayoutBlock::StyleWillChange(StyleDifference diff,
-                                  const ComputedStyle& new_style,
-                                  StyleChangeContext& style_change_context) {
-  NOT_DESTROYED();
-  SetIsAtomicInlineLevel(ShouldBeHandledAsInline(new_style));
-  LayoutBox::StyleWillChange(diff, new_style, style_change_context);
 }
 
 // Compute a local version of the "font size scale factor" used by SVG
@@ -141,7 +123,7 @@ void LayoutBlock::StyleDidChange(
   // Computes old scaling factor before PaintLayer::UpdateTransform()
   // updates Layer()->Transform().
   double old_squared_scale = 1;
-  if (Layer() && diff.TransformChanged() && HasSVGTextDescendants()) {
+  if (Layer() && diff.transform_changed && HasSVGTextDescendants()) {
     old_squared_scale =
         ComputeSquaredLocalFontSizeScalingFactor(Layer()->Transform());
   }
@@ -170,7 +152,7 @@ void LayoutBlock::StyleDidChange(
 
   PropagateStyleToAnonymousChildren();
 
-  if (diff.TransformChanged() && HasSVGTextDescendants()) {
+  if (diff.transform_changed && HasSVGTextDescendants()) {
     const double new_squared_scale = ComputeSquaredLocalFontSizeScalingFactor(
         Layer() ? Layer()->Transform() : nullptr);
     // Compare local scale before and after.
@@ -297,6 +279,7 @@ void LayoutBlock::Paint(const PaintInfo& paint_info) const {
 
   // Avoid painting dirty objects because descendants maybe already destroyed.
   if (NeedsLayout() && !ChildLayoutBlockedByDisplayLock()) [[unlikely]] {
+    DumpForBug478682594();
     DUMP_WILL_BE_NOTREACHED();
     return;
   }
@@ -388,28 +371,26 @@ void LayoutBlock::RemovePositionedObjects(LayoutObject* stay_within) {
   }
 }
 
-void LayoutBlock::AddSvgTextDescendant(LayoutBox& svg_text) {
+void LayoutBlock::AddSvgTextDescendant(LayoutSVGText& svg_text) {
   NOT_DESTROYED();
-  DCHECK(IsA<LayoutSVGText>(svg_text));
   auto result = View()->SvgTextDescendantsMap().insert(this, nullptr);
   if (result.is_new_entry) {
     result.stored_value->value =
-        MakeGarbageCollected<TrackedLayoutBoxLinkedHashSet>();
+        MakeGarbageCollected<GCedHeapHashSet<Member<LayoutSVGText>>>();
   }
   result.stored_value->value->insert(&svg_text);
   SetHasSVGTextDescendants(true);
 }
 
-void LayoutBlock::RemoveSvgTextDescendant(LayoutBox& svg_text) {
+void LayoutBlock::RemoveSvgTextDescendant(LayoutSVGText& svg_text) {
   NOT_DESTROYED();
-  DCHECK(IsA<LayoutSVGText>(svg_text));
-  TrackedDescendantsMap& map = View()->SvgTextDescendantsMap();
+  auto& map = View()->SvgTextDescendantsMap();
   auto it = map.find(this);
   if (it == map.end())
     return;
-  TrackedLayoutBoxLinkedHashSet* descendants = &*it->value;
-  descendants->erase(&svg_text);
-  if (descendants->empty()) {
+  GCedHeapHashSet<Member<LayoutSVGText>>& descendants = *it->value;
+  descendants.erase(&svg_text);
+  if (descendants.empty()) {
     map.erase(this);
     SetHasSVGTextDescendants(false);
   }
@@ -457,7 +438,7 @@ bool LayoutBlock::NodeAtPoint(HitTestResult& result,
 PositionWithAffinity LayoutBlock::PositionForPointIfOutsideAtomicInlineLevel(
     const PhysicalOffset& point) const {
   NOT_DESTROYED();
-  DCHECK(IsAtomicInlineLevel());
+  DCHECK(IsInline());
   LogicalOffset logical_offset =
       WritingModeConverter({StyleRef().GetWritingMode(), ResolvedDirection()},
                            StitchedSize())
@@ -481,7 +462,7 @@ PositionWithAffinity LayoutBlock::PositionForPoint(
   DCHECK(GetDocument().Lifecycle().GetState() >=
          DocumentLifecycle::kPrePaintClean);
 
-  if (IsAtomicInlineLevel()) {
+  if (IsInline()) {
     PositionWithAffinity position =
         PositionForPointIfOutsideAtomicInlineLevel(point);
     if (!position.IsNull())
@@ -528,8 +509,9 @@ const LayoutBlock* LayoutBlock::FirstLineStyleParentBlock() const {
   NOT_DESTROYED();
   const LayoutBlock* first_line_block = this;
   // Inline blocks do not get ::first-line style from its containing blocks.
-  if (IsAtomicInlineLevel())
+  if (IsInline()) {
     return nullptr;
+  }
   // Floats and out of flow blocks do not get ::first-line style from its
   // containing blocks.
   if (IsFloatingOrOutOfFlowPositioned())
@@ -573,8 +555,8 @@ LayoutBlockFlow* LayoutBlock::NearestInnerBlockWithFirstLine() {
 // so the firstChild() is nullptr if the only child is an empty inline-block.
 inline bool LayoutBlock::IsInlineBoxWrapperActuallyChild() const {
   NOT_DESTROYED();
-  return IsInline() && IsAtomicInlineLevel() && !StitchedSize().IsEmpty() &&
-         GetNode() && EditingIgnoresContent(*GetNode());
+  return IsInline() && !StitchedSize().IsEmpty() && GetNode() &&
+         EditingIgnoresContent(*GetNode());
 }
 
 PhysicalRect LayoutBlock::LocalCaretRect(int caret_offset,

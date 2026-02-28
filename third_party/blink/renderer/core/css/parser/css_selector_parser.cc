@@ -33,6 +33,7 @@
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
 
 namespace blink {
 
@@ -455,7 +456,7 @@ static CSSNestingType ConsumeUntilCommaAndFindNestingType(
     }
     if (previous_token.GetType() == kColonToken &&
         token.GetType() == kIdentToken &&
-        EqualIgnoringASCIICase(token.Value(), "scope")) {
+        EqualIgnoringAsciiCase(token.Value(), "scope")) {
       nesting_type = CSSNestingType::kScope;
     }
 
@@ -775,6 +776,7 @@ static std::optional<CSSSelector> MaybeCreateImplicitDescendantAnchor(
       }
       break;
     case CSSNestingType::kFunction:
+    case CSSNestingType::kMixin:
       NOTREACHED();
   }
   return std::nullopt;
@@ -937,10 +939,10 @@ CSSSelector::PseudoType CSSSelectorParser::ParsePseudoType(
     return pseudo_type;
   }
 
-  if (name.StartsWith("-webkit-")) {
+  if (name.starts_with("-webkit-")) {
     return CSSSelector::PseudoType::kPseudoWebKitCustomElement;
   }
-  if (name.StartsWith("-internal-")) {
+  if (name.starts_with("-internal-")) {
     return CSSSelector::PseudoType::kPseudoBlinkInternalElement;
   }
 
@@ -976,14 +978,34 @@ PseudoId CSSSelectorParser::ParsePseudoElement(const String& selector_string,
         return kPseudoIdInvalid;
       }
 
+      // Lowercase for case-insensitive matching. CSS pseudo-elements are
+      // case-insensitive, and escape sequences like `:bef\oRE` may produce
+      // mixed-case names after tokenization.
+      AtomicString selector_name = AtomicString::LowerASCII(
+          selector_name_token.Value().ToAtomicString());
       CSSSelector::PseudoType pseudo_type = ParsePseudoType(
-          selector_name_token.Value().ToAtomicString(),
+          selector_name,
           /*has_arguments=*/false, parent ? &parent->GetDocument() : nullptr);
 
       PseudoId pseudo_id = CSSSelector::GetPseudoId(pseudo_type);
       if (pseudo_id == kPseudoIdBefore || pseudo_id == kPseudoIdAfter ||
           pseudo_id == kPseudoIdFirstLetter ||
           pseudo_id == kPseudoIdFirstLine) {
+        // Per CSSOM spec, getComputedStyle() should ignore the pseudo-element
+        // argument if it doesn't start with a colon (e.g., "before" should be
+        // ignored, but ":before" should match ::before).
+        if (num_colons == 0) {
+          if (parent) {
+            UseCounter::Count(
+                parent->GetDocument(),
+                WebFeature::kGetComputedStylePseudoElementWithoutColon);
+          }
+
+          if (RuntimeEnabledFeatures::
+                  CSSOMGetComputedStylePseudoElementRequiresColonEnabled()) {
+            return kPseudoIdNone;
+          }
+        }
         return pseudo_id;
       }
 
@@ -1150,7 +1172,8 @@ bool IsPseudoClassValidAfterPseudoElement(
     case CSSSelector::kPseudoSearchText:
       return pseudo_class == CSSSelector::kPseudoCurrent;
     case CSSSelector::kPseudoScrollMarkerGroup:
-      return pseudo_class == CSSSelector::kPseudoFocusWithin;
+      return pseudo_class == CSSSelector::kPseudoFocusWithin ||
+             pseudo_class == CSSSelector::kPseudoHover;
     case CSSSelector::kPseudoScrollMarker:
       return pseudo_class == CSSSelector::kPseudoTargetCurrent ||
              pseudo_class == CSSSelector::kPseudoTargetBefore ||
@@ -1158,6 +1181,12 @@ bool IsPseudoClassValidAfterPseudoElement(
     case CSSSelector::kPseudoScrollButton:
       return pseudo_class == CSSSelector::kPseudoDisabled ||
              pseudo_class == CSSSelector::kPseudoEnabled;
+    case CSSSelector::kPseudoAfter:
+    case CSSSelector::kPseudoBefore:
+    case CSSSelector::kPseudoMarker: {
+      return pseudo_class == CSSSelector::kPseudoHover &&
+             RuntimeEnabledFeatures::PseudoElementsHoverableEnabled();
+    }
     default:
       return false;
   }
@@ -2080,9 +2109,9 @@ CSSSelector::AttributeMatchType CSSSelectorParser::ConsumeAttributeFlags(
     return CSSSelector::AttributeMatchType::kCaseSensitive;
   }
   const CSSParserToken& flag = stream.ConsumeIncludingWhitespace();
-  if (EqualIgnoringASCIICase(flag.Value(), "i")) {
+  if (EqualIgnoringAsciiCase(flag.Value(), "i")) {
     return CSSSelector::AttributeMatchType::kCaseInsensitive;
-  } else if (EqualIgnoringASCIICase(flag.Value(), "s") &&
+  } else if (EqualIgnoringAsciiCase(flag.Value(), "s") &&
              RuntimeEnabledFeatures::CSSCaseSensitiveSelectorEnabled()) {
     return CSSSelector::AttributeMatchType::kCaseSensitiveAlways;
   }
@@ -2107,11 +2136,11 @@ bool CSSSelectorParser::ConsumeANPlusB(CSSParserTokenStream& stream,
     return true;
   }
   if (token.GetType() == kIdentToken) {
-    if (EqualIgnoringASCIICase(token.Value(), "odd")) {
+    if (EqualIgnoringAsciiCase(token.Value(), "odd")) {
       result = std::make_pair(2, 1);
       return true;
     }
-    if (EqualIgnoringASCIICase(token.Value(), "even")) {
+    if (EqualIgnoringAsciiCase(token.Value(), "even")) {
       result = std::make_pair(2, 0);
       return true;
     }
@@ -2149,9 +2178,9 @@ bool CSSSelectorParser::ConsumeANPlusB(CSSParserTokenStream& stream,
   }
 
   if (n_string.length() > 2) {
-    bool valid;
-    result.second = n_string.Substring(1).ToIntStrict(&valid);
-    return valid;
+    auto parsed = StringToIntStrict(n_string.Substring(1));
+    result.second = parsed.value_or(0);
+    return parsed.has_value();
   }
 
   NumericSign sign = n_string.length() == 1 ? kNoSign : kMinusSign;

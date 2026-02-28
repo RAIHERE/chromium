@@ -13,7 +13,6 @@
 #include "base/timer/elapsed_timer.h"
 #include "chrome/browser/actor/actor_features.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_policy_checker.h"
 #include "chrome/browser/actor/actor_task.h"
 #include "chrome/browser/actor/actor_test_util.h"
 #include "chrome/browser/actor/execution_engine.h"
@@ -56,11 +55,7 @@ using optimization_guide::proto::ClickAction;
 // completion until the page is ready for an observation.
 class ActorPageStabilityTestBase : public PageStabilityTest {
  public:
-  ActorPageStabilityTestBase() {
-    scoped_feature_list_.InitAndEnableFeatureWithParameters(
-        features::kGlicActor,
-        {{features::kGlicActorPolicyControlExemption.name, "true"}});
-  }
+  ActorPageStabilityTestBase() = default;
   ActorPageStabilityTestBase(const ActorPageStabilityTestBase&) = delete;
   ActorPageStabilityTestBase& operator=(const ActorPageStabilityTestBase&) =
       delete;
@@ -69,16 +64,8 @@ class ActorPageStabilityTestBase : public PageStabilityTest {
 
   void SetUpOnMainThread() override {
     PageStabilityTest::SetUpOnMainThread();
-
-    auto execution_engine =
-        std::make_unique<ExecutionEngine>(browser()->profile());
-    auto event_dispatcher = ui::NewUiEventDispatcher(
-        actor_keyed_service()->GetActorUiStateManager());
-    auto actor_task = std::make_unique<ActorTask>(
-        GetProfile(), std::move(execution_engine), std::move(event_dispatcher),
-        /*options=*/nullptr);
     task_id_ = ActorKeyedService::Get(browser()->profile())
-                   ->AddActiveTask(std::move(actor_task));
+                   ->CreateTask(NoEnterprisePolicyChecker());
   }
 
   void TearDownOnMainThread() override {
@@ -104,7 +91,6 @@ class ActorPageStabilityTestBase : public PageStabilityTest {
 
  protected:
   TaskId task_id_;
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 class ActorPageStabilityTimeoutTest : public ActorPageStabilityTestBase {
@@ -118,8 +104,7 @@ class ActorPageStabilityTimeoutTest : public ActorPageStabilityTestBase {
     std::string paint_timeout = absl::StrFormat("%dms", kTimeoutInMs);
     timeout_scoped_feature_list_.InitAndEnableFeatureWithParameters(
         features::kGlicActor,
-        {{features::kGlicActorPolicyControlExemption.name, "true"},
-         {"glic-actor-page-stability-timeout", timeout},
+        {{"glic-actor-page-stability-timeout", timeout},
          // Do not use min wait.
          {"glic-actor-page-stability-min-wait", "0ms"},
          {::features::kActorPaintStabilityIntialPaintTimeout.name,

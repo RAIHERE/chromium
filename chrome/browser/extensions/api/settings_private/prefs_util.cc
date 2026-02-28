@@ -33,7 +33,6 @@
 #include "chrome/browser/ui/safety_hub/safety_hub_prefs.h"
 #include "chrome/browser/ui/tabs/tab_strip_prefs.h"
 #include "chrome/browser/ui/toolbar/toolbar_pref_names.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/api/settings_private.h"
 #include "chrome/common/pref_names.h"
 #include "components/autofill/core/common/autofill_prefs.h"
@@ -171,6 +170,12 @@ bool IsSettingReadOnly(const std::string& pref_name) {
       pref_name == ::prefs::kPinUnlockAutosubmitEnabled) {
     return true;
   }
+
+  // `kAllowedLocalAuthfactors` is never directly changeable by the user.
+  if (pref_name == ash::prefs::kAllowedLocalAuthFactors) {
+    return true;
+  }
+
 #endif
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_CHROMEOS)
   // Can be changed only from C++ after successful re-auth.
@@ -201,6 +206,8 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
 
   // Miscellaneous
   (*s_allowlist)[::embedder_support::kAlternateErrorPagesEnabled] =
+      settings_api::PrefType::kBoolean;
+  (*s_allowlist)[autofill::prefs::kAutofillOtherDatatypesEnabled] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[autofill::prefs::kAutofillProfileEnabled] =
       settings_api::PrefType::kBoolean;
@@ -239,6 +246,12 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[::prefs::kVerticalTabsEnabled] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[::prefs::kTabSearchRightAligned] =
+      settings_api::PrefType::kBoolean;
+  (*s_allowlist)[::prefs::kTabSearchPinnedToTabstrip] =
+      settings_api::PrefType::kBoolean;
+  (*s_allowlist)[::prefs::kProjectsPanelPinnedToTabstrip] =
+      settings_api::PrefType::kBoolean;
+  (*s_allowlist)[::prefs::kEverythingMenuPinnedToTabstrip] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[tab_groups::prefs::kAutoPinNewTabGroups] =
       settings_api::PrefType::kBoolean;
@@ -465,7 +478,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[translate::prefs::kPrefAlwaysTranslateList] =
       settings_api::PrefType::kList;
 #if BUILDFLAG(IS_CHROMEOS)
-  (*s_allowlist)[::prefs::kLanguageImeMenuActivated] =
+  (*s_allowlist)[ash::prefs::kLanguageImeMenuActivated] =
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::prefs::kAssistPersonalInfoEnabled] =
       settings_api::PrefType::kBoolean;
@@ -474,7 +487,7 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   (*s_allowlist)[ash::prefs::kOrcaEnabled] = settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::prefs::kEmojiSuggestionEnabled] =
       settings_api::PrefType::kBoolean;
-  (*s_allowlist)[::prefs::kLanguageInputMethodSpecificSettings] =
+  (*s_allowlist)[ash::prefs::kLanguageInputMethodSpecificSettings] =
       settings_api::PrefType::kDictionary;
   (*s_allowlist)[ash::prefs::kLastUsedImeShortcutReminderDismissed] =
       settings_api::PrefType::kBoolean;
@@ -632,6 +645,8 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
   (*s_allowlist)[ash::prefs::kMessageCenterLockScreenMode] =
       settings_api::PrefType::kString;
+  (*s_allowlist)[ash::prefs::kAllowedLocalAuthFactors] =
+      settings_api::PrefType::kList;
 
   // Accessibility.
   (*s_allowlist)[ash::prefs::kAccessibilityAutoclickDelayMs] =
@@ -900,6 +915,8 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
   // App - Enable Isolated Web Apps
   (*s_allowlist)[::ash::prefs::kIsolatedWebAppsEnabled] =
       settings_api::PrefType::kBoolean;
+  (*s_allowlist)[::prefs::kIsolatedWebAppUserInstallationEnabled] =
+      settings_api::PrefType::kBoolean;
 
   // App - On-Device Parental Controls
   (*s_allowlist)[::ash::prefs::kOnDeviceAppControlsPin] =
@@ -1036,13 +1053,13 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kBoolean;
 
   // Input method settings.
-  (*s_allowlist)[::prefs::kLanguagePreloadEngines] =
+  (*s_allowlist)[ash::prefs::kLanguagePreloadEngines] =
       settings_api::PrefType::kString;
-  (*s_allowlist)[::prefs::kLanguageEnabledImes] =
+  (*s_allowlist)[ash::prefs::kLanguageEnabledImes] =
       settings_api::PrefType::kString;
-  (*s_allowlist)[::prefs::kLanguageAllowedInputMethods] =
+  (*s_allowlist)[ash::prefs::kLanguageAllowedInputMethods] =
       settings_api::PrefType::kList;
-  (*s_allowlist)[::prefs::kLanguageAllowedInputMethodsForceEnabled] =
+  (*s_allowlist)[ash::prefs::kLanguageAllowedInputMethodsForceEnabled] =
       settings_api::PrefType::kBoolean;
 
   // Device settings.
@@ -1313,7 +1330,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
       settings_api::PrefType::kNumber;
 
   // Glic prefs
-#if BUILDFLAG(ENABLE_GLIC)
   if (glic::GlicEnabling::IsEnabledByFlags()) {
     (*s_allowlist)[glic::prefs::kGlicPinnedToTabstrip] =
         settings_api::PrefType::kBoolean;
@@ -1338,7 +1354,6 @@ const PrefsUtil::TypedPrefMap& PrefsUtil::GetAllowlistedKeys() {
     (*s_allowlist)[glic::prefs::kGlicKeepSidepanelOpenOnNewTabsEnabled] =
         settings_api::PrefType::kBoolean;
   }
-#endif
 
   return *s_allowlist;
 }

@@ -166,6 +166,7 @@
 #include "ui/base/ui_base_switches.h"
 #include "ui/base/ui_base_switches_util.h"
 #include "ui/display/display_switches.h"
+#include "ui/native_theme/native_theme.h"
 #include "v8/include/v8-extension.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -621,6 +622,10 @@ void RenderThreadImpl::Shutdown() {
   // those problems.
 
   blink::LogStatsDuringShutdown();
+
+  // Flush any buffered content.
+  fflush(stdout);
+  fflush(stderr);
 
   // In a single-process mode, we cannot call _exit(0) in Shutdown() because
   // it will exit the process before the browser side is ready to exit.

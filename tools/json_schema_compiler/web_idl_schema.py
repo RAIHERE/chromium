@@ -151,6 +151,24 @@ def AddCommonExtendedAttributeProperties(node: IDLNode, properties: dict):
     properties['nocompile'] = True
 
 
+def AddEventOptionsExtendedAttributes(node: IDLNode, properties: dict):
+  """Looks for event option extended attributes and adds them to properties.
+
+  Extracts extended attributes that are only specific to Event definitions.
+  TODO(crbug.com/487746350): Add support for declarative event related
+  properties (`supportsFilters`, `supportsListeners`, `supportsRules`) to this
+  function as required for WebIDL schema conversions.
+
+  Args:
+    node: The IDLNode to look for the extended attributes on.
+    properties: The object to add the associated key value pairs to.
+  """
+  if (value := GetExtendedAttributeValue(node, 'maxListeners')) is not None:
+    if 'options' not in properties:
+      properties['options'] = {}
+    properties['options']['maxListeners'] = int(value)
+
+
 def _ExtractNodeComment(node: IDLNode) -> str:
   """Extract contiguous file comments above a node and return them as a string.
 
@@ -397,9 +415,6 @@ class Type():
           parent = parent.GetParent()
 
         referenced_type = GetChildWithName(parent, type_name)
-        # TODO(crbug.com/450443604): Add support for shared types, which are
-        # defined in a separate file that is referenced by several different
-        # schemas.
         if referenced_type is None:
           raise SchemaCompilerError(
               'Could not find definition of referenced type "%s" for node.' %
@@ -411,6 +426,27 @@ class Type():
           properties['$ref'] = type_name
         elif referenced_type.GetClass() == 'Callback':
           properties = Operation(referenced_type).process()
+        elif referenced_type.GetClass() == 'Typedef':
+          # For now, we only use Typedefs to allow for referencing types which
+          # are defined in another schema file. These act almost like a forward
+          # declaration and we extract the "namespaced" type name to use from
+          # the extended attribute on the Typedef.
+          # TODO(crbug.com/486928682): Eventually it would be good to follow the
+          # way Blink does this, by having shared types use globally unique
+          # names and be defined in their own files. Then all the relevant type
+          # files for an API schema could also be passed to the IDL parser and
+          # our `referenced_type` code above could search through those.
+          shared_type_name = GetExtendedAttributeValue(referenced_type,
+                                                       'ExternalExtensionType')
+          if shared_type_name is None:
+            raise SchemaCompilerError(
+                'Typedefs can only be used for declaring shared Types'
+                ' referencing Types defined in other API namespaces, but one'
+                ' was found which was missing the required'
+                ' "ExternalExtensionType=" extended attribute.',
+                referenced_type)
+          properties['$ref'] = shared_type_name
+
         else:
           raise SchemaCompilerError(
               'Found a Typeref node referencing a node of type "%s", but we'
@@ -796,6 +832,7 @@ class Event:
     properties['parameters'] = parameters
 
     AddCommonExtendedAttributeProperties(self.node, properties)
+    AddEventOptionsExtendedAttributes(self.node, properties)
 
     return properties
 

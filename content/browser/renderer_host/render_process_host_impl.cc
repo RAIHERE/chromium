@@ -121,7 +121,6 @@
 #include "content/browser/renderer_host/embedded_frame_sink_provider_impl.h"
 #include "content/browser/renderer_host/indexed_db_client_state_checker_factory.h"
 #include "content/browser/renderer_host/media/media_stream_track_metrics_host.h"
-#include "content/browser/renderer_host/p2p/socket_dispatcher_host.h"
 #include "content/browser/renderer_host/recently_destroyed_hosts.h"
 #include "content/browser/renderer_host/render_frame_host_delegate.h"
 #include "content/browser/renderer_host/render_frame_host_impl.h"
@@ -140,7 +139,6 @@
 #include "content/common/content_constants_internal.h"
 #include "content/common/content_switches_internal.h"
 #include "content/common/in_process_child_thread_params.h"
-#include "content/common/pseudonymization_salt.h"
 #include "content/public/browser/browser_child_process_host.h"
 #include "content/public/browser/browser_context.h"
 #include "content/public/browser/browser_thread.h"
@@ -192,6 +190,7 @@
 #include "services/device/public/mojom/power_monitor.mojom.h"
 #include "services/device/public/mojom/screen_orientation.mojom.h"
 #include "services/device/public/mojom/time_zone_monitor.mojom.h"
+#include "services/network/public/cpp/network_service_buildflags.h"
 #include "services/network/public/cpp/network_switches.h"
 #include "services/network/public/mojom/network_service.mojom.h"
 #include "services/resource_coordinator/public/mojom/memory_instrumentation/memory_instrumentation.mojom.h"
@@ -282,6 +281,10 @@
 #if BUILDFLAG(CLANG_PROFILING_INSIDE_SANDBOX)
 #include "content/public/common/profiling_utils.h"
 #endif
+
+#if BUILDFLAG(IS_P2P_ENABLED)
+#include "content/browser/renderer_host/p2p/socket_dispatcher_host.h"
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 
 // VLOG additional statements in Fuchsia release builds.
 #if BUILDFLAG(IS_FUCHSIA)
@@ -1534,7 +1537,7 @@ RenderProcessHost* RenderProcessHostImpl::CreateRenderProcessHost(
 
   int flags = RenderProcessFlags::kNone;
 
-  if (site_instance && site_instance->IsGuest()) {
+  if (site_instance && site_instance->GetSecurityPrincipal().IsGuest()) {
     flags |= RenderProcessFlags::kForGuestsOnly;
 
     // If we've made a StoragePartition for guests (e.g., for the <webview>
@@ -2134,10 +2137,12 @@ void RenderProcessHostImpl::ResetChannelProxy() {
 
 void RenderProcessHostImpl::CreateMessageFilters() {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
+#if BUILDFLAG(IS_P2P_ENABLED)
   // TODO(crbug.com/40169214): Move this initialization out of
   // CreateMessageFilters().
   p2p_socket_dispatcher_host_ =
       std::make_unique<P2PSocketDispatcherHost>(GetDeprecatedID());
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 }
 
 void RenderProcessHostImpl::BindCacheStorage(
@@ -2686,6 +2691,7 @@ void RenderProcessHostImpl::BindPushMessaging(
   push_messaging_manager_->AddPushMessagingReceiver(std::move(receiver));
 }
 
+#if BUILDFLAG(IS_P2P_ENABLED)
 void RenderProcessHostImpl::BindP2PSocketManager(
     net::NetworkAnonymizationKey anonymization_key,
     mojo::PendingReceiver<network::mojom::P2PSocketManager> receiver,
@@ -2693,6 +2699,7 @@ void RenderProcessHostImpl::BindP2PSocketManager(
   p2p_socket_dispatcher_host_->BindReceiver(
       *this, std::move(receiver), anonymization_key, render_frame_host_id);
 }
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 
 void RenderProcessHostImpl::CreateMediaLogRecordHost(
     mojo::PendingReceiver<content::mojom::MediaInternalLogRecords> receiver) {
@@ -3661,7 +3668,6 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
       switches::kAudioBufferSize,
       switches::kAutoplayPolicy,
       switches::kBackgroundThreadPoolFieldTrial,
-      switches::kDisable2dCanvasImageChromium,
       switches::kDisableYUVImageDecoding,
       switches::kDisableAcceleratedVideoDecode,
       switches::kDisableAcceleratedVideoEncode,
@@ -3761,15 +3767,19 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
       blink::switches::kDisableImageAnimationResync,
       blink::switches::kDisablePreferCompositingToLCDText,
       blink::switches::kDisableRGBA4444Textures,
+      blink::switches::kEnableDesktopAndroidScrollbars,
       blink::switches::kEnableLeakDetectionHeapSnapshot,
       blink::switches::kEnablePreferCompositingToLCDText,
       blink::switches::kEnableRGBA4444Textures,
       blink::switches::kEnableRasterSideDarkModeForImages,
       blink::switches::kForceGpuMemAvailableMb,
+      blink::switches::
+          kGpuMemoryBufferReadbackFromTextureForceDisabledForDebugging,
       blink::switches::kMinHeightForGpuRasterTile,
       blink::switches::kMaxUntiledLayerWidth,
       blink::switches::kMaxUntiledLayerHeight,
       blink::switches::kNetworkQuietTimeout,
+      blink::switches::kShowContentfulPaintRects,
       blink::switches::kShowLayoutShiftRegions,
       blink::switches::kShowPaintRects,
       blink::switches::kTouchTextSelectionStrategy,
@@ -3797,6 +3807,7 @@ void RenderProcessHostImpl::PropagateBrowserCommandLineToRenderer(
       switches::kRunAllCompositorStagesBeforeDraw,
 
       network::switches::kForcePermissionPolicyUnloadDefaultEnabled,
+      network::switches::kLocalNetworkAccessPermissionsPolicyDefaultEnabled,
 
       switches::kWebRtcMaxCaptureFramerate,
       switches::kEnableLowEndDeviceMode,
@@ -4083,18 +4094,6 @@ void RenderProcessHostImpl::OnAssociatedInterfaceRequest(
 void RenderProcessHostImpl::OnChannelConnected(int32_t peer_pid) {
   channel_connected_ = true;
 
-  // Propagate the pseudonymization salt to all the child processes.
-  //
-  // Doing this as the first step in this method helps to minimize scenarios
-  // where child process runs code that depends on the pseudonymization salt
-  // before it has been set.  See also https://crbug.com/1479308#c5
-  //
-  // TODO(dullweber, lukasza): Figure out if it is possible to reset the salt
-  // at a regular interval (on the order of hours?).  The browser would need to
-  // be responsible for 1) deciding when the refresh happens and 2) pushing the
-  // updated salt to all the child processes.
-  child_process_->SetPseudonymizationSalt(GetPseudonymizationSalt());
-
 #if BUILDFLAG(IS_MAC)
   ChildProcessTaskPortProvider::GetInstance()->OnChildProcessLaunched(
       peer_pid, child_process_.get());
@@ -4180,14 +4179,18 @@ bool RenderProcessHostImpl::IsBlocked() {
 
 void RenderProcessHostImpl::PauseSocketManagerForRenderFrameHost(
     const GlobalRenderFrameHostId& render_frame_host_id) {
+#if BUILDFLAG(IS_P2P_ENABLED)
   p2p_socket_dispatcher_host_->PauseSocketManagerForRenderFrameHost(
       render_frame_host_id);
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 }
 
 void RenderProcessHostImpl::ResumeSocketManagerForRenderFrameHost(
     const GlobalRenderFrameHostId& render_frame_host_id) {
+#if BUILDFLAG(IS_P2P_ENABLED)
   p2p_socket_dispatcher_host_->ResumeSocketManagerForRenderFrameHost(
       render_frame_host_id);
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 }
 
 base::CallbackListSubscription
@@ -4532,11 +4535,15 @@ RenderProcessHostImpl::WebRtcStopRtpDumpCallback
 RenderProcessHostImpl::StartRtpDump(bool incoming,
                                     bool outgoing,
                                     WebRtcRtpPacketCallback packet_callback) {
+#if BUILDFLAG(IS_P2P_ENABLED)
   p2p_socket_dispatcher_host_->StartRtpDump(incoming, outgoing,
                                             std::move(packet_callback));
 
   return base::BindOnce(&P2PSocketDispatcherHost::StopRtpDump,
                         p2p_socket_dispatcher_host_->GetWeakPtr());
+#else
+  return base::DoNothing();
+#endif  // BUILDFLAG(IS_P2P_ENABLED)
 }
 
 IPC::ChannelProxy* RenderProcessHostImpl::GetChannel() {
@@ -4694,8 +4701,9 @@ bool RenderProcessHostImpl::IsSuitableHost(
   // Do not allow sharing of guest and non-guest hosts.  Note that we also
   // enforce that `host` and `site_info` must belong to the same
   // StoragePartition via the InSameStoragePartition() check below.
-  if (host->IsForGuestsOnly() != site_info.is_guest())
+  if (host->IsForGuestsOnly() != site_info.IsGuest()) {
     return false;
+  }
 
   // If this process has a different JIT policy to the site then it can't be
   // reused.
@@ -4717,7 +4725,7 @@ bool RenderProcessHostImpl::IsSuitableHost(
   // same StoragePartition, since a RenderProcessHost can only support a
   // single StoragePartition.  This is relevant for packaged apps.
   StoragePartition* dest_partition = browser_context->GetStoragePartition(
-      site_info.storage_partition_config());
+      site_info.GetStoragePartitionConfig());
   if (!host->InSameStoragePartition(dest_partition))
     return false;
 

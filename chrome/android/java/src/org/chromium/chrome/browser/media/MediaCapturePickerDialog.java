@@ -6,7 +6,9 @@ package org.chromium.chrome.browser.media;
 
 import static org.chromium.build.NullUtil.assumeNonNull;
 
+import android.app.Activity;
 import android.content.Context;
+import android.content.Intent;
 import android.content.res.Resources;
 import android.view.LayoutInflater;
 import android.view.View;
@@ -14,9 +16,12 @@ import android.widget.LinearLayout;
 import android.widget.ListView;
 
 import androidx.annotation.IntDef;
+import androidx.fragment.app.FragmentActivity;
 
 import com.google.android.material.materialswitch.MaterialSwitch;
 
+import org.chromium.base.ContextUtils;
+import org.chromium.base.ServiceLoaderUtil;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
@@ -45,6 +50,7 @@ import java.util.Map;
 public class MediaCapturePickerDialog implements MediaCapturePickerTabObserver.Delegate {
     // This web contents is the one that is receiving the shared content.
     private final ModalDialogManager mModalDialogManager;
+    private final Context mContext;
     private final MediaCapturePickerManager.Params mParams;
     private final View mDialogView;
     private final LinearLayout mButtonsView;
@@ -108,6 +114,7 @@ public class MediaCapturePickerDialog implements MediaCapturePickerTabObserver.D
             MediaCapturePickerManager.Params params,
             MediaCapturePickerManager.Delegate delegate) {
         // TODO(crbug.com/352187279): Support all parameters in `params`.
+        mContext = context;
         mParams = params;
         mModalDialogManager = ((ModalDialogManagerHolder) context).getModalDialogManager();
         mDelegate = delegate;
@@ -175,8 +182,16 @@ public class MediaCapturePickerDialog implements MediaCapturePickerTabObserver.D
     }
 
     private void startAndroidCapturePrompt() {
-        var fragment = MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
-        assumeNonNull(fragment);
+        MediaCapturePickerDelegate impl =
+                ServiceLoaderUtil.maybeCreate(MediaCapturePickerDelegate.class);
+        Intent intent = impl == null ? null : impl.createScreenCaptureIntent(mContext, mParams);
+
+        Activity activity = ContextUtils.activityFromContext(mContext);
+        // We should always get a non-null ChromeActivity which is a FragmentActivity.
+        // Crash here if this is not true for investigation.
+        MediaCapturePickerHeadlessFragment fragment =
+                MediaCapturePickerHeadlessFragment.getInstance(
+                        assumeNonNull((FragmentActivity) activity));
         fragment.startAndroidCapturePrompt(
                 (action, result) -> {
                     if (action != CaptureAction.CAPTURE_CANCELLED) {
@@ -201,7 +216,8 @@ public class MediaCapturePickerDialog implements MediaCapturePickerTabObserver.D
                     mDelegate = null;
                     mModalDialogManager.dismissDialog(
                             mPropertyModel, DialogDismissalCause.ACTION_ON_DIALOG_COMPLETED);
-                });
+                },
+                intent);
     }
 
     void show() {

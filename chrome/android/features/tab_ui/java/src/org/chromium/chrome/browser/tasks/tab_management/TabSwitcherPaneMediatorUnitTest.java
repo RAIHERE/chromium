@@ -44,7 +44,6 @@ import org.mockito.Mock;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.Callback;
 import org.chromium.base.ContextUtils;
@@ -54,6 +53,7 @@ import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.supplier.SettableNonNullObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.MockTab;
 import org.chromium.chrome.browser.tab.Tab;
@@ -63,6 +63,7 @@ import org.chromium.chrome.browser.tabmodel.TabClosingSource;
 import org.chromium.chrome.browser.tabmodel.TabGroupModelFilter;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tasks.tab_management.TabGridDialogMediator.DialogController;
+import org.chromium.chrome.browser.tasks.tab_management.TabListContainerProperties.SupplementaryContainerAnimationMetadata;
 import org.chromium.chrome.browser.tasks.tab_management.TabListCoordinator.TabListMode;
 import org.chromium.chrome.browser.tasks.tab_management.TabListEditorCoordinator.TabListEditorController;
 import org.chromium.chrome.browser.tasks.tab_management.TabSwitcherPaneMediator.TabIndexLookup;
@@ -216,7 +217,7 @@ public class TabSwitcherPaneMediatorUnitTest {
         mTabListEditorControllerSupplier.set(mTabListEditorController);
 
         mTabGridDialogControllerSupplier.get();
-        ShadowLooper.runUiThreadTasks();
+        RobolectricUtil.runAllBackgroundAndUi();
         assertTrue(mDialogBackPressChangedSupplier.hasObservers());
 
         verify(mOnTabSwitcherShownRunnable, never()).run();
@@ -298,7 +299,7 @@ public class TabSwitcherPaneMediatorUnitTest {
                         mBottomSheetController,
                         mAllOnLayoutChangedAfterInitialScrollListener,
                         mHubSearchBoxVisibilitySupplier);
-        ShadowLooper.runUiThreadTasks();
+        RobolectricUtil.runAllBackgroundAndUi();
 
         mIsVisibleSupplier.set(true);
 
@@ -525,30 +526,7 @@ public class TabSwitcherPaneMediatorUnitTest {
     }
 
     @Test
-    public void testMaybeTranslatePinnedStrip_showOnPhone() {
-        // Not a tablet. isSearchBoxMovementEnabledForPinnedTabs returns false, so should show.
-        mMediator.maybeTranslatePinnedStrip(false, false);
-
-        // Animation should start to show
-        assertTrue(mMediator.getManualSearchBoxAnimationSupplier().get());
-        assertTrue(mHubSearchBoxVisibilitySupplier.get());
-
-        // Run animation to completion.
-        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
-
-        assertFalse(mMediator.getManualSearchBoxAnimationSupplier().get());
-        assertTrue(mHubSearchBoxVisibilitySupplier.get());
-        assertEquals(1.0f, mMediator.getSearchBoxVisibilityFractionSupplier().get(), 0.0);
-    }
-
-    @Test
     public void testMaybeTranslatePinnedStrip_hideOnTablet() {
-        // Show it first forcibly on phone.
-        mMediator.maybeTranslatePinnedStrip(true, true);
-        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
-        assertEquals(1.0f, mMediator.getSearchBoxVisibilityFractionSupplier().get(), 0.0);
-        when(mSupplementaryDataContainer.getTranslationY()).thenReturn(20f);
-
         // Now switch to tablet.
         Configuration configuration = new Configuration();
         configuration.screenWidthDp = 700;
@@ -557,13 +535,9 @@ public class TabSwitcherPaneMediatorUnitTest {
         mMediator.maybeTranslatePinnedStrip(true, false);
 
         // Animation should start to hide
-        assertTrue(mMediator.getManualSearchBoxAnimationSupplier().get());
-
-        // Run animation to completion.
-        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
-
-        assertFalse(mMediator.getManualSearchBoxAnimationSupplier().get());
-        assertFalse(mHubSearchBoxVisibilitySupplier.get());
-        assertEquals(0.0f, mMediator.getSearchBoxVisibilityFractionSupplier().get(), 0.0);
+        SupplementaryContainerAnimationMetadata metadata =
+                mModel.get(TabListContainerProperties.ANIMATE_SUPPLEMENTARY_CONTAINER);
+        assertFalse(metadata.shouldShowSearchBox);
+        assertFalse(metadata.forced);
     }
 }

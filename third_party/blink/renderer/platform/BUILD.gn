@@ -889,11 +889,13 @@ component("platform") {
     "graphics/box_reflection.h",
     "graphics/canvas_2d_color_params.cc",
     "graphics/canvas_2d_color_params.h",
+    "graphics/canvas_child_paint_record.h",
     "graphics/canvas_deferred_paint_record.cc",
     "graphics/canvas_deferred_paint_record.h",
     "graphics/canvas_hibernation_handler.cc",
     "graphics/canvas_hibernation_handler.h",
-    "graphics/canvas_high_entropy_op_type.h",
+    "graphics/canvas_non2d_snapshot_provider_bitmap.cc",
+    "graphics/canvas_non2d_snapshot_provider_bitmap.h",
     "graphics/canvas_resource.cc",
     "graphics/canvas_resource.h",
     "graphics/canvas_resource_dispatcher.cc",
@@ -901,8 +903,6 @@ component("platform") {
     "graphics/canvas_resource_provider.cc",
     "graphics/canvas_resource_provider.h",
     "graphics/canvas_snapshot_provider.h",
-    "graphics/canvas_snapshot_provider_external_bitmap.cc",
-    "graphics/canvas_snapshot_provider_external_bitmap.h",
     "graphics/color.cc",
     "graphics/color.h",
     "graphics/color_behavior.h",
@@ -1085,6 +1085,7 @@ component("platform") {
     "graphics/image_decoding_store.h",
     "graphics/image_frame_generator.cc",
     "graphics/image_frame_generator.h",
+    "graphics/image_node_animation_info.h",
     "graphics/image_observer.cc",
     "graphics/image_observer.h",
     "graphics/image_orientation.cc",
@@ -1181,7 +1182,6 @@ component("platform") {
     "graphics/paint/raster_invalidator.h",
     "graphics/paint/region_capture_data.cc",
     "graphics/paint/region_capture_data.h",
-    "graphics/paint/scoped_canvas_subtree_id.h",
     "graphics/paint/scoped_display_item_fragment.h",
     "graphics/paint/scoped_effectively_invisible.h",
     "graphics/paint/scoped_paint_chunk_properties.h",
@@ -1591,6 +1591,8 @@ component("platform") {
     "weborigin/referrer.cc",
     "weborigin/referrer.h",
     "weborigin/reporting_disposition.h",
+    "weborigin/sandboxed_opaque_security_origin_creator.cc",
+    "weborigin/sandboxed_opaque_security_origin_creator.h",
     "weborigin/scheme_registry.cc",
     "weborigin/scheme_registry.h",
     "weborigin/security_origin.cc",
@@ -1959,7 +1961,8 @@ component("platform") {
     allow_circular_includes_from += [ ":blink_x86_avx" ]
   }
 
-  if (current_cpu == "arm64" || current_cpu == "arm") {
+  if (current_cpu == "arm64" || current_cpu == "arm64e" ||
+      current_cpu == "arm") {
     sources += [ "audio/cpu/arm/delay_neon.cc" ]
   }
 
@@ -2843,7 +2846,13 @@ fuzzer_test("blink_avif_decoder_fuzzer") {
     ":platform",
   ]
   seed_corpuses = [ "//third_party/blink/web_tests/images/resources/avif" ]
-  libfuzzer_options = [ "rss_limit_mb=8192" ]
+  libfuzzer_options = [
+    "rss_limit_mb=8192",
+
+    # Large AVIF images can take a while to decode under ASAN (especially when
+    # they are fuzzer generated). The default timeout is 25 seconds.
+    "timeout_per_input=50",
+  ]
   centipede_options = libfuzzer_options
   additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
 }
@@ -2920,6 +2929,21 @@ fuzzer_test("blink_jpeg_decoder_fuzzer") {
 
 fuzzer_test("blink_bmp_decoder_fuzzer") {
   sources = [ "image-decoders/bmp/bmp_image_decoder_fuzzer.cc" ]
+  deps = [
+    ":blink_fuzzer_test_support",
+    ":blink_image_decoder_fuzzer_test_support",
+    ":platform",
+  ]
+  seed_corpuses = [ "//third_party/blink/web_tests/images/bmp-suite/good" ]
+
+  # TODO: crbug.com/324586211 - raise the memory limit to avoid OOMs in the
+  # fuzzer harness. This can be removed once the global memory limit is raised.
+  libfuzzer_options = [ "rss_limit_mb=4096" ]
+  additional_configs = [ "//third_party/blink/renderer:inside_blink" ]
+}
+
+fuzzer_test("blink_bmp_rust_decoder_fuzzer") {
+  sources = [ "image-decoders/bmp/bmp_rust_image_decoder_fuzzer.cc" ]
   deps = [
     ":blink_fuzzer_test_support",
     ":blink_image_decoder_fuzzer_test_support",

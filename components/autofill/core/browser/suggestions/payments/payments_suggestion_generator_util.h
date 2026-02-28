@@ -136,8 +136,7 @@ bool IsCreditCardFooterSuggestion(
 
 // Helper function to decide whether to show the virtual card option for
 // `candidate_card`.
-// TODO(crbug.com/326950201): Pass the argument by reference.
-bool ShouldShowVirtualCardOption(const CreditCard* candidate_card,
+bool ShouldShowVirtualCardOption(const CreditCard& candidate_card,
                                  const AutofillClient& client);
 
 // Determines whether the "Save and Fill" suggestion should be shown in the
@@ -151,19 +150,22 @@ bool ShouldShowCreditCardSaveAndFill(AutofillClient& client,
 // suggestions in the Autofill popup. `should_show_scan_credit_card` is used
 // to conditionally add scan credit card suggestion. `is_autofilled` is used to
 // conditionally add suggestion for clearing all autofilled fields.
-// `should_show_bnpl_suggestion` is used to conditionally append a BNPL
-// suggestion to the end of the payment methods suggestions.
+// `should_show_pay_later_tab_suggestions` is used to append the Pay Later tab
+// footnote suggestion.
+// `should_append_bnpl_suggestion` is used to append a generic BNPL suggestion
+// to the end of the payment methods suggestions.
 // `with_gpay_logo` is used to conditionally add GPay logo icon to the manage
 // payment methods suggestion.
-// `has_timed_out_for_page_load` indicates whether
-// the AI amount extraction request timed out. If true, the returned BNPL
-// suggestion is deactivated for the remainder of this page load.
+// `has_timed_out_for_page_load` indicates whether the AI amount extraction
+// request timed out. If true, the returned BNPL suggestion is deactivated for
+// the remainder of this page load.
 // `seen_unsupported_currency_for_page_load` indicates whether the AI amount
 // extraction has seen an unsupported currency. If true, the returned BNPL
 // suggestion is deactivated for the remainder of this page load.
 std::vector<Suggestion> GetCreditCardFooterSuggestions(
     const AutofillClient& client,
-    bool should_show_bnpl_suggestion,
+    bool should_show_pay_later_tab_suggestions,
+    bool should_append_bnpl_suggestion,
     bool should_show_scan_credit_card,
     bool is_autofilled,
     bool with_gpay_logo,
@@ -217,7 +219,8 @@ Suggestion CreateCreditCardSuggestionForTest(
 // Exposes `GetCreditCardFooterSuggestions` in tests.
 std::vector<Suggestion> GetCreditCardFooterSuggestionsForTest(
     const AutofillClient& client,
-    bool should_show_bnpl_suggestion,
+    bool should_show_pay_later_tab_suggestions,
+    bool should_append_bnpl_suggestion,
     bool should_show_scan_credit_card,
     bool is_autofilled,
     bool with_gpay_logo,
@@ -230,7 +233,7 @@ std::u16string GetBnplPriceLowerBoundForTest(
 void SetCreditCardUploadEnabledForTest(bool credit_card_upload_enabled);
 
 // Exposes `ShouldShowVirtualCardOption` in tests.
-bool ShouldShowVirtualCardOptionForTest(const CreditCard* candidate_card,
+bool ShouldShowVirtualCardOptionForTest(const CreditCard& candidate_card,
                                         const AutofillClient& client);
 
 // Filter `cards_to_suggest` for CVC fields based on parameters such as field

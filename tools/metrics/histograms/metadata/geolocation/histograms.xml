@@ -49,7 +49,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Geolocation.AndroidLocationProvider.ProviderType"
-    enum="AndroidLocationProviderType" expires_after="2026-06-21">
+    enum="AndroidLocationProviderType" expires_after="2026-08-23">
   <owner>alvinji@chromium.org</owner>
   <owner>device-dev@chromium.org</owner>
   <summary>
@@ -132,6 +132,15 @@ chromium-metrics-reviews@google.com.
   <owner>justincohen@chromium.org</owner>
   <owner>bling-fundamentals@google.com</owner>
   <summary>iOS location permission state, recorded at startup.</summary>
+</histogram>
+
+<histogram name="Geolocation.LocationProviderAndroid.TimeToFirstPosition"
+    units="ms" expires_after="2026-07-12">
+  <owner>alvinji@chromium.org</owner>
+  <owner>device-dev@chromium.org</owner>
+  <summary>
+    Records the time duration for getting the first valid Geoposition.
+  </summary>
 </histogram>
 
 <histogram name="Geolocation.LocationProviderManager.Mode"
@@ -310,7 +319,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Geolocation.NetworkLocationRequest.Result"
-    enum="NetworkLocationRequestResult" expires_after="2026-06-07">
+    enum="NetworkLocationRequestResult" expires_after="2026-08-09">
   <owner>mattreynolds@chromium.org</owner>
   <owner>device-dev@chromium.org</owner>
   <summary>
@@ -404,7 +413,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Geolocation.SystemGeolocationSourceWin.PermissionStatusChangedAfterPrompt"
-    enum="LocationSystemPermissionStatus" expires_after="2026-06-07">
+    enum="LocationSystemPermissionStatus" expires_after="2026-08-09">
   <owner>mattreynolds@chromium.org</owner>
   <owner>device-dev@chromium.org</owner>
   <summary>

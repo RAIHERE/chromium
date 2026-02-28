@@ -330,6 +330,9 @@ class VIEWS_EXPORT LabelButton : public Button,
 
   bool appear_disabled_in_inactive_widget_ = false;
 
+  // Updates the icon when ink drop highlight changes (forced-colors mode).
+  base::CallbackListSubscription ink_drop_highlighted_subscription_;
+
   base::CallbackListSubscription flip_canvas_on_paint_subscription_ =
       AddFlipCanvasOnPaintForRTLUIChangedCallback(
           base::BindRepeating(&LabelButton::FlipCanvasOnPaintForRTLUIChanged,
@@ -360,6 +363,7 @@ VIEW_BUILDER_PROPERTY(bool, IsDefault)
 VIEW_BUILDER_PROPERTY(int, ImageLabelSpacing)
 VIEW_BUILDER_PROPERTY(bool, ImageCentered)
 VIEW_BUILDER_METHOD(SetImageModel, Button::ButtonState, const ui::ImageModel&)
+VIEW_BUILDER_METHOD(SetFocusRingCornerRadius, float)
 VIEW_BUILDER_METHOD(SetTextColor, Button::ButtonState, ui::ColorVariant)
 END_VIEW_BUILDER
 

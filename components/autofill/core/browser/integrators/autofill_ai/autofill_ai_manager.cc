@@ -53,11 +53,13 @@
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_import_utils.h"
+#include "components/autofill/core/browser/integrators/autofill_ai/autofill_ai_wallet_utils.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_logger.h"
 #include "components/autofill/core/browser/integrators/autofill_ai/metrics/autofill_ai_metrics.h"
 #include "components/autofill/core/browser/logging/log_manager.h"
 #include "components/autofill/core/browser/metrics/autofill_metrics_utils.h"
 #include "components/autofill/core/browser/ml_model/autofill_ai/autofill_ai_model_executor.h"
+#include "components/autofill/core/browser/network/autofill_ai/wallet_pass_access_manager.h"
 #include "components/autofill/core/browser/permissions/autofill_ai/autofill_ai_permission_utils.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_attribute.h"
 #include "components/autofill/core/browser/strike_databases/autofill_ai/autofill_ai_save_strike_database_by_host.h"
@@ -334,13 +336,15 @@ bool AutofillAiManager::MaybeImportForm(const FormStructure& form,
         base::BindOnce(&AutofillAiManager::HandlePromptResult, GetWeakPtr(),
                        form.ToFormData(), candidate_entity, ukm_source_id, prompt_type);
 
-    std::optional<EntityInstance> entity_instance;
+    std::optional<EntityInstance> old_entity;
     if (prompt_type == AutofillClient::AutofillAiImportPromptType::kUpdate) {
-      entity_instance = *client_->GetEntityDataManager()->GetEntityInstance(
+      old_entity = *client_->GetEntityDataManager()->GetEntityInstance(
           candidate_entity.guid());
     }
+    const bool is_save_synchronous = !IsMaskedStorageSupported(
+        candidate_entity.type(), candidate_entity.record_type());
     client_->ShowEntityImportBubble(std::move(candidate_entity),
-                                    std::move(entity_instance),
+                                    std::move(old_entity), is_save_synchronous,
                                     std::move(prompt_result_callback));
   }
   return prompt_shown;
@@ -362,7 +366,6 @@ void AutofillAiManager::HandlePromptResult(
   const bool prompt_accepted =
       result == AutofillClient::AutofillAiBubbleResult::kAccepted;
 
-  // This switch should handle prompt-type-specific logic.
   switch (prompt_type) {
     case AutofillClient::AutofillAiImportPromptType::kSave:
       client_->TriggerAutofillAiSavePromptSurvey(
@@ -374,11 +377,31 @@ void AutofillAiManager::HandlePromptResult(
       break;
   }
 
-  // Only add logic that is common across all prompt types below this line.
-  // Otherwise use the switch above.
+  if (!prompt_accepted) {
+    return;
+  }
 
-  if (prompt_accepted) {
+  if (!IsMaskedStorageSupported(entity.type(), entity.record_type())) {
     entity_manager.AddOrUpdateEntityInstance(std::move(entity));
+    return;
+  }
+
+  base::OnceCallback<void(std::optional<EntityInstance>)> callback =
+      base::BindOnce(&HandleWalletUpsertResponse,
+                     client_->GetEntityDataManager()->GetWeakPtr(),
+                     client_->GetWeakPtr(), prompt_type, entity);
+  // For now, asynchronous saves imply saving to Wallet.
+  if (WalletPassAccessManager* wallet_manager =
+          client_->GetWalletPassAccessManager()) {
+    switch (prompt_type) {
+      case AutofillClient::AutofillAiImportPromptType::kSave:
+      case AutofillClient::AutofillAiImportPromptType::kMigrate:
+        wallet_manager->SaveWalletEntityInstance(entity, std::move(callback));
+        break;
+      case AutofillClient::AutofillAiImportPromptType::kUpdate:
+        wallet_manager->UpdateWalletEntityInstance(entity, std::move(callback));
+        break;
+    }
   }
 }
 
@@ -676,14 +699,11 @@ AutofillAiManager::GetUpdatePromptCandidates(
       // This will contain the attributes of the new to-be-updated entity.
       base::flat_set<AttributeInstance, AttributeInstance::CompareByType>
           new_attributes = std::move(mergeability->mergeable_attributes);
-      for (const AttributeInstance& curr_attribute :
-           saved_entity.attributes()) {
-        // Only add the attributes of the saved entity that weren't mergeable
-        // with the observed entity. The other attributes were added by
-        // `mergeable_attributes`.
-        // Note that `base::flat_set::insert` does exactly that.
-        new_attributes.insert(curr_attribute);
-      }
+      // First add the attributes from the observed entity since the saved
+      // entity only has masked attributes.
+      new_attributes.insert_range(observed_entity.attributes());
+      // Add the remaining attributes from the saved entity.
+      new_attributes.insert_range(saved_entity.attributes());
       update_candidates.emplace_back(
           AutofillClient::AutofillAiImportPromptType::kUpdate,
           EntityInstance(saved_entity.type(), std::move(new_attributes),
@@ -749,18 +769,8 @@ AutofillAiManager::GetMigratePromptCandidates(
           observed_entity.IsSubsetOf(*local_entity)) {
         migrate_candidates.emplace_back(
             AutofillClient::AutofillAiImportPromptType::kMigrate,
-            EntityInstance(
-                local_entity->type(),
-                base::ToVector(local_entity->attributes()),
-                local_entity->guid(), local_entity->nickname(),
-                local_entity->date_modified(), local_entity->use_count(),
-                local_entity->use_date(),
-                EntityInstance::RecordType::kServerWallet,
-                // Entities that are migrated from local to server are never
-                // read-only, since local entities can always be edited by the
-                // users, so can their server counterpart.
-                EntityInstance::AreAttributesReadOnly(false),
-                /*frecency_override=*/""));
+            local_entity->CopyWithNewRecordType(
+                EntityInstance::RecordType::kServerWallet));
       }
     }
   }

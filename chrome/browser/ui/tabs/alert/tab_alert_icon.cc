@@ -6,16 +6,12 @@
 
 #include "chrome/app/vector_icons/vector_icons.h"
 #include "chrome/browser/actor/resources/grit/actor_browser_resources.h"
+#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/layout_constants.h"
 #include "chrome/browser/ui/tabs/alert/tab_alert.h"
-#include "chrome/common/chrome_features.h"
 #include "components/vector_icons/vector_icons.h"
 #include "ui/base/models/image_model.h"
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/browser_ui/glic_vector_icon_manager.h"
-#endif
 
 namespace tabs {
 
@@ -97,21 +93,12 @@ const gfx::VectorIcon& GetAlertIcon(TabAlert alert_state) {
       return vector_icons::kCardboardIcon;
     case TabAlert::kActorWaitingOnUser:
     case TabAlert::kActorAccessing:
-#if BUILDFLAG(ENABLE_GLIC)
-      if (base::FeatureList::IsEnabled(features::kGlicActorUiTaskIconV2)) {
-        return glic::GlicVectorIconManager::GetVectorIcon(
-            IDR_ACTOR_AUTO_BROWSE_ICON);
-      }
-#endif
-      return kTvIcon;
+      return glic::GlicVectorIconManager::GetVectorIcon(
+          IDR_ACTOR_AUTO_BROWSE_ICON);
     case TabAlert::kGlicAccessing:
     case TabAlert::kGlicSharing:
-#if BUILDFLAG(ENABLE_GLIC)
       return glic::GlicVectorIconManager::GetVectorIcon(
           IDR_GLIC_ACCESSING_ICON);
-#else
-      return kTvIcon;
-#endif
   }
 }
 

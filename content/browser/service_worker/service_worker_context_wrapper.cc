@@ -1099,6 +1099,17 @@ ServiceWorkerContextWrapper::GetRemoteAssociatedInterfaces(
   return *version.associated_interface_provider();
 }
 
+void ServiceWorkerContextWrapper::AddMessageToConsole(
+    int64_t service_worker_version_id,
+    blink::mojom::ConsoleMessageLevel level,
+    const std::string& message) {
+  DCHECK_CURRENTLY_ON(BrowserThread::UI);
+  auto* version = GetLiveServiceWorker(service_worker_version_id);
+  if (version) {
+    version->AddMessageToConsole(level, message);
+  }
+}
+
 std::optional<ServiceWorkerRunningInfo>
 ServiceWorkerContextWrapper::GetRunningServiceWorkerInfo(int64_t version_id) {
   const auto search = running_service_workers_.find(version_id);
@@ -1648,11 +1659,11 @@ void ServiceWorkerContextWrapper::DidGetAllRegistrationsForGetAllStorageKeys(
     auto it = storage_keys.find(storage_key);
     if (it == storage_keys.end()) {
       storage_keys[storage_key] = StorageUsageInfo(
-          storage_key, registration_info.stored_version_size_bytes,
+          storage_key, registration_info.stored_version_size.InBytes(),
           base::Time());
     } else {
       it->second.total_size_bytes +=
-          registration_info.stored_version_size_bytes;
+          registration_info.stored_version_size.InBytes();
     }
   }
 

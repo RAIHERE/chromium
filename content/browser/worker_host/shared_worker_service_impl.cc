@@ -428,6 +428,7 @@ SharedWorkerHost* SharedWorkerServiceImpl::CreateWorker(
          worker_origin == host->instance().storage_key().origin())
       << worker_origin << " and " << host->instance().storage_key().origin()
       << " should be the same.";
+
   WorkerScriptFetcher::CreateAndStart(
       worker_process_host->GetDeprecatedID(), host->token(),
       host->instance().url(), creator, &creator,
@@ -444,7 +445,8 @@ SharedWorkerHost* SharedWorkerServiceImpl::CreateWorker(
       storage_partition_, storage_domain,
       SharedWorkerDevToolsAgentHost::GetFor(host), host->GetDevToolsToken(),
       host->instance().DoesRequireCrossSiteRequestForCookies(),
-      storage_access_api_status,
+      storage_access_api_status, host->network_restrictions_id(),
+      creator.GetNetworkRestrictionsID(), host->creator_policies().Clone(),
       base::BindOnce(&SharedWorkerServiceImpl::StartWorker,
                      weak_factory_.GetWeakPtr(), weak_host, message_port,
                      std::move(cloned_outside_fetch_client_settings_object)));
@@ -545,6 +547,16 @@ bool SharedWorkerServiceImpl::EvictBFCachedClientsIfLastActive(
   base::UmaHistogramTimes("Content.SharedWorker.Service.LastClientCheckTime",
                           timer.Elapsed());
   return was_last_active_for_any_worker;
+}
+
+void SharedWorkerServiceImpl::OnClientStateChanged(
+    RenderFrameHostImpl* render_frame_host) {
+  // Notify all workers that have this frame as a client.
+  for (const auto& host : worker_hosts_) {
+    if (host->ContainsClient(render_frame_host)) {
+      host->OnClientStateChanged();
+    }
+  }
 }
 
 }  // namespace content

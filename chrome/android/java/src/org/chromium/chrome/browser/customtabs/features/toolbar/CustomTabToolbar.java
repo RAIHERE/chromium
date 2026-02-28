@@ -60,7 +60,6 @@ import androidx.annotation.VisibleForTesting;
 import androidx.appcompat.content.res.AppCompatResources;
 import androidx.browser.customtabs.CustomTabsIntent;
 import androidx.browser.customtabs.CustomTabsIntent.CloseButtonPosition;
-import androidx.browser.customtabs.ExperimentalOpenInBrowser;
 import androidx.core.content.ContextCompat;
 import androidx.core.view.MarginLayoutParamsCompat;
 import androidx.core.widget.ImageViewCompat;
@@ -108,7 +107,6 @@ import org.chromium.chrome.browser.omnibox.LocationBarDataProvider;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
 import org.chromium.chrome.browser.omnibox.UrlBar;
 import org.chromium.chrome.browser.omnibox.UrlBarCoordinator;
-import org.chromium.chrome.browser.omnibox.UrlBarCoordinator.SelectionState;
 import org.chromium.chrome.browser.omnibox.UrlBarData;
 import org.chromium.chrome.browser.omnibox.status.PageInfoIphController;
 import org.chromium.chrome.browser.omnibox.styles.OmniboxResourceProvider;
@@ -676,7 +674,6 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
      * @param intentDataProvider {@link BrowserServicesIntentDataProvider} for accessing CCT intent
      *     data.
      */
-    @ExperimentalOpenInBrowser
     public void initVisibilityRule(
             Activity activity,
             Supplier<AppMenuHandler> appMenuHandler,
@@ -2347,7 +2344,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
                     UrlBarData.forNonUrlText(
                             getContext().getString(R.string.twa_running_in_chrome)),
                     UrlBar.ScrollType.NO_SCROLL,
-                    SelectionState.SELECT_ALL);
+                    UrlBarData.SELECT_ALL);
         }
 
         private void runAfterBrandingRunnables() {
@@ -2477,7 +2474,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
             Tab tab = getCurrentTab();
             if (tab == null) {
                 mUrlCoordinator.setUrlBarData(
-                        UrlBarData.EMPTY, UrlBar.ScrollType.NO_SCROLL, SelectionState.SELECT_ALL);
+                        UrlBarData.EMPTY, UrlBar.ScrollType.NO_SCROLL, UrlBarData.SELECT_ALL);
                 return;
             }
 
@@ -2531,7 +2528,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
             mUrlCoordinator.setUrlBarData(
                     UrlBarData.create(url, displayText, originStart, originEnd, url.getSpec()),
                     UrlBar.ScrollType.SCROLL_TO_TLD,
-                    SelectionState.SELECT_ALL);
+                    UrlBarData.SELECT_ALL);
 
             WebContents webContents = tab.getWebContents();
             if (webContents != null) {
@@ -2566,12 +2563,7 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
         private void updateColors() {
             updateOmniboxBackground();
             updateButtonsTint();
-
-            if (mUrlCoordinator.setBrandedColorScheme(mBrandedColorScheme)) {
-                // Update the URL to make it use the new color scheme.
-                updateUrlBar();
-            }
-
+            mUrlCoordinator.setBrandedColorScheme(mBrandedColorScheme);
             mTitleBar.setTextColor(
                     OmniboxResourceProvider.getUrlBarPrimaryTextColor(
                             getContext(), mBrandedColorScheme));
@@ -2778,9 +2770,6 @@ public class CustomTabToolbar extends ToolbarLayout implements View.OnLongClickL
 
         @Override
         public void clearUrlBarCursorWithoutFocusAnimations() {}
-
-        @Override
-        public void selectAll() {}
 
         @Override
         public void revertChanges() {}

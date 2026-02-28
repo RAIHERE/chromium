@@ -3,7 +3,6 @@
 // found in the LICENSE file.
 
 // Subpages
-import './ai_page/ai_compare_subpage.js';
 import './ai_page/ai_tab_organization_subpage.js';
 import './ai_page/history_search_page.js';
 import './ai_page/offer_writing_help_page.js';
@@ -84,6 +83,7 @@ import './site_settings/site_details_permission_device_entry.js';
 import './site_settings/site_settings_page.js';
 // <if expr="is_chromeos">
 import './site_settings/smart_card_readers_page.js';
+import './site_settings/web_printing_page.js';
 // </if>
 import './site_settings/sound_page.js';
 import './site_settings/storage_access_page.js';
@@ -91,7 +91,6 @@ import './site_settings/usb_devices_page.js';
 import './site_settings/v8_page.js';
 import './site_settings/vr_page.js';
 import './site_settings/web_applications_page.js';
-import './site_settings/web_printing_page.js';
 import './site_settings/window_management_page.js';
 import './site_settings/zoom_levels.js';
 // <if expr="not is_chromeos">
@@ -161,7 +160,6 @@ export {SettingsLiveCaptionElement} from './a11y_page/live_caption.js';
 export {SettingsLiveTranslateElement} from './a11y_page/live_translate.js';
 // </if>
 
-export {SettingsAiCompareSubpageElement} from './ai_page/ai_compare_subpage.js';
 export {isFeatureDisabledByPolicy, SettingsAiPolicyIndicator} from './ai_page/ai_policy_indicator.js';
 export {SettingsAiTabOrganizationSubpageElement} from './ai_page/ai_tab_organization_subpage.js';
 export {AiEnterpriseFeaturePrefName, AiPageActions, FeatureOptInState, SettingsAiPageFeaturePrefName} from './ai_page/constants.js';
@@ -256,7 +254,6 @@ export {PrivacyGuideMsbbFragmentElement} from './privacy_page/privacy_guide/priv
 export {SettingsPrivacyGuidePageElement} from './privacy_page/privacy_guide/privacy_guide_page.js';
 export {PrivacyGuideSafeBrowsingFragmentElement} from './privacy_page/privacy_guide/privacy_guide_safe_browsing_fragment.js';
 export {PrivacyGuideWelcomeFragmentElement} from './privacy_page/privacy_guide/privacy_guide_welcome_fragment.js';
-export {CrLottieElement} from './privacy_page/security/cr_lottie.js';
 export {FINGERPRINT_CHECK_DARK_URL, FINGERPRINT_CHECK_LIGHT_URL, FINGERPRINT_SCANNED_ICON_DARK, FINGERPRINT_SCANNED_ICON_LIGHT, FingerprintProgressArcElement, PROGRESS_CIRCLE_BACKGROUND_COLOR_DARK, PROGRESS_CIRCLE_BACKGROUND_COLOR_LIGHT, PROGRESS_CIRCLE_FILL_COLOR_DARK, PROGRESS_CIRCLE_FILL_COLOR_LIGHT} from './privacy_page/security/fingerprint_progress_arc.js';
 export {SafeBrowsingSetting} from './privacy_page/security/safe_browsing_types.js';
 export {SecureDnsResolverType, SettingsSecureDnsElement} from './privacy_page/security/secure_dns.js';
@@ -336,6 +333,7 @@ export {StorageAccessSiteListEntryElement} from './site_settings/storage_access_
 export {StorageAccessStaticSiteListEntryElement} from './site_settings/storage_access_static_site_list_entry.js';
 export type {StorageAccessStaticSiteListEntry} from './site_settings/storage_access_static_site_list_entry.js';
 export {V8PageElement} from './site_settings/v8_page.js';
+export {WebPrintingPageElement} from './site_settings/web_printing_page.js';
 export {WebsiteUsageBrowserProxyImpl} from './site_settings/website_usage_browser_proxy.js';
 export type {WebsiteUsageBrowserProxy} from './site_settings/website_usage_browser_proxy.js';
 export {ZoomLevelsElement} from './site_settings/zoom_levels.js';

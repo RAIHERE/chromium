@@ -38,13 +38,13 @@
   width: var(--button-height);
 }
 
-cr-button#entrypoint.ai-mode-button {
+cr-button#entrypoint {
   width: max-content;
 }
 
 @keyframes slide-in {
   to {
-    transform: translateX(0px);
+    transform: translateX(0);
   }
 }
 
@@ -63,11 +63,6 @@ cr-button#entrypoint.ai-mode-button {
     fade-in 850ms 970ms var(--text-animation-curve) forwards;
   opacity: 0;
   transform: translateX(-12px);
-}
-
-#entrypoint.ai-mode-button {
-  position: relative;
-  z-index: 5;
 }
 
 /*
@@ -107,12 +102,13 @@ cr-button#entrypoint.ai-mode-button {
   right: 0;
   scale: 2 2;
   top: -50%;
+  will-change: transform, opacity;
 }
 
 .aim-gradient-outer-blur {
   filter: blur(2px);
   opacity: 0.35;
-  transform: translate3d(0px, 0px, 0px);
+  transform: translate3d(0, 0, 0);
 }
 
 .dark .aim-gradient-outer-blur {
@@ -138,25 +134,16 @@ cr-button#entrypoint.ai-mode-button {
   opacity: 0;
 }
 
-@keyframes fade-out-only {
-  0% {
-    opacity: 1;
-  }
-
-  50% {
-    opacity: 1;
-  }
-
-  100% {
-    opacity: 0;
-  }
+@keyframes fade-in-out {
+  0% { opacity: 0; }
+  20% { opacity: 1; }
+  50% { opacity: 1; }
+  100% { opacity: 0; }
 }
 
 :host([glif-animation-state='started']) .aim-gradient-outer-blur:before,
 :host([glif-animation-state='started']) .aim-gradient-solid:before {
-  /* Start fully opaque before fading. */
-  opacity: 1;
-  animation: fade-out-only var(--duration) linear forwards;
+  animation: fade-in-out var(--duration) linear both;
 }
 
 @keyframes opacity-fade-in-and-stay {
@@ -171,7 +158,7 @@ cr-button#entrypoint.ai-mode-button {
 
 :host([glif-animation-state='spinner-only']) .aim-gradient-outer-blur:before,
 :host([glif-animation-state='spinner-only']) .aim-gradient-solid:before {
-  animation: opacity-fade-in-and-stay 300ms linear forwards;
+  animation: opacity-fade-in-and-stay 300ms 250ms linear forwards;
 }
 
 :host([glif-animation-state='finished']) .aim-gradient-outer-blur:before,
@@ -179,8 +166,25 @@ cr-button#entrypoint.ai-mode-button {
   opacity: 0;
 }
 
+@keyframes rotate-gradient-entry {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(540deg);
+  }
+}
+
+:host([glif-animation-state='started']) .aim-gradient-outer-blur,
+:host([glif-animation-state='started']) .aim-gradient-solid {
+  animation-duration: var(--duration);
+  animation-fill-mode: both;
+  animation-iteration-count: 1;
+  animation-name: rotate-gradient-entry;
+}
+
 :host([glif-animation-state='spinner-only']) .aim-background {
-  animation: opacity-fade-in-and-stay 300ms linear forwards;
+  animation: opacity-fade-in-and-stay 300ms 150ms linear forwards;
   background-color: var(--fulfillment-background);
 }
 
@@ -190,10 +194,11 @@ cr-button#entrypoint.ai-mode-button {
   filter: blur(4px);
   inset: var(--gradient-width);
   position: absolute;
+  will-change: background-color;
 }
 
 :host([glif-animation-state='started']) .aim-background {
-  animation: background-fade var(--duration) linear forwards;
+  animation: background-fade var(--duration) linear both;
 }
 
 :host([glif-animation-state='finished']) .aim-background {
@@ -201,17 +206,10 @@ cr-button#entrypoint.ai-mode-button {
 }
 
 @keyframes background-fade {
-  0% {
-    background: var(--fulfillment-background);
-  }
-
-  50% {
-    background: var(--fulfillment-background);
-  }
-
-  100% {
-    background: var(--input-background);
-  }
+  0% { background: var(--input-background); }
+  20% { background: var(--fulfillment-background); }
+  50% { background: var(--fulfillment-background); }
+  100% { background: var(--input-background); }
 }
 
 @keyframes hover-background-delay {
@@ -223,9 +221,8 @@ cr-button#entrypoint.ai-mode-button {
 }
 
 #entrypoint {
-  --cr-button-disabled-text-color: var(
-    --color-composebox-context-entrypoint-text-disabled
-  );
+  --cr-button-disabled-text-color:
+      var(--color-composebox-context-entrypoint-text-disabled);
   --cr-button-text-color: var(--color-composebox-file-chip-text);
   --cr-hover-background-color:
       var(--cr-icon-button-hover-background-color);
@@ -233,6 +230,8 @@ cr-button#entrypoint.ai-mode-button {
   --icon-block-padding-small: 10px;
   border: initial;
   gap: 4px;
+  position: relative;
+  z-index: 5;
 }
 
 :host(:not([glif-animation-state='ineligible'])) #entrypoint {
@@ -293,6 +292,7 @@ cr-button#entrypoint.ai-mode-button {
 
 #tabHeader {
   color: var(--cr-primary-text-color);
+  font-family: var(--cr-composebox-context-menu-font-family, inherit);
   font-size: 11px;
   font-weight: 500;
   line-height: 16px;
@@ -309,6 +309,7 @@ cr-button#entrypoint.ai-mode-button {
   color: var(--cr-primary-text-color);
   cursor: pointer;
   display: flex;
+  font-family: var(--cr-composebox-context-menu-font-family, inherit);
   font-size: 13px;
   font-weight: 400;
   gap: 8px;
@@ -326,6 +327,16 @@ cr-button#entrypoint.ai-mode-button {
 
 .dropdown-item:hover {
   background-color: var(--cr-hover-background-color);
+}
+
+.dropdown-item:focus {
+  background-color: var(--cr-hover-background-color);
+  outline: none;
+}
+
+.dropdown-item:focus-visible {
+  outline: 2px solid var(--cr-focus-outline-color);
+  outline-offset: -2px;
 }
 
 .dropdown-item[disabled] {
@@ -357,21 +368,18 @@ cr-button#entrypoint.ai-mode-button {
 }
 
 .multi-tab-icon {
-  --iron-icon-height: 10px;
-  --iron-icon-width: 10px;
-  border-radius: 10px;
+  --iron-icon-height: 16px;
+  --iron-icon-width: 16px;
   flex-shrink: 0;
   margin-left: auto;
-  padding: 2px;
 }
 
 #multi-tab-add {
-  border: 1px solid;
+  color: var(--color-composebox-file-chip-text);
 }
 
 #multi-tab-check {
-  --iron-icon-fill-color: white;
-  background-color: var(--color-composebox-tab-selector-button-selected);
+  color: var(--color-composebox-tab-selector-button-selected);
 }
 
 @media (forced-colors: active) {

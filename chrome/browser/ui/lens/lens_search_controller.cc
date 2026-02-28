@@ -31,9 +31,9 @@
 #include "chrome/browser/ui/lens/lens_search_feature_flag_utils.h"
 #include "chrome/browser/ui/lens/lens_searchbox_controller.h"
 #include "chrome/browser/ui/lens/lens_session_metrics_logger.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_key.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_entry_key.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/webui/util/image_util.h"
 #include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "chrome/grit/branded_strings.h"
@@ -142,9 +142,8 @@ void LensSearchController::Initialize(
   // Create Gen204 controller first as query controller depends on it.
   gen204_controller_ = std::make_unique<lens::LensOverlayGen204Controller>();
 
-  lens_overlay_controller_ = CreateLensOverlayController(
-      tab_, this, variations_client, identity_manager, pref_service,
-      sync_service, theme_service);
+  lens_overlay_controller_ =
+      CreateLensOverlayController(tab_, this, pref_service, theme_service);
 
   lens_overlay_side_panel_coordinator_ =
       CreateLensOverlaySidePanelCoordinator();
@@ -267,6 +266,7 @@ void LensSearchController::OpenLensOverlayWithPendingRegion(
   // Setup all state necessary for this Lens session.
   StartLensSession(invocation_source);
 
+  should_show_csb_ = false;
   lens_overlay_controller_->ShowUIWithPendingRegion(
       invocation_source, std::move(region), region_bitmap);
 }
@@ -642,14 +642,10 @@ std::unique_ptr<LensOverlayController>
 LensSearchController::CreateLensOverlayController(
     tabs::TabInterface* tab,
     LensSearchController* lens_search_controller,
-    variations::VariationsClient* variations_client,
-    signin::IdentityManager* identity_manager,
     PrefService* pref_service,
-    syncer::SyncService* sync_service,
     ThemeService* theme_service) {
-  return std::make_unique<LensOverlayController>(
-      tab, lens_search_controller, variations_client, identity_manager,
-      pref_service, sync_service, theme_service);
+  return std::make_unique<LensOverlayController>(tab, lens_search_controller,
+                                                 pref_service);
 }
 
 std::unique_ptr<lens::LensOverlayQueryController>
@@ -717,21 +713,32 @@ LensSearchController::CreateLensQueryController(
       gen204_controller_.get());
 }
 
+bool LensSearchController::ShouldEnableContextualTasksRouting(
+    lens::LensOverlayInvocationSource invocation_source) {
+  // Check if contextual tasks is currently available. If so, route through
+  // results to the contextual tasks side panel.
+  auto* const entry_point_eligibility_manager =
+      contextual_tasks::EntryPointEligibilityManager::From(
+          tab_->GetBrowserWindowInterface());
+
+  const bool are_entry_points_eligible =
+      entry_point_eligibility_manager &&
+      entry_point_eligibility_manager->AreEntryPointsEligible();
+
+  return are_entry_points_eligible &&
+         (contextual_tasks::GetEnableLensInContextualTasks() ||
+          invocation_source ==
+              lens::LensOverlayInvocationSource::kContextualTasksComposebox);
+}
+
 void LensSearchController::StartLensSession(
     lens::LensOverlayInvocationSource invocation_source,
     bool suppress_contextualization) {
   state_ = State::kInitializing;
   invocation_source_ = invocation_source;
 
-  // Check if contextual tasks is currently available. If so, route through
-  // results to the contextual tasks side panel.
-  auto* const entry_point_eligibility_manager =
-      contextual_tasks::EntryPointEligibilityManager::From(
-          tab_->GetBrowserWindowInterface());
   should_route_to_contextual_tasks_ =
-      contextual_tasks::GetEnableLensInContextualTasks() &&
-      entry_point_eligibility_manager &&
-      entry_point_eligibility_manager->AreEntryPointsEligible();
+      ShouldEnableContextualTasksRouting(invocation_source);
 
   // Create the query controller to be used for the current invocation.
   CHECK(!lens_overlay_query_controller_);
@@ -847,7 +854,11 @@ void LensSearchController::CloseLensPart2(
   // Let the controllers know to cleanup.
   // TODO(crbug.com/404941800): Move logging to a shared location to not be
   // dependent on the overlay controller.
-  lens_overlay_controller_->CloseUI(dismissal_source);
+  if (query_router_) {
+    query_router_->RemoveContextualSearchContextIfNecessary(
+        lens_overlay_controller_->HasRegionSelection());
+  }
+  lens_overlay_controller_->CloseUI();
   lens_searchbox_controller_->CloseUI();
   lens_composebox_controller_->CloseUI();
   lens_permission_bubble_controller_.reset();

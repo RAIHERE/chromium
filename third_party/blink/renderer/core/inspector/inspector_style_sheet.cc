@@ -97,7 +97,7 @@ static const CSSParserContext* ParserContextForDocument(
 }
 
 String FindMagicComment(const String& content, const String& name) {
-  DCHECK(name.Find("=") == kNotFound);
+  DCHECK(!name.contains("="));
 
   wtf_size_t length = content.length();
   wtf_size_t name_length = name.length();
@@ -135,7 +135,7 @@ String FindMagicComment(const String& content, const String& name) {
       continue;
     }
     if (kMultiline) {
-      closing_comment_pos = content.Find("*/", equal_sign_pos + 1);
+      closing_comment_pos = content.find("*/", equal_sign_pos + 1);
       if (closing_comment_pos == kNotFound) {
         return g_empty_string;
       }
@@ -151,15 +151,15 @@ String FindMagicComment(const String& content, const String& name) {
                      ? content.Substring(url_pos, closing_comment_pos - url_pos)
                      : content.Substring(url_pos);
 
-  wtf_size_t new_line = match.Find("\n");
+  wtf_size_t new_line = match.find("\n");
   if (new_line != kNotFound) {
     match = match.Substring(0, new_line);
   }
   match = match.StripWhiteSpace();
 
-  String disallowed_chars("\"' \t");
+  const StringView disallowed_chars("\"' \t");
   for (uint32_t i = 0; i < match.length(); ++i) {
-    if (disallowed_chars.find(match[i]) != kNotFound) {
+    if (disallowed_chars.contains(match[i])) {
       return g_empty_string;
     }
   }
@@ -807,7 +807,7 @@ bool InspectorStyle::CheckRegisteredPropertySyntaxWithVarSubstitution(
   if (!document) {
     return false;
   }
-  if (!property.name.StartsWith("--")) {
+  if (!property.name.starts_with("--")) {
     return false;
   }
   const PropertyRegistry* registry = document->GetPropertyRegistry();
@@ -998,8 +998,8 @@ InspectorStyle::LonghandProperties(
     return nullptr;
   }
   auto local_context =
-      CSSParserLocalContext::CreateWithoutPropertyForInspector()
-          .WithCurrentShorthand(property_id);
+      CSSParserLocalContext::CreateWithoutPropertyForInspector();
+  local_context.SetCurrentShorthand(property_id);
   HeapVector<CSSPropertyValue, 64> longhand_properties;
   if (To<Shorthand>(property).ParseShorthand(
           property_entry.important, stream,
@@ -1342,7 +1342,7 @@ CSSRule* InspectorStyleSheet::SetStyleText(
     auto old_suffix = text_.Substring(
         range.end, parent_source_data->rule_body_range.end - range.end);
 
-    if (!(old_prefix.EndsWith("{") && old_suffix.StartsWith("}"))) {
+    if (!(old_prefix.ends_with('{') && old_suffix.starts_with('}'))) {
       exception_state.ThrowDOMException(
           DOMExceptionCode::kSyntaxError,
           "Source range didn't match existing style source range");
@@ -1870,7 +1870,7 @@ void InspectorStyleSheet::ParseText(const String& text) {
     if (property_registry) {
       for (const auto& rule_source_data : *source_data_) {
         for (auto& property_source_data : rule_source_data->property_data) {
-          if (!property_source_data.name.StartsWith("--") ||
+          if (!property_source_data.name.starts_with("--") ||
               !property_source_data.parsed_ok) {
             continue;
           }

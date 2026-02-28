@@ -3,11 +3,11 @@
 // found in the LICENSE file.
 
 #include "base/strings/strcat.h"
-#include "base/test/metrics/histogram_tester.h"
 #include "base/test/metrics/user_action_tester.h"
 #include "chrome/browser/glic/fre/glic_fre_controller.h"
 #include "chrome/browser/glic/fre/glic_fre_dialog_view.h"
 #include "chrome/browser/glic/glic_pref_names.h"
+#include "chrome/browser/glic/test_support/glic_histogram_tester.h"
 #include "chrome/browser/glic/test_support/glic_test_environment.h"
 #include "chrome/browser/glic/test_support/interactive_glic_test.h"
 #include "chrome/browser/glic/test_support/interactive_test_util.h"
@@ -129,14 +129,14 @@ class GlicFreControllerUiTestBase : public test::InteractiveGlicTest {
   net::EmbeddedTestServer& fre_server() { return fre_server_; }
   const GURL& fre_url() { return fre_url_; }
 
-  base::HistogramTester& histogram_tester() { return histogram_tester_; }
+  GlicHistogramTester& histogram_tester() { return histogram_tester_; }
   base::UserActionTester& user_action_tester() { return user_action_tester_; }
 
  protected:
   base::test::ScopedFeatureList features_;
   net::EmbeddedTestServer fre_server_;
   GURL fre_url_;
-  base::HistogramTester histogram_tester_;
+  GlicHistogramTester histogram_tester_;
   base::UserActionTester user_action_tester_;
 };
 
@@ -165,9 +165,12 @@ class GlicFreControllerUiTest : public GlicFreControllerUiTestBase {
     // completion. Disable that feature until that can be sorted out.
     features_.InitWithFeatures(
         /*enabled_features=*/{},
-        /*disabled_features=*/{features::kGlicWarming,
-                               features::kGlicFreWarming,
-                               features::kGlicTrustFirstOnboarding});
+        /*disabled_features=*/{
+            features::kGlicWarming,
+            features::kGlicFreWarming,
+            features::kGlicTrustFirstOnboarding,
+            features::kGlicUnifiedFreScreen,
+        });
   }
 
   auto ForceInvalidateAccount() {
@@ -451,7 +454,8 @@ class GlicFreControllerUiHttpErrorTest : public GlicFreControllerUiTestBase {
         /*enabled_features=*/{},
         /*disabled_features=*/{features::kGlicWarming,
                                features::kGlicFreWarming,
-                               features::kGlicTrustFirstOnboarding});
+                               features::kGlicTrustFirstOnboarding,
+                               features::kGlicUnifiedFreScreen});
 
     fre_server_.AddDefaultHandlers();
     // Register a handler that will return a 502 error.
@@ -517,7 +521,8 @@ class GlicFreControllerUiTimeoutTest : public GlicFreControllerUiTestBase {
         enabled_features,
         /*disabled_features=*/{features::kGlicWarming,
                                features::kGlicFreWarming,
-                               features::kGlicTrustFirstOnboarding});
+                               features::kGlicTrustFirstOnboarding,
+                               features::kGlicUnifiedFreScreen});
 
     fre_server_.AddDefaultHandlers();
     fre_server_.ServeFilesFromDirectory(
@@ -565,7 +570,9 @@ class GlicFreControllerRedirectTest : public GlicFreControllerUiTestBase,
 
     features_.InitWithFeaturesAndParameters(
         enabled_features,
-        /*disabled_features=*/{features::kGlicTrustFirstOnboarding});
+        /*disabled_features=*/{
+            features::kGlicTrustFirstOnboarding, features::kGlicWarming,
+            features::kGlicFreWarming, features::kGlicUnifiedFreScreen});
     GlicFreControllerUiTestBase::SetUp();
   }
 

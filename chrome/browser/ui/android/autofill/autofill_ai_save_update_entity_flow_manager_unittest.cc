@@ -16,7 +16,7 @@
 #include "chrome/test/base/chrome_render_view_host_test_harness.h"
 #include "chrome/test/base/testing_profile.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
-#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
+#include "components/autofill/core/browser/test_utils/entity_data_test_utils.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/strings/grit/components_strings.h"
@@ -102,7 +102,7 @@ TEST_F(AutofillAiSaveUpdateEntityFlowManagerTest, ShowSaveMessage) {
 
   EXPECT_EQ(test_api(*message_model).GetMessage().GetTitle(),
             l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE));
+                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID));
   EXPECT_EQ(
       test_api(*message_model).GetMessage().GetDescription(),
       l10n_util::GetStringUTF16(IDS_AUTOFILL_AI_SAVE_ENTITY_MESSAGE_SUBTITLE));
@@ -121,7 +121,7 @@ TEST_F(AutofillAiSaveUpdateEntityFlowManagerTest, ShowUpdateMessage) {
 
   EXPECT_EQ(test_api(*message_model).GetMessage().GetTitle(),
             l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE));
+                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID));
   EXPECT_EQ(
       test_api(*message_model).GetMessage().GetDescription(),
       l10n_util::GetStringUTF16(IDS_AUTOFILL_AI_SAVE_ENTITY_MESSAGE_SUBTITLE));
@@ -146,7 +146,7 @@ TEST_F(AutofillAiSaveUpdateEntityFlowManagerTest, ShowSaveToWalletMessage) {
       l10n_util::GetStringUTF16(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
   EXPECT_EQ(test_api(*message_model).GetMessage().GetTitle(),
             l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE));
+                IDS_AUTOFILL_AI_SAVE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID));
   EXPECT_EQ(
       test_api(*message_model).GetMessage().GetDescription(),
       l10n_util::GetStringFUTF16(
@@ -173,7 +173,7 @@ TEST_F(AutofillAiSaveUpdateEntityFlowManagerTest, ShowUpdateInWalletMessage) {
       l10n_util::GetStringUTF16(IDS_AUTOFILL_GOOGLE_WALLET_TITLE);
   EXPECT_EQ(test_api(*message_model).GetMessage().GetTitle(),
             l10n_util::GetStringUTF16(
-                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE));
+                IDS_AUTOFILL_AI_UPDATE_PASSPORT_ENTITY_DIALOG_TITLE_ANDROID));
   EXPECT_EQ(
       test_api(*message_model).GetMessage().GetDescription(),
       l10n_util::GetStringFUTF16(

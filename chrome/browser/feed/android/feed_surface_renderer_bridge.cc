@@ -145,25 +145,20 @@ void FeedSurfaceRendererBridge::RemoveDataStoreEntry(std::string_view key) {
       env, java_ref_, base::android::ConvertUTF8ToJavaString(env, key));
 }
 
-void FeedSurfaceRendererBridge::LoadMore(JNIEnv* env,
-                                         const JavaRef<jobject>& callback_obj) {
+void FeedSurfaceRendererBridge::LoadMore(
+    base::OnceCallback<void(bool)> callback) {
   if (!feed_stream_api_) {
     return;
   }
-  feed_stream_api_->LoadMore(
-      surface_id_, base::BindOnce(&base::android::RunBooleanCallbackAndroid,
-                                  ScopedJavaGlobalRef<jobject>(callback_obj)));
+  feed_stream_api_->LoadMore(surface_id_, std::move(callback));
 }
 
 void FeedSurfaceRendererBridge::ManualRefresh(
-    JNIEnv* env,
-    const JavaRef<jobject>& callback_obj) {
+    base::OnceCallback<void(bool)> callback) {
   if (!feed_stream_api_) {
     return;
   }
-  feed_stream_api_->ManualRefresh(
-      surface_id_, base::BindOnce(&base::android::RunBooleanCallbackAndroid,
-                                  ScopedJavaGlobalRef<jobject>(callback_obj)));
+  feed_stream_api_->ManualRefresh(surface_id_, std::move(callback));
 }
 
 static void JNI_FeedSurfaceRendererBridge_ProcessThereAndBackAgain(
@@ -243,7 +238,7 @@ static void JNI_FeedSurfaceRendererBridge_ReportOpenAction(
     Profile* profile,
     int32_t surface_id,
     const JavaRef<jobject>& j_url,
-    std::string& slice_id,
+    const std::string& slice_id,
     int action_type) {
   FeedApi* feed_api = GetFeedApi(profile);
   if (!feed_api) {
@@ -287,7 +282,7 @@ static void JNI_FeedSurfaceRendererBridge_ReportSliceViewed(
     JNIEnv* env,
     Profile* profile,
     int32_t surface_id,
-    std::string& slice_id) {
+    const std::string& slice_id) {
   FeedApi* feed_api = GetFeedApi(profile);
   if (!feed_api) {
     return;

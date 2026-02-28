@@ -19,6 +19,7 @@
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_tab_strip_tracker.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#include "chrome/browser/ui/browser_window/public/global_browser_collection.h"
 #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_infobar_delegate.h"
 #include "chrome/browser/ui/startup/default_browser_prompt/default_browser_prompt_manager.h"
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
@@ -49,17 +50,16 @@ using CloseReason = DefaultBrowserPromptManager::CloseReason;
 DefaultBrowserInfoBarManager::DefaultBrowserInfoBarManager() = default;
 DefaultBrowserInfoBarManager::~DefaultBrowserInfoBarManager() = default;
 
-void DefaultBrowserInfoBarManager::ShowInfoBars(bool can_pin_to_taskbar) {
+void DefaultBrowserInfoBarManager::Show(
+    std::unique_ptr<default_browser::DefaultBrowserController> controller,
+    bool can_pin_to_taskbar) {
   can_pin_to_taskbar_ = can_pin_to_taskbar;
 
-  default_browser_controller_ =
-      default_browser::DefaultBrowserManager::CreateControllerFor(
-          default_browser::DefaultBrowserEntrypointType::kStartupInfobar);
-  CHECK(default_browser_controller_);
-
+  default_browser_controller_ = std::move(controller);
   default_browser_controller_->OnShown();
 
-  browser_list_observation_.Observe(BrowserList::GetInstance());
+  browser_collection_observation_.Observe(
+      GlobalBrowserCollection::GetInstance());
   browser_tab_strip_tracker_ =
       std::make_unique<BrowserTabStripTracker>(this, this);
   // This will trigger a call to `OnTabStripModelChanged`, which will create
@@ -67,11 +67,11 @@ void DefaultBrowserInfoBarManager::ShowInfoBars(bool can_pin_to_taskbar) {
   browser_tab_strip_tracker_->Init();
 }
 
-void DefaultBrowserInfoBarManager::CloseAllInfoBars() {
+void DefaultBrowserInfoBarManager::CloseAll() {
   can_pin_to_taskbar_ = false;
   user_initiated_info_bar_close_pending_.reset();
 
-  browser_list_observation_.Reset();
+  browser_collection_observation_.Reset();
   browser_tab_strip_tracker_.reset();
 
   for (const auto& infobars_entry : infobars_) {
@@ -82,7 +82,8 @@ void DefaultBrowserInfoBarManager::CloseAllInfoBars() {
   infobars_.clear();
 }
 
-void DefaultBrowserInfoBarManager::OnBrowserRemoved(Browser* /*browser*/) {
+void DefaultBrowserInfoBarManager::OnBrowserClosed(
+    BrowserWindowInterface* /*browser*/) {
   if (user_initiated_info_bar_close_pending_.has_value()) {
     return;
   }
@@ -90,12 +91,14 @@ void DefaultBrowserInfoBarManager::OnBrowserRemoved(Browser* /*browser*/) {
   // If the last browser window that we are tracking is getting closed, and the
   // user hasn't interacted with the infobar yet, we record this as IGNORED.
   bool all_tracked_browser_windows_closed = true;
-  for (Browser* browser : *BrowserList::GetInstance()) {
-    if (ShouldTrackBrowser(browser)) {
-      all_tracked_browser_windows_closed = false;
-      break;
-    }
-  }
+  GlobalBrowserCollection::GetInstance()->ForEach(
+      [&all_tracked_browser_windows_closed,
+       this](BrowserWindowInterface* browser) {
+        if (ShouldTrackBrowser(browser)) {
+          all_tracked_browser_windows_closed = false;
+        }
+        return all_tracked_browser_windows_closed;
+      });
 
   if (!all_tracked_browser_windows_closed) {
     return;
@@ -103,7 +106,7 @@ void DefaultBrowserInfoBarManager::OnBrowserRemoved(Browser* /*browser*/) {
 
   // Reset the observers.
   browser_tab_strip_tracker_.reset();
-  browser_list_observation_.Reset();
+  browser_collection_observation_.Reset();
 
   default_browser_controller_->OnIgnored();
   default_browser_controller_.reset();
@@ -184,7 +187,7 @@ void DefaultBrowserInfoBarManager::OnInfoBarRemoved(infobars::InfoBar* infobar,
 void DefaultBrowserInfoBarManager::OnAccept() {
   base::UmaHistogramCounts100("DefaultBrowser.InfoBar.TimesShownBeforeAccept",
                               g_browser_process->local_state()->GetInteger(
-                                  prefs::kDefaultBrowserDeclinedCount) +
+                                  prefs::kDefaultBrowserInfobarDeclinedCount) +
                                   1);
   base::RecordAction(base::UserMetricsAction("DefaultBrowserInfoBar_Accept"));
   UMA_HISTOGRAM_ENUMERATION("DefaultBrowser.InfoBar.UserInteraction",
@@ -223,4 +226,9 @@ void DefaultBrowserInfoBarManager::OnDismiss() {
                             NUM_INFO_BAR_USER_INTERACTION_TYPES);
 
   user_initiated_info_bar_close_pending_ = CloseReason::kDismiss;
+}
+
+default_browser::DefaultBrowserEntrypointType
+DefaultBrowserInfoBarManager::GetEntrypointType() const {
+  return default_browser::DefaultBrowserEntrypointType::kStartupInfobar;
 }

@@ -63,7 +63,7 @@ static ColorParseResult ParseColor(Color& parsed_color,
                                    mojom::blink::ColorScheme color_scheme,
                                    const ui::ColorProvider* color_provider,
                                    bool is_in_web_app_scope) {
-  if (EqualIgnoringASCIICase(color_string, "currentcolor")) {
+  if (EqualIgnoringAsciiCase(color_string, "currentcolor")) {
     return ColorParseResult::kCurrentColor;
   }
   if (CSSParser::ParseColor(parsed_color, color_string)) {
@@ -86,7 +86,7 @@ static ColorParseResult ParseColor(Color& parsed_color,
     static const TextLinkColors kDefaultTextLinkColors{};
     // TODO(40946458): Don't use default length resolver here!
     const ResolveColorValueContext context{
-        .conversion_data = CSSToLengthConversionData(/*element=*/nullptr),
+        .length_resolver = CSSToLengthConversionData(/*element=*/nullptr),
         .text_link_colors = kDefaultTextLinkColors,
         .used_color_scheme = color_scheme,
         .color_provider = color_provider,

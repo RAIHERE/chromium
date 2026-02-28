@@ -62,13 +62,16 @@ bool g_manager_is_alive = false;
 
 bool g_use_utility_thread_group = false;
 
-size_t GetEnvironmentIndexForTraits(const TaskTraits& traits) {
+size_t GetEnvironmentIndexForTraits(const TaskTraits& traits,
+                                    ThreadType originating_thread_type) {
+  const ThreadType effective_thread_type =
+      EffectiveThreadType(traits, originating_thread_type);
   const bool is_background =
-      traits.priority() == TaskPriority::BEST_EFFORT &&
+      effective_thread_type == ThreadType::kBackground &&
       traits.thread_policy() == ThreadPolicy::PREFER_BACKGROUND &&
       CanUseBackgroundThreadTypeForWorkerThread();
   const bool is_utility =
-      !is_background && traits.priority() <= TaskPriority::USER_VISIBLE &&
+      !is_background && effective_thread_type <= ThreadType::kUtility &&
       traits.thread_policy() == ThreadPolicy::PREFER_BACKGROUND &&
       g_use_utility_thread_group;
   if (traits.may_block() || traits.with_base_sync_primitives()) {
@@ -196,8 +199,7 @@ class WorkerThreadDelegate : public WorkerThread::Delegate {
         return false;
       }
     }
-    if (!task_tracker_->WillPostTaskNow(task,
-                                        transaction.traits().priority())) {
+    if (!task_tracker_->WillPostTaskNow(task, transaction.thread_type())) {
       return false;
     }
     transaction.PushImmediateTask(std::move(task));
@@ -284,8 +286,8 @@ class WorkerThreadDelegate : public WorkerThread::Delegate {
 
   bool CanRunNextTaskSource() EXCLUSIVE_LOCKS_REQUIRED(lock_) {
     return !priority_queue_.IsEmpty() &&
-           task_tracker_->CanRunPriority(
-               priority_queue_.PeekSortKey().priority());
+           task_tracker_->CanRunThreadType(
+               priority_queue_.PeekSortKey().thread_type());
   }
 
   const std::string thread_name_;
@@ -457,7 +459,8 @@ class WorkerThreadCOMDelegate : public WorkerThreadDelegate {
   const scoped_refptr<Sequence> message_pump_sequence_ =
       MakeRefCounted<Sequence>(TaskTraits{MayBlock()},
                                nullptr,
-                               TaskSourceExecutionMode::kParallel);
+                               TaskSourceExecutionMode::kParallel,
+                               GetCurrentTaskImportance());
   std::unique_ptr<win::ScopedCOMInitializer> scoped_com_initializer_;
 };
 
@@ -480,7 +483,8 @@ class PooledSingleThreadTaskRunnerManager::PooledSingleThreadTaskRunner
         sequence_(
             MakeRefCounted<Sequence>(traits,
                                      this,
-                                     TaskSourceExecutionMode::kSingleThread)) {
+                                     TaskSourceExecutionMode::kSingleThread,
+                                     GetCurrentTaskImportance())) {
     DCHECK(outer_);
     DCHECK(worker_);
   }
@@ -719,18 +723,21 @@ PooledSingleThreadTaskRunnerManager::CreateTaskRunnerImpl(
   // SingleThreadTaskRunnerThreadMode. In DEDICATED, the scoped_refptr is backed
   // by a local variable and in SHARED, the scoped_refptr is backed by a member
   // variable.
+  ThreadType originating_thread_type = GetCurrentTaskImportance();
   WorkerThread* dedicated_worker = nullptr;
   WorkerThread*& worker =
       thread_mode == SingleThreadTaskRunnerThreadMode::DEDICATED
           ? dedicated_worker
-          : GetSharedWorkerThreadForTraits<DelegateType>(traits);
+          : GetSharedWorkerThreadForTraits<DelegateType>(
+                traits, originating_thread_type);
   bool new_worker = false;
   bool started;
   {
     CheckedAutoLock auto_lock(lock_);
     if (!worker) {
       const auto& environment_params =
-          kEnvironmentParams[GetEnvironmentIndexForTraits(traits)];
+          kEnvironmentParams[GetEnvironmentIndexForTraits(
+              traits, originating_thread_type)];
       std::string worker_name;
       if (thread_mode == SingleThreadTaskRunnerThreadMode::SHARED) {
         worker_name += "Shared";
@@ -827,18 +834,20 @@ PooledSingleThreadTaskRunnerManager::CreateAndRegisterWorkerThread(
 template <>
 WorkerThread*&
 PooledSingleThreadTaskRunnerManager::GetSharedWorkerThreadForTraits<
-    WorkerThreadDelegate>(const TaskTraits& traits) {
+    WorkerThreadDelegate>(const TaskTraits& traits,
+                          ThreadType originating_thread_type) {
   return UNSAFE_TODO(shared_worker_threads_[GetEnvironmentIndexForTraits(
-      traits)])[TraitsToContinueOnShutdown(traits)];
+      traits, originating_thread_type)])[TraitsToContinueOnShutdown(traits)];
 }
 
 #if BUILDFLAG(IS_WIN)
 template <>
 WorkerThread*&
 PooledSingleThreadTaskRunnerManager::GetSharedWorkerThreadForTraits<
-    WorkerThreadCOMDelegate>(const TaskTraits& traits) {
+    WorkerThreadCOMDelegate>(const TaskTraits& traits,
+                             ThreadType originating_thread_type) {
   return UNSAFE_TODO(shared_com_worker_threads_[GetEnvironmentIndexForTraits(
-      traits)])[TraitsToContinueOnShutdown(traits)];
+      traits, originating_thread_type)])[TraitsToContinueOnShutdown(traits)];
 }
 #endif  // BUILDFLAG(IS_WIN)
 

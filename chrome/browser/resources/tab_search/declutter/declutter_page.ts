@@ -30,6 +30,14 @@ export class DeclutterPageElement extends CrLitElement {
     return 'declutter-page';
   }
 
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
   static override get properties() {
     return {
       availableHeight: {type: Number},
@@ -54,10 +62,6 @@ export class DeclutterPageElement extends CrLitElement {
   private listenerIds_: number[] = [];
   private visibilityChangedListener_: () => void;
 
-  static override get styles() {
-    return getCss();
-  }
-
   constructor() {
     super();
 
@@ -67,10 +71,6 @@ export class DeclutterPageElement extends CrLitElement {
             ({tabs}) => this.setUnusedTabs_(tabs));
       }
     };
-  }
-
-  override render() {
-    return getHtml.bind(this)();
   }
 
   override connectedCallback() {
@@ -91,6 +91,10 @@ export class DeclutterPageElement extends CrLitElement {
         'visibilitychange', this.visibilityChangedListener_);
   }
 
+  override firstUpdated() {
+    this.maybeAddScrollListener_();
+  }
+
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
 
@@ -104,10 +108,6 @@ export class DeclutterPageElement extends CrLitElement {
       this.maybeAddScrollListener_();
       this.updateScroll_();
     }
-  }
-
-  override firstUpdated() {
-    this.maybeAddScrollListener_();
   }
 
   override focus() {
@@ -207,7 +207,7 @@ export class DeclutterPageElement extends CrLitElement {
     }
   }
 
-  protected onTabKeyDown_(e: KeyboardEvent) {
+  protected onTabKeydown_(e: KeyboardEvent) {
     if ((e.key !== 'ArrowUp' && e.key !== 'ArrowDown')) {
       return;
     }
@@ -234,13 +234,13 @@ export class DeclutterPageElement extends CrLitElement {
     e.stopPropagation();
   }
 
-  protected onStaleTabExclude_(e: Event) {
+  protected onStaleTabClose_(e: Event) {
     const tabData = (e.currentTarget as TabSearchItemElement).data;
     this.apiProxy_.excludeFromStaleTabs(tabData.tab.tabId);
     this.announceTabExcluded_();
   }
 
-  protected onDuplicateTabExclude_(e: Event) {
+  protected onDuplicateTabClose_(e: Event) {
     const tabData = (e.currentTarget as TabSearchItemElement).data;
     this.apiProxy_.excludeFromDuplicateTabs(tabData.tab.url);
     this.announceTabExcluded_();

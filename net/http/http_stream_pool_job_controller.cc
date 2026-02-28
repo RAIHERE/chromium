@@ -298,7 +298,9 @@ int HttpStreamPool::JobController::Preconnect(
   }
 
   Group& group = pool_->GetOrCreateGroup(origin_stream_key_);
-  if (group.ActiveStreamSocketCount() >= num_streams) {
+  const size_t active_stream_count =
+      group.HandedOutStreamSocketCount() + group.IdleStreamSocketCount();
+  if (active_stream_count >= num_streams) {
     return OK;
   }
 
@@ -730,6 +732,11 @@ void HttpStreamPool::JobController::MaybeMarkAlternativeServiceBroken() {
 
   // No brokenness to report if the origin job fails.
   if (origin_job_result_.has_value() && *origin_job_result_ != OK) {
+    return;
+  }
+
+  // Only mark broken if the error is actually a protocol failure.
+  if (!IsQuicErrorBrokenable(*alternative_job_result_)) {
     return;
   }
 

@@ -198,11 +198,10 @@ class TestNetworkContext : public mojom::NetworkContext {
   void CreateWebSocket(
       const GURL& url,
       const std::vector<std::string>& requested_protocols,
-      const net::SiteForCookies& site_for_cookies,
       net::StorageAccessApiStatus storage_access_api_status,
       const net::IsolationInfo& isolation_info,
       std::vector<mojom::HttpHeaderPtr> additional_headers,
-      int32_t process_id,
+      const network::OriginatingProcessId& process_id,
       const url::Origin& origin,
       network::mojom::ClientSecurityStatePtr client_security_state,
       uint32_t options,
@@ -288,6 +287,7 @@ class TestNetworkContext : public mojom::NetworkContext {
       const GURL& url,
       mojom::CredentialsMode credentials_mode,
       const net::NetworkAnonymizationKey& network_anonymization_key,
+      const std::optional<base::UnguessableToken>& network_restrictions_id,
       const net::MutableNetworkTrafficAnnotationTag& traffic_annotation,
       const std::optional<net::ConnectionKeepAliveConfig>& keepalive_config,
       mojo::PendingRemote<network::mojom::ConnectionChangeObserverClient>

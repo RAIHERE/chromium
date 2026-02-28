@@ -468,9 +468,8 @@ void TestRenderFrameHost::SendRendererInitiatedNavigationRequest(
           base::TimeTicks() /* renderer_before_unload_end */,
           base::TimeTicks() /* before_unload_dialog_opened */,
           base::TimeTicks() /* before_unload_dialog_closed */,
-          blink::mojom::NavigationInitiatorActivationAndAdStatus::
-              kDidNotStartWithTransientActivation,
-          false /* is_container_initiated */,
+          false /* started_with_transient_activation */,
+          false /* started_by_ad */, false /* is_container_initiated */,
           net::StorageAccessApiStatus::kNone, false /* has_rel_opener */);
   auto common_params = blink::CreateCommonNavigationParams();
   common_params->url = url;
@@ -490,7 +489,8 @@ void TestRenderFrameHost::SendRendererInitiatedNavigationRequest(
       navigation_client_remote.InitWithNewEndpointAndPassReceiver());
   BeginNavigation(std::move(common_params), std::move(begin_params),
                   mojo::NullRemote(), std::move(navigation_client_remote),
-                  mojo::NullRemote(), mojo::NullReceiver());
+                  mojo::NullRemote(), mojo::NullReceiver(),
+                  mojo::NullReceiver());
 }
 
 void TestRenderFrameHost::SimulateDidChangeOpener(
@@ -641,7 +641,6 @@ void TestRenderFrameHost::SendCommitNavigation(
         keep_alive_loader_factory,
     mojo::PendingAssociatedRemote<blink::mojom::FetchLaterLoaderFactory>
         fetch_later_loader_factory,
-    const std::optional<network::ParsedPermissionsPolicy>& permissions_policy,
     blink::mojom::PolicyContainerPtr policy_container,
     const blink::DocumentToken& document_token,
     const base::UnguessableToken& devtools_navigation_token) {
@@ -672,13 +671,11 @@ void TestRenderFrameHost::SendCommitFailedNavigation(
 void TestRenderFrameHost::SendBeforeUnload(
     bool is_reload,
     base::WeakPtr<RenderFrameHostImpl> impl,
-    bool for_legacy,
-    const bool is_renderer_initiated_navigation) {
+    bool for_legacy) {
   if (on_sendbeforeunload_begin_) {
     std::move(on_sendbeforeunload_begin_).Run();
   }
-  RenderFrameHostImpl::SendBeforeUnload(is_reload, std::move(impl), for_legacy,
-                                        is_renderer_initiated_navigation);
+  RenderFrameHostImpl::SendBeforeUnload(is_reload, std::move(impl), for_legacy);
   if (on_sendbeforeunload_end_) {
     std::move(on_sendbeforeunload_end_).Run();
   }

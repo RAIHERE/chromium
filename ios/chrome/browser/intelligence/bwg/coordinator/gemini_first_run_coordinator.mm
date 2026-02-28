@@ -12,9 +12,9 @@
 #import "ios/chrome/browser/intelligence/bwg/coordinator/gemini_first_run_mediator.h"
 #import "ios/chrome/browser/intelligence/bwg/coordinator/gemini_first_run_mediator_delegate.h"
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
-#import "ios/chrome/browser/intelligence/bwg/model/bwg_browser_agent.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_service_factory.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_tab_helper.h"
+#import "ios/chrome/browser/intelligence/bwg/model/gemini_browser_agent.h"
 #import "ios/chrome/browser/intelligence/bwg/ui/bwg_fre_wrapper_view_controller.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/shared/model/browser/browser.h"
@@ -76,11 +76,56 @@
 #pragma mark - ChromeCoordinator
 
 - (void)start {
-  __weak GeminiFirstRunCoordinator* weakSelf = self;
-  BwgBrowserAgent::FromBrowser(self.browser)
-      ->DismissGeminiFromOtherWindows(base::BindOnce(^{
-        [weakSelf startCoordinator];
-      }));
+  _prefService = self.profile->GetPrefs();
+  CHECK(_prefService);
+
+  _tracker = feature_engagement::TrackerFactory::GetForProfile(self.profile);
+  CHECK(_tracker);
+
+  if (_entryPoint == gemini::EntryPoint::AIHub) {
+    _tracker->NotifyEvent(
+        feature_engagement::events::kIOSPageActionMenuIPHUsed);
+  }
+
+  CommandDispatcher* dispatcher = self.browser->GetCommandDispatcher();
+  _geminiCommandsHandler = HandlerForProtocol(dispatcher, BWGCommands);
+  _helpCommandsHandler = HandlerForProtocol(dispatcher, HelpCommands);
+
+  _mediator = [[GeminiFirstRunMediator alloc]
+      initWithPrefService:_prefService
+             webStateList:self.browser->GetWebStateList()
+       baseViewController:self.baseViewController
+               BWGService:BwgServiceFactory::GetForProfile(self.profile)
+       geminiBrowserAgent:GeminiBrowserAgent::FromBrowser(self.browser)
+                  tracker:_tracker
+               entryPoint:_entryPoint
+        completionHandler:_completion];
+  _mediator.sceneHandler =
+      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
+
+  _mediator.delegate = self;
+
+  [self prepareAIHubIPH];
+
+  _viewController = [[BWGFREWrapperViewController alloc]
+         initWithPromo:_mediator.shouldShowPromo
+      isAccountManaged:[self isManagedAccount]];
+  _viewController.sheetPresentationController.delegate = self;
+  _viewController.mutator = _mediator;
+
+  BwgTabHelper* BWGTabHelper = [self activeWebStateGeminiTabHelper];
+  [self.baseViewController presentViewController:_viewController
+                                        animated:YES
+                                      completion:^{
+                                        // Record FRE was shown.
+                                        RecordFREShown();
+                                      }];
+
+  if (BWGTabHelper) {
+    BWGTabHelper->SetBwgUiShowing(true);
+  }
+
+  [super start];
 }
 
 - (void)stop {
@@ -128,60 +173,6 @@
 }
 
 #pragma mark - Private
-
-// Starts the Gemini FRE coordinator.
-- (void)startCoordinator {
-  _prefService = self.profile->GetPrefs();
-  CHECK(_prefService);
-
-  _tracker = feature_engagement::TrackerFactory::GetForProfile(self.profile);
-  CHECK(_tracker);
-
-  if (_entryPoint == gemini::EntryPoint::AIHub) {
-    _tracker->NotifyEvent(
-        feature_engagement::events::kIOSPageActionMenuIPHUsed);
-  }
-
-  CommandDispatcher* dispatcher = self.browser->GetCommandDispatcher();
-  _geminiCommandsHandler = HandlerForProtocol(dispatcher, BWGCommands);
-  _helpCommandsHandler = HandlerForProtocol(dispatcher, HelpCommands);
-
-  _mediator = [[GeminiFirstRunMediator alloc]
-      initWithPrefService:_prefService
-             webStateList:self.browser->GetWebStateList()
-       baseViewController:self.baseViewController
-               BWGService:BwgServiceFactory::GetForProfile(self.profile)
-          BwgBrowserAgent:BwgBrowserAgent::FromBrowser(self.browser)
-                  tracker:_tracker
-               entryPoint:_entryPoint
-        completionHandler:_completion];
-  _mediator.sceneHandler =
-      HandlerForProtocol(self.browser->GetCommandDispatcher(), SceneCommands);
-
-  _mediator.delegate = self;
-
-  [self prepareAIHubIPH];
-
-  _viewController = [[BWGFREWrapperViewController alloc]
-         initWithPromo:_mediator.shouldShowPromo
-      isAccountManaged:[self isManagedAccount]];
-  _viewController.sheetPresentationController.delegate = self;
-  _viewController.mutator = _mediator;
-
-  BwgTabHelper* BWGTabHelper = [self activeWebStateGeminiTabHelper];
-  [self.baseViewController presentViewController:_viewController
-                                        animated:YES
-                                      completion:^{
-                                        // Record FRE was shown.
-                                        RecordFREShown();
-                                      }];
-
-  if (BWGTabHelper) {
-    BWGTabHelper->SetBwgUiShowing(true);
-  }
-
-  [super start];
-}
 
 // Dismisses presented view.
 - (void)dismissPresentedViewWithCompletion:(void (^)())completion {

@@ -112,24 +112,6 @@ class WebUIStateListener : public Host::Observer {
   std::deque<mojom::WebUiState> states_;
 };
 
-// Observes the state of the WebUI hosted in the glic window.
-class CurrentViewListener : public Host::Observer {
- public:
-  explicit CurrentViewListener(Host* host);
-
-  ~CurrentViewListener() override;
-
-  void OnViewChanged(mojom::CurrentView view) override;
-
-  // Returns if `state` has been seen. Consumes all observed states up to the
-  // point where this state is seen.
-  void WaitForCurrentView(mojom::CurrentView view);
-
- private:
-  raw_ptr<Host> host_;
-  std::deque<mojom::CurrentView> views_;
-};
-
 template <typename T>
   requires std::is_base_of<
       test::InteractiveGlicTestMixin<InteractiveBrowserTest>,
@@ -148,7 +130,7 @@ class GlicApiTestBase : public T {
         base::BindRepeating(&GlicApiTestBase::OnEmbeddedTestServerHttpRequest,
                             base::Unretained(this)));
 
-    T::add_mock_glic_query_param(
+    T::AddMockGlicQueryParam(
         "test",
         ::testing::UnitTest::GetInstance()->current_test_info()->name());
 
@@ -171,7 +153,7 @@ class GlicApiTestBase : public T {
     base::CommandLine::ForCurrentProcess()->AppendSwitch(
         ::switches::kGlicHostLogging);
     T::SetGlicPagePath("/glic/browser_tests/test.html");
-    T::add_mock_glic_query_param("testsrc", js_source_path);
+    T::AddMockGlicQueryParam("testsrc", js_source_path);
   }
 
   ~GlicApiTestBase() override = default;

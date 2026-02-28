@@ -446,8 +446,9 @@ content::SSLHostStateDelegate* AwBrowserContext::GetSSLHostStateDelegate() {
 }
 
 AwPermissionManager* AwBrowserContext::GetPermissionControllerDelegate() {
-  if (!permission_manager_.get())
+  if (!permission_manager_.get()) {
     permission_manager_ = std::make_unique<AwPermissionManager>(*this);
+  }
   return permission_manager_.get();
 }
 
@@ -662,21 +663,21 @@ void AwBrowserContext::SetExtraHeadersForUrl(const GURL& url,
 // static
 static bool JNI_AwBrowserContext_IsValidHttpHeaderName(
     JNIEnv* env,
-    std::string& header_name) {
+    const std::string& header_name) {
   return net::HttpUtil::IsValidHeaderName(header_name);
 }
 
 // static
 static bool JNI_AwBrowserContext_IsValidHttpHeaderValue(
     JNIEnv* env,
-    std::string& header_value) {
+    const std::string& header_value) {
   return net::HttpUtil::IsValidHeaderValue(header_value);
 }
 
 std::vector<std::string> AwBrowserContext::SetOriginMatchedHeader(
     JNIEnv* env,
-    std::string& header_name,
-    std::string& header_value,
+    const std::string& header_name,
+    const std::string& header_value,
     const std::vector<std::string>& rules) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
@@ -711,8 +712,8 @@ std::vector<std::string> AwBrowserContext::SetOriginMatchedHeader(
 
 std::vector<std::string> AwBrowserContext::AddOriginMatchedHeader(
     JNIEnv* env,
-    std::string& header_name,
-    std::string& header_value,
+    const std::string& header_name,
+    const std::string& header_value,
     const std::vector<std::string>& rules) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
 
@@ -810,12 +811,17 @@ int AwBrowserContext::AllowedPrerenderingCount() const {
   return allowed_prerendering_count_;
 }
 
-void AwBrowserContext::SetAllowedPrerenderingCount(JNIEnv* const env,
-                                                   int allowed_count) {
+void AwBrowserContext::SetAllowedPrerenderingCount(
+    JNIEnv* const env,
+    std::optional<int> allowed_count) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  CHECK_GT(allowed_count, 0);
+
+  int sanitized_allowed_count =
+      allowed_count.value_or(kDefaultAllowedPrerenderingCount);
+  CHECK_GT(sanitized_allowed_count, 0);
+
   allowed_prerendering_count_ =
-      std::min(allowed_count, MAX_ALLOWED_PRERENDERING_COUNT);
+      std::min(sanitized_allowed_count, kMaxAllowedPrerenderingCount);
 }
 
 void AwBrowserContext::WarmUpSpareRenderer(JNIEnv* const env) {
@@ -904,7 +910,7 @@ AwBrowserContext::CreateURLLoaderFactory() {
   auto url_loader_factory_params =
       network::mojom::URLLoaderFactoryParams::New();
   url_loader_factory_params->process_id =
-      network::OriginatingProcess::browser();
+      network::OriginatingProcessId::browser();
   url_loader_factory_params->is_orb_enabled = false;
   mojo::PendingRemote<network::mojom::URLLoaderFactory> factory;
 

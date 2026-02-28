@@ -88,6 +88,8 @@
 #endif
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+#include "chrome/browser/search_integrity/search_integrity.h"
+#include "chrome/browser/search_integrity/search_integrity_factory.h"
 #include "chrome/browser/ui/webui/whats_new/whats_new_fetcher.h"
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 
@@ -216,6 +218,16 @@ void StartupBrowserCreatorImpl::Launch(
     bool restore_tabbed_browser) {
   DCHECK(profile);
   profile_ = profile;
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
+  // Check for DSE integrity if flag is enabled.
+  if (base::FeatureList::IsEnabled(features::kDseIntegrity)) {
+    if (auto* search_integrity_service =
+            search_integrity::SearchIntegrityFactory::GetForProfile(profile_)) {
+      search_integrity_service->CheckSearchEngines();
+    }
+  }
+#endif
 
   DetermineURLsAndLaunch(process_startup, restore_tabbed_browser);
 
@@ -515,13 +527,6 @@ void StartupBrowserCreatorImpl::DetermineURLsAndLaunch(
             : CHROME_VERSION_STRING;
     MaybeShowNonMilestoneUpdateToast(browser, current_version_string);
   }
-#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
-  // Check for DSE integrity if flag is enabled.
-  if (base::FeatureList::IsEnabled(features::kDseIntegrity)) {
-    // TODO(466065123): The controller will instantiate the model, check the
-    // pref, and show the notification if needed.
-  }
-#endif
 }
 
 StartupBrowserCreatorImpl::DetermineStartupTabsResult::
@@ -625,7 +630,7 @@ StartupBrowserCreatorImpl::DetermineStartupTabs(
     }
 
     // Potentially add a tab appropriate to display the Privacy Sandbox
-    // confirmaton dialog on top of. Ideally such a tab will already exist
+    // confirmation dialog on top of. Ideally such a tab will already exist
     // in |tabs|, and no additional tab will be required.
     if (privacy_sandbox_dialog_required &&
         launch_result == LaunchResult::kNormally) {

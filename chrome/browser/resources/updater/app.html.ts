@@ -19,10 +19,22 @@ export function getHtml(this: UpdaterAppElement) {
 <div id="content">
   <div>
     <h2>$i18n{updaterStateTitle}</h2>
-    <updater-state></updater-state>
+    <updater-state .userUpdaterState="${this.userUpdaterState}"
+        .systemUpdaterState="${this.systemUpdaterState}"
+        .error="${this.updaterStateError}">
+    </updater-state>
   </div>
   <div>
-    <h2>$i18n{eventListTitle}</h1>
+    <h2>$i18n{installedAppsTitle}</h2>
+    <app-list .apps="${this.apps}" .error="${this.appStateError}"></app-list>
+  </div>
+  <div>
+    <h2>Enterprise Policies</h2>
+    <enterprise-policy-table .policies="${this.policies}">
+    </enterprise-policy-table>
+  </div>
+  <div>
+    <h2>$i18n{eventListTitle}</h2>
     <event-list .messages="${this.messages}"></event-list>
   </div>
 </div>

@@ -12,7 +12,6 @@
 #include "base/test/test_timeouts.h"
 #include "chrome/browser/actor/actor_features.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_policy_checker.h"
 #include "chrome/browser/actor/actor_tab_data.h"
 #include "chrome/browser/actor/actor_test_util.h"
 #include "chrome/browser/actor/execution_engine.h"
@@ -27,7 +26,7 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "chrome/test/base/chrome_test_utils.h"
-#include "chrome/test/base/test_browser_window.h"
+#include "chrome/test/base/platform_browser_test.h"
 #include "components/optimization_guide/core/filters/optimization_hints_component_update_listener.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/navigation_controller.h"
@@ -56,6 +55,18 @@ actor_login::Credential MakeTestCredential(
       base::UTF8ToUTF16(base::StrCat({url.host(), ":12345"}));
   credential.type = actor_login::CredentialType::kPassword;
   credential.immediatelyAvailableToLogin = immediately_available_to_login;
+  return credential;
+}
+
+actor_login::Credential MakeTestCredentialFederated(
+    const std::u16string& username,
+    const GURL& url) {
+  actor_login::Credential credential = MakeTestCredential(
+      username, url, /*immediately_available_to_login=*/true);
+  credential.type = actor_login::CredentialType::kFederated;
+  credential.federation_detail =
+      actor_login::FederationDetail{.idp_origin = url::Origin::Create(url),
+                                    .account_id = base::ToString(username)};
   return credential;
 }
 
@@ -108,28 +119,29 @@ bool MockActorLoginService::last_permission_was_permanent() const {
 ActorToolsTest::ActorToolsTest() {
   scoped_feature_list_.InitWithFeaturesAndParameters(
       /*enabled_features=*/
-      {
-          {features::kGlic, {}},
-          {features::kGlicActor,
-           {{features::kGlicActorPolicyControlExemption.name, "true"}}},
-      },
+      {{features::kGlic, {}}},
       /*disabled_features=*/{features::kGlicWarming, kGlicActionAllowlist});
 }
 
 ActorToolsTest::~ActorToolsTest() = default;
 
 void ActorToolsTest::SetUpOnMainThread() {
-  InProcessBrowserTest::SetUpOnMainThread();
+  PlatformBrowserTest::SetUpOnMainThread();
   host_resolver()->AddRule("*", "127.0.0.1");
 
-  task_id_ = CreateNewTask();
+  task_id_ = ActorKeyedService::Get(GetProfile())
+                 ->CreateTask(NoEnterprisePolicyChecker());
 
   // Optimization guide uses this histogram to signal initialization in tests.
-  optimization_guide::RetryForHistogramUntilCountReached(
-      &histogram_tester_for_init_,
-      "OptimizationGuide.HintsManager.HintCacheInitialized", 1);
+  auto* optimization_guide_init_histogram =
+      "OptimizationGuide.HintsManager.HintCacheInitialized";
+  if (histogram_tester_for_init_.GetTotalSum(
+          optimization_guide_init_histogram) == 0) {
+    optimization_guide::RetryForHistogramUntilCountReached(
+        &histogram_tester_for_init_, optimization_guide_init_histogram, 1);
+  }
 
-  InitActionBlocklist(browser()->profile());
+  InitActionBlocklist(GetProfile());
 
   // Simulate the component loading, as the implementation checks it, but the
   // actual list is set via the command line.
@@ -141,7 +153,7 @@ void ActorToolsTest::SetUpOnMainThread() {
 }
 
 void ActorToolsTest::SetUpCommandLine(base::CommandLine* command_line) {
-  InProcessBrowserTest::SetUpCommandLine(command_line);
+  PlatformBrowserTest::SetUpCommandLine(command_line);
   SetUpBlocklist(command_line, "blocked.example.com");
   command_line->AppendSwitchASCII(switches::kForceDeviceScaleFactor, "1");
 }
@@ -150,7 +162,7 @@ void ActorToolsTest::TearDownOnMainThread() {
   // The ActorTask owned ExecutionEngine has a pointer to the profile, which
   // must be released before the browser is torn down to avoid a dangling
   // pointer.
-  ActorKeyedService::Get(browser()->profile())->ResetForTesting();
+  ActorKeyedService::Get(GetProfile())->ResetForTesting();
 }
 
 void ActorToolsTest::GoBack() {
@@ -179,29 +191,16 @@ content::RenderFrameHost* ActorToolsTest::main_frame() {
 }
 
 ExecutionEngine& ActorToolsTest::execution_engine() {
-  return *actor_task().GetExecutionEngine();
+  return actor_task().GetExecutionEngine();
+}
+
+ActorKeyedService& ActorToolsTest::actor_keyed_service() const {
+  return *ActorKeyedService::Get(GetProfile());
 }
 
 ActorTask& ActorToolsTest::actor_task() const {
   CHECK(task_id_);
-  return *ActorKeyedService::Get(browser()->profile())->GetTask(task_id_);
-}
-
-std::unique_ptr<ExecutionEngine> ActorToolsTest::CreateExecutionEngine(
-    Profile* profile) {
-  return std::make_unique<ExecutionEngine>(profile);
-}
-
-TaskId ActorToolsTest::CreateNewTask() {
-  auto execution_engine = CreateExecutionEngine(browser()->profile());
-  auto event_dispatcher = ui::NewUiEventDispatcher(
-      ActorKeyedService::Get(browser()->profile())->GetActorUiStateManager());
-  auto actor_task = std::make_unique<ActorTask>(browser()->profile(),
-                                                std::move(execution_engine),
-                                                std::move(event_dispatcher),
-                                                /*options=*/nullptr);
-  return ActorKeyedService::Get(browser()->profile())
-      ->AddActiveTask(std::move(actor_task));
+  return *ActorKeyedService::Get(GetProfile())->GetTask(task_id_);
 }
 
 void ActorToolsTest::SetPageContent(
@@ -228,6 +227,14 @@ void ActorToolsTest::GetPageApc() {
 
 gfx::RectF GetBoundingClientRect(content::RenderFrameHost& rfh,
                                  std::string_view query) {
+  // getBoundingClientRect() returns CSS pixel coordinates.
+  //
+  // CSS pixels are numerically equal to DIPs only when page zoom is 1.0. If a
+  // caller needs DIP-space values, convert from CSS pixels appropriately first.
+  // Callers that compare this geometry to APC (which uses visual-viewport-
+  // relative device pixels / BlinkSpace) must then convert into APC geometry
+  // coordinates.
+  // See optimization_guide::FindNodeAtPoint() for details.
   double width =
       content::EvalJs(
           &rfh, content::JsReplace(

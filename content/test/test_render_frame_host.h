@@ -282,7 +282,6 @@ class TestRenderFrameHost : public RenderFrameHostImpl,
           keep_alive_loader_factory,
       mojo::PendingAssociatedRemote<blink::mojom::FetchLaterLoaderFactory>
           fetch_later_loader_factory,
-      const std::optional<network::ParsedPermissionsPolicy>& permissions_policy,
       blink::mojom::PolicyContainerPtr policy_container,
       const blink::DocumentToken& document_token,
       const base::UnguessableToken& devtools_navigation_token) override;
@@ -302,8 +301,7 @@ class TestRenderFrameHost : public RenderFrameHostImpl,
       blink::mojom::PolicyContainerPtr policy_container) override;
   void SendBeforeUnload(bool is_reload,
                         base::WeakPtr<RenderFrameHostImpl> impl,
-                        bool for_legacy,
-                        const bool is_renderer_initiated_navigation) override;
+                        bool for_legacy) override;
 
  private:
   void SendNavigateWithParameters(int nav_entry_id,

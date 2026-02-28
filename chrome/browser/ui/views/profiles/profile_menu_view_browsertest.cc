@@ -28,7 +28,6 @@
 #include "base/time/time.h"
 #include "base/version.h"
 #include "base/version_info/version_info.h"
-#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/browser/bookmarks/bookmark_model_factory.h"
 #include "chrome/browser/browser_process.h"
@@ -239,7 +238,7 @@ const char kPasswordManagerPWAUrl[] = "chrome://password-manager/?source=pwa";
 
 std::unique_ptr<web_app::WebAppInstallInfo> CreatePasswordManagerWebAppInfo() {
   auto web_app_info = std::make_unique<web_app::WebAppInstallInfo>(
-      webapps::ManifestId(kPasswordManagerId), GURL(kPasswordManagerPWAUrl));
+      webapps::ManifestId(GURL(kPasswordManagerId)), GURL(kPasswordManagerPWAUrl));
   web_app_info->title = u"Password Manager";
   return web_app_info;
 }
@@ -1302,7 +1301,7 @@ class ProfileMenuViewBookmarksLimitExceededTest
   }
 
   void SimulateBookmarksLimitExceededError() {
-    bookmark_sync_service_->SetBookmarksLimitForTesting(0);
+    bookmark_sync_service_->SetLocalBookmarksLimitForTesting(0);
 
     // Add a bookmark to trigger the check.
     bookmarks::BookmarkModel* model =

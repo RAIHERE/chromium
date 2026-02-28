@@ -14,14 +14,20 @@
 #include "base/numerics/safe_conversions.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/renderer/bindings/core/v8/v8_binding_for_core.h"
+#include "third_party/blink/renderer/bindings/core/v8/v8_navigation_type.h"
+#include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/events/event.h"
 #include "third_party/blink/renderer/core/dom/node.h"
+#include "third_party/blink/renderer/core/dom/qualified_name.h"
 #include "third_party/blink/renderer/core/event_type_names.h"
 #include "third_party/blink/renderer/core/frame/local_frame_client.h"
 #include "third_party/blink/renderer/core/frame/local_frame_view.h"
 #include "third_party/blink/renderer/core/html/media/html_video_element.h"
+#include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
 #include "third_party/blink/renderer/core/layout/layout_view.h"
+#include "third_party/blink/renderer/core/navigation_api/navigation_type_util.h"
+#include "third_party/blink/renderer/core/page/page.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_detector.h"
 #include "third_party/blink/renderer/core/timing/dom_window_performance.h"
 #include "third_party/blink/renderer/core/timing/interaction_effects_monitor.h"
@@ -210,11 +216,20 @@ SoftNavigationHeuristics::SoftNavigationHeuristics(LocalDOMWindow* window)
 
 SoftNavigationHeuristics* SoftNavigationHeuristics::CreateIfNeeded(
     LocalDOMWindow* window) {
-  CHECK(window);
   if (!base::FeatureList::IsEnabled(features::kSoftNavigationDetection)) {
     return nullptr;
   }
+  // We expect the window to be valid and the frame to be attached.
+  CHECK(window && window->GetFrame() && window->GetFrame()->GetPage());
+
+  // Soft navigations in iframes are not supported.
   if (!window->GetFrame()->IsOutermostMainFrame()) {
+    return nullptr;
+  }
+  // Filter out non-ordinary pages, e.g. devtools overlays and internal pages
+  // used for SVG image rendering. Soft navigations are only intended to be
+  // measured on web developer-authored pages.
+  if (!window->GetFrame()->GetPage()->IsOrdinary()) {
     return nullptr;
   }
   if (Document* document = window->document()) {
@@ -277,9 +292,15 @@ SoftNavigationHeuristics::GetSoftNavigationContextForCurrentTask() const {
 
 void SoftNavigationHeuristics::SameDocumentNavigationCommitted(
     const String& url,
-    base::UnguessableToken same_document_metrics_token,
-    SoftNavigationContext* context) {
-  context = EnsureContextForCurrentWindow(context);
+    WebFrameLoadType load_type,
+    base::UnguessableToken same_document_metrics_token) {
+  if (load_type == WebFrameLoadType::kReplaceCurrentItem &&
+      !RuntimeEnabledFeatures::
+          SoftNavigationDetectionIncludeReplaceStateEnabled()) {
+    return;
+  }
+
+  SoftNavigationContext* context = GetSoftNavigationContextForCurrentTask();
   if (!context && !context_for_current_url_) {
     // If we don't have a context for this task, and we haven't had a context
     // for a recent URL change, then this URL change is not a soft-navigation.
@@ -296,7 +317,8 @@ void SoftNavigationHeuristics::SameDocumentNavigationCommitted(
     // the emitting of existing contexts.
     // TODO(crbug.com/353043684, crbug.com/40943017): Perhaps there should be
     // limits to how long we will keep the current context as active.
-    context_for_current_url_->AddUrl(url, same_document_metrics_token);
+    context_for_current_url_->AddUrl(url, ToV8NavigationType(load_type),
+                                     same_document_metrics_token);
 
     TRACE_EVENT_INSTANT("loading",
                         "SoftNavigationHeuristics::"
@@ -309,7 +331,8 @@ void SoftNavigationHeuristics::SameDocumentNavigationCommitted(
         SoftNavigationOutcome::
             kNoSoftNavContextDuringUrlChangeButMergingIntoPreviousContext);
   } else {
-    context->AddUrl(url, same_document_metrics_token);
+    context->AddUrl(url, ToV8NavigationType(load_type),
+                    same_document_metrics_token);
     // TODO(crbug.com/416705860): If we replace a previous context that is for a
     // previous URL change, maybe we should check if it was emitted?  If not,
     // we will no longer be attributing paints to it and so it will never meet
@@ -338,6 +361,14 @@ bool SoftNavigationHeuristics::ModifiedDOM(Node* node) {
 
   MaybeCommitNavigationOrEmitSoftNavigationEntry(context);
   return true;
+}
+
+void SoftNavigationHeuristics::ModifiedAttribute(
+    Element* element,
+    const QualifiedName& attribute) {
+  DCHECK(attribute == html_names::kClassAttr ||
+         (attribute == html_names::kStyleAttr && element->IsStyledElement()));
+  ModifiedNode(element);
 }
 
 // TODO(crbug.com/424448145): re-architect how we pick our FCP point, when we
@@ -518,10 +549,8 @@ void SoftNavigationHeuristics::ReportSoftNavigationToMetrics(
         .count = soft_navigation_count_,
         .start_time = loader->GetTiming().MonotonicTimeToPseudoWallTime(
             context->TimeOrigin()),
-        .first_contentful_paint =
-            loader->GetTiming().MonotonicTimeToPseudoWallTime(
-                context->FirstContentfulPaint()),
-        .navigation_id = context->NavigationId(),
+        .navigation_type =
+            ToNavigationTypeForNavigationApi(context->NavigationType()),
         .same_document_metrics_token = context->SameDocumentMetricsToken(),
     };
     // This notifies UKM about this soft navigation.
@@ -610,12 +639,13 @@ SoftNavigationHeuristics::MaybeCreateEventScopeForInputEvent(
 
 void SoftNavigationHeuristics::OnSoftNavigationEventScopeDestroyed(
     const EventScope& event_scope) {
-  // Set the start time to the end of event processing. In case of nested event
-  // scopes, we want this to be the end of the nested `navigate()` event
-  // handler.
+  // Note the end time of the event processing; this is used as the time origin
+  // for the soft navigation metrics, if it's earlier than the URL change time.
+  // In In case of nested event scopes, we want this to be the end of the nested
+  // `navigate()` event handler.
   CHECK(active_interaction_context_);
-  if (active_interaction_context_->TimeOrigin().is_null()) {
-    active_interaction_context_->SetTimeOrigin(base::TimeTicks::Now());
+  if (active_interaction_context_->ProcessingEnd().is_null()) {
+    active_interaction_context_->SetProcessingEnd(base::TimeTicks::Now());
   }
 
   has_active_event_scope_ = event_scope.is_nested_;

@@ -33,6 +33,7 @@
 #include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
+#include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_util.h"
@@ -54,7 +55,8 @@
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/horizontal_tab_strip_region_view.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
-#include "chrome/browser/ui/views/tabs/tab_context_menu_controller.h"
+#include "chrome/browser/ui/views/tabs/tab/tab_accessibility.h"
+#include "chrome/browser/ui/views/tabs/tab/tab_context_menu_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_group_accessibility.h"
 #include "chrome/browser/ui/views/tabs/tab_strip.h"
 #include "chrome/browser/ui/views/tabs/tab_strip_types.h"
@@ -100,7 +102,6 @@
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "ash/public/cpp/window_properties.h"
-#include "chrome/browser/ash/boca/on_task/on_task_locked_controller.h"
 #include "chromeos/ash/experiences/system_web_apps/types/system_web_app_delegate.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
@@ -563,8 +564,12 @@ void BrowserTabStripController::OnStoppedDragging() {
   immersive_reveal_lock_.reset();
 }
 
-void BrowserTabStripController::OnKeyboardFocusedTabChanged(
-    std::optional<int> index) {
+void BrowserTabStripController::TabKeyboardFocusChangedTo(
+    const tabs::TabInterface* tab) {
+  std::optional<int> index = std::nullopt;
+  if (tab) {
+    index = model_->GetIndexOfTab(tab);
+  }
   browser_view_->browser()->command_controller()->TabKeyboardFocusChangedTo(
       index);
 }
@@ -632,20 +637,14 @@ gfx::Range BrowserTabStripController::ListTabsInGroup(
 
 std::u16string BrowserTabStripController::GetAccessibleTabName(
     const Tab* tab) const {
-  return browser_view_->GetAccessibleTabLabel(
-      tabstrip_->GetModelIndexOf(tab).value(), /*is_for_tab=*/true);
+  int tab_index = tabstrip_->GetModelIndexOf(tab).value();
+  return tabs::GetAccessibleTabLabel(model_->GetTabAtIndex(tab_index),
+                                     /*is_for_tab=*/true);
 }
 
 BrowserWindowInterface* BrowserTabStripController::GetBrowserWindowInterface() {
   return browser_view_->browser();
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-bool BrowserTabStripController::IsLockedForOnTask() {
-  return ash::boca::OnTaskLockedController::From(GetBrowserWindowInterface())
-      ->is_locked_for_on_task();
-}
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 // BrowserTabStripController, TabStripModelObserver implementation:
@@ -670,7 +669,7 @@ void BrowserTabStripController::OnTabStripModelChanged(
         tabstrip_->RemoveTabAt(contents.contents, contents.index,
                                contents.contents == selection.old_contents);
         if (contents.remove_reason ==
-            TabStripModelChange::RemoveReason::kInsertedIntoSidePanel) {
+            TabRemovedReason::kInsertedIntoSidePanel) {
           tabstrip_->StopAnimating();
         }
       }
@@ -683,16 +682,12 @@ void BrowserTabStripController::OnTabStripModelChanged(
 
       // A move may have resulted in the pinned state changing, so pass in a
       // TabRendererData.
-      tabstrip_->MoveTab(
-          move->from_index, move->to_index,
-          TabRendererData::FromTabInModel(model_, move->to_index));
+      tabstrip_->MoveTab(move->from_index, move->to_index,
+                         TabRendererData::FromTabInterface(
+                             model_->GetTabAtIndex(move->to_index)));
       break;
     }
-    case TabStripModelChange::kReplaced: {
-      auto* replace = change.GetReplace();
-      SetTabDataAt(replace->index);
-      break;
-    }
+    case TabStripModelChange::kReplaced:
     case TabStripModelChange::kSelectionOnly:
       break;
   }
@@ -701,7 +696,9 @@ void BrowserTabStripController::OnTabStripModelChanged(
     return;
   }
 
-  if (selection.active_tab_changed()) {
+  if (!base::FeatureList::IsEnabled(
+          tabs::kSessionRestoreShowThrobberOnVisible) &&
+      selection.active_tab_changed()) {
     // It's possible for `new_contents` to be null when the final tab in a tab
     // strip is closed.
     content::WebContents* const new_contents = selection.new_contents;
@@ -801,12 +798,6 @@ void BrowserTabStripController::OnTabPinnedStateChanged(tabs::TabInterface* tab,
   SetTabDataAt(model_index);
 }
 
-void BrowserTabStripController::OnTabBlockedStateChanged(
-    tabs::TabInterface* tab,
-    int model_index) {
-  SetTabDataAt(model_index);
-}
-
 void BrowserTabStripController::TabGroupedStateChanged(
     TabStripModel* tab_strip_model,
     std::optional<tab_groups::TabGroupId> old_group,
@@ -898,8 +889,8 @@ const BrowserFrameView* BrowserTabStripController::GetFrameView() const {
 }
 
 void BrowserTabStripController::SetTabDataAt(int model_index) {
-  tabstrip_->SetTabData(model_index,
-                        TabRendererData::FromTabInModel(model_, model_index));
+  tabstrip_->SetTabData(model_index, TabRendererData::FromTabInterface(
+                                         model_->GetTabAtIndex(model_index)));
 }
 
 void BrowserTabStripController::AddTabs(
@@ -909,20 +900,12 @@ void BrowserTabStripController::AddTabs(
 
   std::vector<TabStrip::AddTabData> tabs_data;
   for (const auto& [tab, index] : contents_list) {
-    tabs_data.push_back(
-        {.index = index,
-         .handle = tab->GetHandle(),
-         .data = TabRendererData::FromTabInModel(model_, index)});
+    tabs_data.push_back({.index = index,
+                         .handle = tab->GetHandle(),
+                         .data = TabRendererData::FromTabInterface(tab)});
   }
 
   tabstrip_->AddTabsAt(std::move(tabs_data));
-
-  // Try to show tab search IPH if needed.
-  constexpr int kTabSearchIPHTriggerThreshold = 8;
-  if (tabstrip_->GetTabCount() >= kTabSearchIPHTriggerThreshold) {
-    BrowserUserEducationInterface::From(GetBrowserWindowInterface())
-        ->MaybeShowFeaturePromo(feature_engagement::kIPHTabSearchFeature);
-  }
 }
 
 bool BrowserTabStripController::IsContextMenuCommandChecked(

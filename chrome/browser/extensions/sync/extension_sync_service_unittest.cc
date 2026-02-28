@@ -1190,7 +1190,7 @@ TEST_F(ExtensionSyncServiceTest, ProcessSyncDataNewExtension) {
        {extensions::disable_reason::DISABLE_USER_ACTION},
        true},
       // Legacy case (<M45): No disable reasons come in from Sync (see
-      // crbug.com/484214). After installation, the reason should be set to
+      // crbug.com/40416721). After installation, the reason should be set to
       // DISABLE_USER_ACTION (default assumption).
       {"Legacy",
        false,
@@ -1200,7 +1200,7 @@ TEST_F(ExtensionSyncServiceTest, ProcessSyncDataNewExtension) {
       // If the extension came in disabled due to a permissions increase, then
       // the
       // user has *not* approved the permissions, and they shouldn't be granted.
-      // crbug.com/484214
+      // crbug.com/40416721
       {"PermissionsIncrease",
        false,
        extensions::disable_reason::DISABLE_PERMISSIONS_INCREASE,
@@ -1882,7 +1882,7 @@ TEST_F(ExtensionSyncServiceCustomGalleryTest,
 
 #if !BUILDFLAG(IS_ANDROID)
 // Disabled on Android since Android does not support themes.
-// Regression test for crbug.com/558299
+// Regression test for crbug.com/40445445
 TEST_F(ExtensionSyncServiceTest, DontSyncThemes) {
   InitializeEmptyExtensionService();
 
@@ -2036,6 +2036,13 @@ class BlocklistedExtensionSyncServiceTest : public ExtensionSyncServiceTest {
     processor_raw_->changes().clear();
   }
 
+  void TearDown() override {
+    extension_.reset();
+    processor_raw_ = nullptr;
+    test_blocklist_.Detach();
+    ExtensionSyncServiceTest::TearDown();
+  }
+
   void ForceBlocklistUpdate() {
     service()->OnBlocklistUpdated();
     content::RunAllTasksUntilIdle();
@@ -2050,7 +2057,7 @@ class BlocklistedExtensionSyncServiceTest : public ExtensionSyncServiceTest {
   extensions::TestBlocklist& test_blocklist() { return test_blocklist_; }
 
  private:
-  raw_ptr<syncer::FakeSyncChangeProcessor> processor_raw_;
+  raw_ptr<syncer::FakeSyncChangeProcessor> processor_raw_ = nullptr;
   scoped_refptr<const Extension> extension_;
   extensions::ExtensionId extension_id_;
   extensions::TestBlocklist test_blocklist_;
@@ -2153,6 +2160,11 @@ class ExtensionSyncServiceTransportModeTest : public ExtensionSyncServiceTest {
     AccountExtensionTracker::Get(profile());
     identity_test_env_profile_adaptor_ =
         std::make_unique<IdentityTestEnvironmentProfileAdaptor>(profile());
+  }
+
+  void TearDown() override {
+    identity_test_env_profile_adaptor_.reset();
+    ExtensionSyncServiceTest::TearDown();
   }
 
  protected:

@@ -15,16 +15,17 @@
 #include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
+#include "chrome/browser/ui/call_to_action/call_to_action_lock.h"
 #include "chrome/browser/ui/color/chrome_color_id.h"
 #include "chrome/browser/ui/commerce/commerce_ui_tab_helper.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry.h"
+#include "chrome/browser/ui/side_panel/side_panel_registry.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/commerce/price_tracking_bubble_dialog_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_icon_view.h"
 #include "chrome/browser/ui/views/side_panel/side_panel_coordinator.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_entry.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_registry.h"
 #include "chrome/common/pref_names.h"
 #include "components/bookmarks/browser/bookmark_model.h"
 #include "components/commerce/core/commerce_feature_list.h"
@@ -189,7 +190,7 @@ void PriceTrackingIconView::UpdateImpl() {
     }
     MaybeShowPageActionLabel();
   } else {
-    scoped_window_call_to_action_ptr_.reset();
+    scoped_call_to_action_lock_.reset();
     HidePageActionLabel();
   }
   SetVisible(should_show);
@@ -330,16 +331,15 @@ void PriceTrackingIconView::MaybeShowPageActionLabel() {
                          PageActionIconType::kPriceTracking)) {
     return;
   }
-  if (!tabs::TabInterface::GetFromContents(GetWebContents())
-           ->GetBrowserWindowInterface()
-           ->CanShowCallToAction()) {
+  auto* call_to_action = CallToActionLock::From(
+      tabs::TabInterface::GetFromContents(GetWebContents())
+          ->GetBrowserWindowInterface());
+
+  if (!call_to_action->CanAcquireLock()) {
     return;
   }
 
-  scoped_window_call_to_action_ptr_ =
-      tabs::TabInterface::GetFromContents(GetWebContents())
-          ->GetBrowserWindowInterface()
-          ->ShowCallToAction();
+  scoped_call_to_action_lock_ = call_to_action->AcquireLock();
 
   should_extend_label_shown_duration_ = true;
   AnimateIn(std::nullopt);

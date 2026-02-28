@@ -49,6 +49,10 @@ public interface TabModel extends SupportsTabModelObserver, TabList {
         int GROUP = 3;
     }
 
+    /** Returns the {@link TabModelType} of this tab model. */
+    @TabModelType
+    int getTabModelType();
+
     /** Returns the profile associated with the current model. */
     @Nullable Profile getProfile();
 
@@ -59,6 +63,12 @@ public interface TabModel extends SupportsTabModelObserver, TabList {
      * @param nativeAndroidBrowserWindow The native AndroidBrowserWindow pointer.
      */
     void associateWithBrowserWindow(long nativeAndroidBrowserWindow);
+
+    /**
+     * Dissociates this tab model from a browser window. This should be called before the browser
+     * window is destroyed.
+     */
+    void dissociateWithBrowserWindow();
 
     /** Returns the matching tab that has the given id, or null if there is none. */
     @Nullable Tab getTabById(@TabId int tabId);
@@ -328,4 +338,7 @@ public interface TabModel extends SupportsTabModelObserver, TabList {
 
     /** Duplicates the given tab. */
     @Nullable Tab duplicateTab(Tab tab);
+
+    /** Whether the model is currently in the process of closing all of its tabs. */
+    boolean isClosingAllTabs();
 }

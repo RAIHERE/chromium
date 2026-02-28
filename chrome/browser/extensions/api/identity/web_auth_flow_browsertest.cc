@@ -17,9 +17,9 @@
 #include "chrome/browser/profiles/keep_alive/scoped_profile_keep_alive.h"
 #include "chrome/browser/profiles/nuke_profile_directory_utils.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
-#include "chrome/browser/ui/tabs/tab_list_interface.h"
 #include "chrome/test/base/platform_browser_test.h"
 #include "components/tabs/public/tab_interface.h"
 #include "content/public/browser/web_contents.h"
@@ -88,8 +88,9 @@ class WebAuthFlowBrowserTest : public PlatformBrowserTest {
           WebAuthFlow::AbortOnLoad::kYes,
       std::optional<base::TimeDelta> timeout_for_non_interactive = std::nullopt,
       std::optional<gfx::Rect> popup_bounds = std::nullopt) {
-    if (!profile)
+    if (!profile) {
       profile = GetProfile();
+    }
 
     web_auth_flow_ = std::make_unique<WebAuthFlow>(
         &mock_web_auth_flow_delegate_, profile, url, mode,
@@ -838,9 +839,10 @@ IN_PROC_BROWSER_TEST_F(WebAuthFlowBrowserTest,
 
   // Simulate profile destruction notification and wait for the auth popup to
   // close.
+  ui_test_utils::BrowserDestroyedObserver observer(popup);
   static_cast<ProfileObserver*>(web_auth_flow())
       ->OnProfileWillBeDestroyed(GetProfile());
-  ui_test_utils::WaitForBrowserToClose(popup);
+  observer.Wait();
   // Verify that WebAuthFlow closed the WebContents.
   EXPECT_TRUE(web_auth_flow());
   EXPECT_FALSE(web_auth_flow()->web_contents());

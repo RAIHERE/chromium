@@ -278,6 +278,15 @@ CC_BASE_EXPORT extern const base::FeatureParam<std::string>
 CC_BASE_EXPORT extern const char kEmitForAllScrolls[];
 CC_BASE_EXPORT extern const char kEmitForDamagingScrolls[];
 
+// When disabled, the scroll jank V4 metric orders scroll starts, updates and
+// ends within a single frame based on their
+// `EventMetrics::DispatchStage::kGenerated` timestamps. When enabled, it orders
+// them based on their
+// `EventMetrics::DispatchStage::kArrivedInRendererCompositor` timestamps
+// instead.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(
+    kOrderScrollJankV4EventMetricsByArrivedInRendererCompositor);
+
 // When enabled, AsyncLayerTreeFrameSink will generate its own BeginFrameArgs
 // when auto_needs_begin_frame_ is enabled.
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(kManualBeginFrame);
@@ -304,8 +313,12 @@ CC_BASE_EXPORT BASE_DECLARE_FEATURE(kBrowserControlsSmoothScroll);
 CC_BASE_EXPORT BASE_DECLARE_FEATURE(
     kBrowserControlsHeightChangeCancelAnimations);
 
-// When enabled uses derived state machine for Headless mode.
-CC_BASE_EXPORT BASE_DECLARE_FEATURE(kHeadlessSchedulerStateMachine);
+// When enabled uses derived state machine for Webview.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kWebviewSchedulerStateMachine);
+
+// When enabled, the browser controls will snap to their fully shown or hidden
+// positions on scroll instead of moving exactly by the scroll delta.
+CC_BASE_EXPORT BASE_DECLARE_FEATURE(kBrowserControlsScrollSnapAnimation);
 
 }  // namespace features
 

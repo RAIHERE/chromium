@@ -11,7 +11,6 @@
 
 #include "base/feature_list.h"
 #include "base/time/time.h"
-#include "build/branding_buildflags.h"
 #include "components/compose/buildflags.h"
 #include "pdf/buildflags.h"
 
@@ -40,10 +39,13 @@ extern const char kHatsSurveyTriggerDownloadWarningPageBypass[];
 extern const char kHatsSurveyTriggerDownloadWarningPageHeed[];
 extern const char kHatsSurveyTriggerDownloadWarningPageIgnore[];
 extern const char kHatsSurveyTriggerHistoryEmbeddings[];
+extern const char kHatsSurveyTriggerHistoryPageExperiment[];
+extern const char kHatsSurveyTriggerHistoryPageControl[];
 extern const char kHatsSurveyTriggerIdentityAddressBubbleSignin[];
 extern const char kHatsSurveyTriggerIdentityDiceWebSigninAccepted[];
 extern const char kHatsSurveyTriggerIdentityDiceWebSigninDeclined[];
 extern const char kHatsSurveyTriggerIdentityFirstRunSignin[];
+extern const char kHatsSurveyTriggerIdentityFirstRunCompleted[];
 extern const char kHatsSurveyTriggerIdentityPasswordBubbleSignin[];
 extern const char kHatsSurveyTriggerIdentityProfileMenuDismissed[];
 extern const char kHatsSurveyTriggerIdentityProfileMenuSignin[];
@@ -56,10 +58,6 @@ extern const char kHatsSurveyTriggerLensOverlayResults[];
 extern const char kHatsSurveyTriggerNtpModules[];
 extern const char kHatsSurveyTriggerNextPanel[];
 extern const char kHatsSurveyTriggerNtpPhotosModuleOptOut[];
-extern const char kHatsSurveyTriggerPasswordChangeCanceled[];
-extern const char kHatsSurveyTriggerPasswordChangeDelayed[];
-extern const char kHatsSurveyTriggerPasswordChangeError[];
-extern const char kHatsSurveyTriggerPasswordChangeSuccess[];
 extern const char kHatsSurveyTriggerPerformanceControlsPPM[];
 extern const char kHatsSurveyTriggerPrivacyGuide[];
 extern const char kHatsSurveyTriggerRedWarning[];
@@ -95,7 +93,8 @@ extern const char kHatsSurveyTriggerWhatsNew[];
 extern const char kHatsSurveyTriggerAndroidStartupSurvey[];
 extern const char kHatsSurveyTriggerSigninFirstRun[];
 extern const char kHatsSurveyTriggerSigninWeb[];
-extern const char kHatsSurveyTriggerSigninNtpAvatar[];
+extern const char kHatsSurveyTriggerSigninNtpSigninButton[];
+extern const char kHatsSurveyTriggerSigninNtpAccountAvatarTap[];
 extern const char kHatsSurveyTriggerSigninNtpPromo[];
 extern const char kHatsSurveyTriggerSigninBookmarkPromo[];
 #endif  // #if !BUILDFLAG(IS_ANDROID)
@@ -112,7 +111,6 @@ extern const char
     kHatsSurveyTriggerPlusAddressDidChoosePlusAddressOverEmailSurvey[];
 extern const char
     kHatsSurveyTriggerPlusAddressFilledPlusAddressViaManualFallback[];
-extern const char kHatsSurveyTriggerPrivacySandboxSentimentSurvey[];
 extern const char kHatsSurveyTriggerPrivacySandboxActSurvey[];
 extern const char kHatsSurveyTriggerOnFocusZpsSuggestionsHappiness[];
 extern const char kHatsSurveyTriggerOnFocusZpsSuggestionsUtility[];

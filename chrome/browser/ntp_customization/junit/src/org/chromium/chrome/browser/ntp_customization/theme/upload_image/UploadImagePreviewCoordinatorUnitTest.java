@@ -20,10 +20,13 @@ import android.app.Dialog;
 import android.graphics.Bitmap;
 import android.graphics.Matrix;
 import android.graphics.Point;
+import android.graphics.Rect;
 import android.view.View;
 
 import androidx.annotation.Nullable;
 import androidx.constraintlayout.widget.ConstraintLayout;
+import androidx.core.graphics.Insets;
+import androidx.core.view.WindowInsetsCompat;
 
 import org.junit.After;
 import org.junit.Before;
@@ -37,8 +40,8 @@ import org.robolectric.Robolectric;
 import org.robolectric.shadows.ShadowDialog;
 
 import org.chromium.base.Callback;
-import org.chromium.base.test.BaseRobolectricTestRule;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.chrome.browser.composeplate.ComposeplateUtils;
 import org.chromium.chrome.browser.composeplate.ComposeplateUtilsJni;
@@ -46,11 +49,12 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.logo.LogoUtils;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationConfigManager;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils;
-import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundImageType;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
 import org.chromium.chrome.browser.ntp_customization.R;
 import org.chromium.chrome.browser.ntp_customization.theme.NtpThemeProperty;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
+import org.chromium.chrome.browser.ui.edge_to_edge.EdgeToEdgeUtils;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.ui.modelutil.PropertyModel;
 
@@ -77,6 +81,7 @@ public class UploadImagePreviewCoordinatorUnitTest {
     private Matrix mLandscapeMatrix;
     private Bitmap mLogoBitmap;
     private PropertyModel mPropertyModel;
+    private int mToolbarHeight;
 
     @Before
     public void setUp() {
@@ -100,10 +105,12 @@ public class UploadImagePreviewCoordinatorUnitTest {
         mSaveButton = contentView.findViewById(R.id.save_button);
         mCancelButton = contentView.findViewById(R.id.cancel_button);
         mLogoBitmap = Bitmap.createBitmap(5, 5, Bitmap.Config.ARGB_8888);
+        mToolbarHeight =
+                mActivity.getResources().getDimensionPixelSize(R.dimen.toolbar_height_no_shadow);
 
         mConfigManager = NtpCustomizationConfigManager.getInstance();
         ChromeFeatureList.sNewTabPageCustomizationV2ShowLogoAndSearchBox.setForTesting(true);
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
     }
 
     @After
@@ -295,7 +302,7 @@ public class UploadImagePreviewCoordinatorUnitTest {
         mSaveButton.performClick();
 
         // Allows background tasks (like file saving) to complete.
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
 
         BackgroundImageInfo savedInfo = NtpCustomizationUtils.readNtpBackgroundImageInfo();
 
@@ -317,8 +324,8 @@ public class UploadImagePreviewCoordinatorUnitTest {
 
         assertEquals(
                 "Background type should be updated to IMAGE_FROM_DISK.",
-                NtpBackgroundImageType.IMAGE_FROM_DISK,
-                mConfigManager.getBackgroundImageType());
+                NtpBackgroundType.IMAGE_FROM_DISK,
+                mConfigManager.getBackgroundType());
         assertTrue(
                 "The background image file should have been saved.",
                 NtpCustomizationUtils.createBackgroundImageFile().exists());
@@ -524,6 +531,128 @@ public class UploadImagePreviewCoordinatorUnitTest {
                 "The real view should use logo bottom margin as top margin",
                 expectedTopMargin,
                 layoutParams.topMargin);
+    }
+
+    @Test
+    public void testOnApplyWindowInsets_ThreeButtonNavigation_Portrait() {
+        // Setup insets representing 3-button navigation (tappable bottom bar)
+        verifyWindowInsetsApplied(
+                /* topInset= */ 20,
+                /* bottomInset= */ 100,
+                /* leftInset= */ 0,
+                /* rightInset= */ 0,
+                /* navigationBars= */ Insets.of(0, 0, 0, 100),
+                /* tappableElement= */ Insets.of(0, 20, 0, 100),
+                /* expectTappable= */ true);
+    }
+
+    @Test
+    public void testOnApplyWindowInsets_GestureNavigation_Portrait() {
+        // Setup insets representing Gesture navigation
+        verifyWindowInsetsApplied(
+                /* topInset= */ 20,
+                /* bottomInset= */ 40,
+                /* leftInset= */ 0,
+                /* rightInset= */ 0,
+                /* navigationBars= */ Insets.of(0, 0, 0, 40),
+                /* tappableElement= */ Insets.of(0, 20, 0, 0),
+                /* expectTappable= */ false);
+    }
+
+    @Test
+    public void testOnApplyWindowInsets_ThreeButtonNavigation_Landscape() {
+        // Setup insets representing 3-button navigation in Landscape (Nav bar on the Right)
+        verifyWindowInsetsApplied(
+                /* topInset= */ 20,
+                /* bottomInset= */ 0,
+                /* leftInset= */ 0,
+                /* rightInset= */ 100,
+                /* navigationBars= */ Insets.of(0, 0, 100, 0),
+                /* tappableElement= */ Insets.of(0, 20, 100, 0),
+                /* expectTappable= */ true);
+    }
+
+    @Test
+    public void testOnApplyWindowInsets_GestureNavigation_Landscape() {
+        // Setup insets representing Gesture navigation in Landscape
+        verifyWindowInsetsApplied(
+                /* topInset= */ 20,
+                /* bottomInset= */ 20,
+                /* leftInset= */ 0,
+                /* rightInset= */ 0,
+                /* navigationBars= */ Insets.of(0, 0, 0, 20),
+                /* tappableElement= */ Insets.of(0, 20, 0, 0),
+                /* expectTappable= */ false);
+    }
+
+    /** Helper method that centralizes the Arrange/Act/Assert for window insets testing. */
+    private void verifyWindowInsetsApplied(
+            int topInset,
+            int bottomInset,
+            int leftInset,
+            int rightInset,
+            Insets navigationBars,
+            Insets tappableElement,
+            boolean expectTappable) {
+
+        Insets systemBars = Insets.of(leftInset, topInset, rightInset, bottomInset);
+        WindowInsetsCompat insets =
+                new WindowInsetsCompat.Builder()
+                        .setInsets(WindowInsetsCompat.Type.systemBars(), systemBars)
+                        .setInsets(WindowInsetsCompat.Type.navigationBars(), navigationBars)
+                        .setInsets(WindowInsetsCompat.Type.tappableElement(), tappableElement)
+                        .build();
+
+        PropertyModel model = mUploadImagePreviewCoordinator.getPropertyModelForTesting();
+        int buttonBottomMargin = model.get(NtpThemeProperty.BUTTON_BOTTOM_MARGIN);
+
+        WindowInsetsCompat result =
+                mUploadImagePreviewCoordinator.onApplyWindowInsets(mCropImageView, insets);
+
+        // Verifies the edge-to-edge behavior
+        assertEquals(
+                "Tappable navigation bar evaluation failed.",
+                expectTappable,
+                EdgeToEdgeUtils.hasTappableNavigationBarFromInsets(insets));
+
+        // Verifies inset consumption
+        assertEquals(Insets.NONE, result.getInsets(WindowInsetsCompat.Type.statusBars()));
+        assertEquals(Insets.NONE, result.getInsets(WindowInsetsCompat.Type.navigationBars()));
+        assertEquals(Insets.NONE, result.getInsets(WindowInsetsCompat.Type.displayCutout()));
+
+        // Verifies the paddings
+        int expectedTopGuideline = mToolbarHeight + topInset;
+        int expectedBottomPadding = expectTappable ? bottomInset : 0;
+        Rect expectedSideAndBottom = new Rect(leftInset, 0, rightInset, expectedBottomPadding);
+
+        assertEquals(
+                "Top guideline should include toolbar height + top inset",
+                expectedTopGuideline,
+                model.get(NtpThemeProperty.TOP_GUIDELINE_BEGIN));
+
+        assertEquals(
+                "Padding rect should match expected side and bottom logic",
+                expectedSideAndBottom,
+                model.get(NtpThemeProperty.SIDE_AND_BOTTOM_INSETS));
+
+        // Verifies the bottom margin of buttons
+        if (expectTappable) {
+            assertEquals(
+                    "Button margin should remain unchanged for 3-button nav, as padding pushes it"
+                        + " up.",
+                    buttonBottomMargin,
+                    model.get(NtpThemeProperty.BUTTON_BOTTOM_MARGIN));
+        } else {
+            int baseButtonBottomMargin =
+                    mActivity
+                            .getResources()
+                            .getDimensionPixelSize(
+                                    R.dimen.ntp_customization_back_button_margin_start);
+            assertEquals(
+                    "Button margin should be elevated by the inset for gesture nav.",
+                    baseButtonBottomMargin + bottomInset,
+                    model.get(NtpThemeProperty.BUTTON_BOTTOM_MARGIN));
+        }
     }
 
     /**

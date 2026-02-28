@@ -318,10 +318,7 @@ class GpuIntegrationTest(
         # causes trace_test speed regression on Android devices.
         '--disable-features=AndroidWarmUpSpareRendererWithTimeout',
     ]
-    # TODO(crbug.com/476172416): Either remove the IsWindows11() condition or
-    # update the comment below once we determine whether disabling backgrounding
-    # works around flaky timeouts on Windows 11.
-    if cls._SuiteSupportsParallelTests() or host_information.IsWindows11():
+    if cls._SuiteSupportsParallelTests():
       # When running tests in parallel, windows can be treated as occluded if a
       # newly opened window fully covers a previous one, which can cause issues
       # in a few tests. This is practically only an issue on Windows since
@@ -689,23 +686,19 @@ class GpuIntegrationTest(
     for arg in browser_options.extra_browser_args:
       if arg == cba.DISABLE_GPU:
         cls._ClearFeatureValues()
+        # Early return here since --disable-gpu should override any flags that
+        # come after it which might re-enable GPU features otherwise.
         return
-      if arg.startswith('--use-gl='):
+      if arg == cba.ENABLE_SKIA_GRAPHITE:
+        cls._graphite_status = 'graphite-enabled'
+      elif arg == cba.DISABLE_SKIA_GRAPHITE:
+        cls._graphite_status = 'graphite-disabled'
+      elif arg.startswith('--use-gl='):
         cls._gl_backend = arg[len('--use-gl='):]
       elif arg.startswith('--use-angle='):
         cls._angle_backend = arg[len('--use-angle='):]
       elif arg.startswith('--use-cmd-decoder='):
         cls._command_decoder = arg[len('--use-cmd-decoder='):]
-      elif arg.startswith('--enable-features='):
-        values = arg[len('--enable-features='):]
-        for feature in values.split(','):
-          if feature == 'SkiaGraphite':
-            cls._graphite_status = 'graphite-enabled'
-      elif arg.startswith('--disable-features='):
-        values = arg[len('--disable-features='):]
-        for feature in values.split(','):
-          if feature == 'SkiaGraphite':
-            cls._graphite_status = 'graphite-disabled'
 
   @classmethod
   def _VerifyBrowserFeaturesMatchExpectedValues(cls) -> None:
@@ -1391,6 +1384,7 @@ class GpuIntegrationTest(
         'qualcomm-adreno-(tm)-610',  # android-sm-a236b
         'qualcomm-adreno-(tm)-640',  # android-pixel-4
         'qualcomm-adreno-(tm)-740',  # android-sm-s911u1
+        'arm-0x92020010',  # android-pixel-6
         'arm-mali-g78',  # android-pixel-6
         'nvidia-nvidia-tegra',  # android-shield-android-tv
         'imagination-technologies-0x71061212',  # android-pixel-10

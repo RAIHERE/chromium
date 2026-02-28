@@ -42,12 +42,15 @@ chromium-metrics-reviews@google.com.
 <variants name="LogAiDataRequestFeature">
   <variant name="BlingPrototyping" summary="Bling Prototyping"/>
   <variant name="Compose" summary="Compose"/>
+  <variant name="ContextualTasksContext" summary="Contextual Tasks Context"/>
   <variant name="Default" summary="Default"/>
   <variant name="EnhancedCalendar" summary="Enhanced Calendar"/>
   <variant name="FeatureNotSet" summary="Feature not set"/>
   <variant name="FormsAnnotations" summary="Forms Annotations"/>
   <variant name="FormsClassifications" summary="Forms Classifications"/>
   <variant name="FormsPredictions" summary="Forms Predictions"/>
+  <variant name="GeminiAntiscamProtection"
+      summary="Gemini Antiscam Protection"/>
   <variant name="HistoryAnswer" summary="History Answer"/>
   <variant name="HistoryQuery" summary="History Query"/>
   <variant name="HistoryQueryIntent" summary="History Query Intent"/>
@@ -463,6 +466,9 @@ chromium-metrics-reviews@google.com.
   <variant name="PixPaymentMerchantAllowlist"
       summary="This optimization provides information about whether a
                merchant can trigger PIX bottom sheet."/>
+  <variant name="PixPspAllowlist"
+      summary="This optimization provides information about whether the PSP
+               hosts are eligible for Pix payments."/>
   <variant name="PriceInsights"
       summary="Returns price insights data for shopping websites"/>
   <variant name="PriceTracking"
@@ -597,7 +603,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OptimizationGuide.AIPageContent.RendererLatency.{FrameType}"
-    units="ms" expires_after="2026-06-21">
+    units="ms" expires_after="2026-08-23">
   <owner>khushalsagar@chromium.org</owner>
   <owner>abigailbklein@google.com</owner>
   <summary>
@@ -702,7 +708,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OptimizationGuide.ApplyDecision.{OptimizationType}"
-    enum="OptimizationGuideOptimizationTypeDecision" expires_after="2026-06-14">
+    enum="OptimizationGuideOptimizationTypeDecision" expires_after="2026-08-16">
   <owner>rajendrant@chromium.org</owner>
   <owner>catliu@chromium.org</owner>
   <summary>
@@ -1070,7 +1076,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="OptimizationGuide.ModelExecution.OnDeviceBaseModelLoadResult"
-    enum="LoadPlatformModelStatus" expires_after="2026-06-07">
+    enum="LoadPlatformModelStatus" expires_after="2026-08-09">
   <owner>rajendrant@chromium.org</owner>
   <owner>holte@chromium.org</owner>
   <summary>
@@ -1200,6 +1206,8 @@ chromium-metrics-reviews@google.com.
     <variant name="FeatureUse"
         summary="There has been recent feature use that could benefit from an
                  on-device model"/>
+    <variant name="IsBackground"
+        summary="The install mode is background (as opposed to on-demand)"/>
   </token>
   <token key="Event">
     <variant name="AtAttemptedUse"
@@ -1208,6 +1216,10 @@ chromium-metrics-reviews@google.com.
     <variant name="AtRegistration"
         summary="Recorded once shortly after startup, regardless of whether
                  the on-device model is currently installed."/>
+    <variant name="InitialInstall"
+        summary="Recorded when the model is first eligible for install. This
+                 is not recorded for users who have already installed the
+                 model."/>
   </token>
 </histogram>
 
@@ -1246,7 +1258,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="OptimizationGuide.ModelExecution.OnDeviceModelToBeInstalledReason.{ModelExecutionFeature}"
-    enum="OptimizationGuideOnDeviceModelStatus" expires_after="2026-05-31">
+    enum="OptimizationGuideOnDeviceModelStatus" expires_after="2026-08-02">
   <owner>holte@chromium.org</owner>
   <owner>andysjlim@chromium.org</owner>
   <summary>
@@ -1517,7 +1529,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="OptimizationGuide.ModelExecutor.ModelLoadingDuration2.{OptimizationTarget}"
-    units="ms" expires_after="2026-05-31">
+    units="ms" expires_after="2026-08-02">
   <owner>wittman@chromium.org</owner>
   <owner>rajendrant@chromium.org</owner>
   <summary>
@@ -1592,7 +1604,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="OptimizationGuide.ModelHandler.HandlerCreated.{OptimizationTarget}"
-    enum="BooleanCreated" expires_after="2026-06-07">
+    enum="BooleanCreated" expires_after="2026-08-09">
   <owner>wittman@chromium.org</owner>
   <owner>rajendrant@chromium.org</owner>
   <summary>
@@ -1966,7 +1978,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="OptimizationGuide.PredictionManager.ModelDeliveryEvents.{OptimizationTarget}"
-    enum="OptimizationGuideModelDeliveryEvent" expires_after="2026-06-14">
+    enum="OptimizationGuideModelDeliveryEvent" expires_after="2026-08-16">
   <owner>rajendrant@chromium.org</owner>
   <owner>wittman@chromium.org</owner>
   <summary>
@@ -1994,7 +2006,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="OptimizationGuide.PredictionModelDownloadManager.DownloadStartLatency.{OptimizationTarget}"
-    units="ms" expires_after="2026-06-21">
+    units="ms" expires_after="2026-08-23">
   <owner>rajendrant@chromium.org</owner>
   <owner>wittman@chromium.org</owner>
   <summary>
@@ -2009,7 +2021,7 @@ chromium-metrics-reviews@google.com.
 <histogram
     name="OptimizationGuide.PredictionModelDownloadManager.DownloadStatus"
     enum="OptimizationGuidePredictionModelDownloadStatus"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>rajendrant@chromium.org</owner>
   <owner>wittman@chromium.org</owner>
   <summary>
@@ -2193,7 +2205,7 @@ chromium-metrics-reviews@google.com.
 <histogram
     name="OptimizationGuide.PredictionModelStore.ModelRemovalReason.{OptimizationTarget}"
     enum="OptimizationGuidePredictionModelStoreModelRemovalReason"
-    expires_after="2026-05-10">
+    expires_after="2026-08-23">
   <owner>rajendrant@chromium.org</owner>
   <owner>wittman@chromium.org</owner>
   <summary>

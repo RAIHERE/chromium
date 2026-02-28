@@ -129,6 +129,10 @@ BASE_FEATURE(kDefaultEnableGpuRasterization,
 #endif
 );
 
+// Use a compound backing for shared images by default.
+BASE_FEATURE(kUseCompoundImageBackingAsDefault,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 // Enables the use of MSAA in skia on Ice Lake and later intel architectures.
 BASE_FEATURE(kEnableMSAAOnNewIntelGPUs,
 #if BUILDFLAG(IS_ANDROID)
@@ -309,11 +313,10 @@ const base::FeatureParam<std::string> kDrDcBlockListByAndroidBuildFP{
     &kEnableDrDc, "BlockListByAndroidBuildFP", ""};
 #endif  // BUILDFLAG(IS_ANDROID)
 
-// Enable Skia Graphite. This will use the Dawn backend by default, but can be
-// overridden with command line flags for testing on non-official developer
-// builds. See --skia-graphite-backend flag in gpu_switches.h.
-// Note: This can also be overridden by
-// --enable-skia-graphite & --disable-skia-graphite.
+// Enable Skia Graphite with the platform's default Dawn backend.
+// Note: This can be overridden by --enable-skia-graphite and
+// --disable-skia-graphite which take precedence over the feature flag, and the
+// Dawn backend can be overridden with the --skia-graphite-dawn-backend flag.
 BASE_FEATURE(kSkiaGraphite,
 #if BUILDFLAG(IS_APPLE)
              base::FEATURE_ENABLED_BY_DEFAULT
@@ -356,6 +359,10 @@ const base::FeatureParam<bool> kSkiaGraphiteDawnBackendValidation{
 // can have non-trivial performance overhead e.g. with Metal.
 const base::FeatureParam<bool> kSkiaGraphiteDawnBackendDebugLabels{
     &kSkiaGraphite, "dawn_backend_debug_labels", DCHECK_IS_ON()};
+
+// Enables automatic buffer mappings in Dawn's backend.
+const base::FeatureParam<bool> kSkiaGraphiteDawnEnableAutoMap{
+    &kSkiaGraphite, "dawn_enable_auto_map", true};
 
 // Whether to use PersistentCache for Dawn's pipeline cache.
 BASE_FEATURE_PARAM(bool,

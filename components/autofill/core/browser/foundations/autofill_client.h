@@ -114,6 +114,7 @@ class FormFieldData;
 class LogManager;
 class OtpFieldDetector;
 class OtpPhishGuardDelegate;
+class FormPredictionsTracker;
 struct PasswordFormClassification;
 class PasswordManagerDelegate;
 class PersonalDataManager;
@@ -125,6 +126,7 @@ class SingleFieldFillRouter;
 class ValuablesDataManager;
 class VotesUploader;
 class PasswordManagerAutofillHelperDelegate;
+class WalletPassAccessManager;
 
 namespace autofill_metrics {
 class FormInteractionsUkmLogger;
@@ -329,6 +331,11 @@ class AutofillClient {
   virtual EntityDataManager* GetEntityDataManager() = 0;
   const EntityDataManager* GetEntityDataManager() const;
 
+  // Gets the WalletPassAccessManager instance associated with the client, if
+  // there is one.
+  virtual WalletPassAccessManager* GetWalletPassAccessManager();
+  const WalletPassAccessManager* GetWalletPassAccessManager() const;
+
   // Gets the AutofillOptimizationGuideDecider instance associated with the
   // client. This function can return nullptr if we are on an unsupported
   // platform, or if the AutofillOptimizationGuideDecider's dependencies are not
@@ -524,7 +531,8 @@ class AutofillClient {
   virtual void UpdateAutofillSuggestions(
       const std::vector<Suggestion>& suggestions,
       FillingProduct main_filling_product,
-      AutofillSuggestionTriggerSource trigger_source);
+      AutofillSuggestionTriggerSource trigger_source,
+      AutofillSuggestionsIgnoreFocusLoss ignore_focus_loss);
 
   // Hides the Autofill suggestions UI if it is currently showing.
   virtual void HideAutofillSuggestions(SuggestionHidingReason reason) = 0;
@@ -680,10 +688,24 @@ class AutofillClient {
   // Shows a bubble asking whether the user wants to save or update Autofill AI
   // data. `old_entity` is present in the update cases. It is used to give users
   // a better understanding of what was updated.
+  // `save_is_synchronous` indicates whether accepting the prompt requires a
+  // (notably) asynchronous operation. The UI can use this information to decide
+  // whether to close the prompt upon acceptance.
   virtual void ShowEntityImportBubble(
       EntityInstance new_entity,
       std::optional<EntityInstance> old_entity,
+      bool save_is_synchronous,
       EntityImportPromptResultCallback prompt_result_callback);
+
+  // Hides the Autofill AI import bubble if it is currently showing.
+  virtual void CloseEntityImportBubble();
+
+  // Shows a bubble informing the user that their data was saved locally because
+  // an upload request to the Wallet server was unsuccessful.
+  virtual void ShowAutofillAiLocalSaveNotification();
+
+  // Notifies the user that an Autofill AI operation failed.
+  virtual void ShowAutofillAiFailureNotification(std::u16string message);
 
   virtual void ShowEmailVerifiedToast();
 
@@ -693,6 +715,10 @@ class AutofillClient {
   // Returns the delegate for OTP phish guard, which can be used to perform
   // security checks before offering an OTP. May return nullptr.
   virtual OtpPhishGuardDelegate* GetOtpPhishGuardDelegate();
+
+  // Returns the `FormPredictionsTracker` for the current tab. May return null
+  // on platforms where it is not supported.
+  virtual FormPredictionsTracker* GetFormPredictionsTracker();
 
   // May return null on platforms where no OneTimeTokenService is supported.
   virtual one_time_tokens::OneTimeTokenService* GetOneTimeTokenService() const;

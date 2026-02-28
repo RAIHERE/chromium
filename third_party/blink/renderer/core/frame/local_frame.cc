@@ -121,6 +121,8 @@
 #include "third_party/blink/renderer/core/editing/ime/input_method_controller.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker.h"
 #include "third_party/blink/renderer/core/editing/markers/document_marker_controller.h"
+#include "third_party/blink/renderer/core/editing/markers/grammar_marker.h"
+#include "third_party/blink/renderer/core/editing/markers/spelling_marker.h"
 #include "third_party/blink/renderer/core/editing/serializers/create_markup_options.h"
 #include "third_party/blink/renderer/core/editing/serializers/serialization.h"
 #include "third_party/blink/renderer/core/editing/spellcheck/spell_check_requester.h"
@@ -273,6 +275,14 @@ blink::DocumentMarkerVector ExtractSpellingMarkersFromDocumentMarkerVector(
     if (marker->GetType() == DocumentMarker::MarkerType::kSpelling ||
         marker->GetType() == DocumentMarker::MarkerType::kGrammar) {
       spelling_markers.push_back(marker);
+    }
+
+    if (const auto* suggestion_marker =
+            DynamicTo<SuggestionMarker>(marker.Get())) {
+      if (suggestion_marker->IsMisspelling() ||
+          suggestion_marker->IsGrammarError()) {
+        spelling_markers.push_back(marker);
+      }
     }
   }
   return spelling_markers;
@@ -2057,7 +2067,8 @@ LocalFrame::LocalFrame(
       !IsMainFrame() && ad_tracker_ &&
       ad_tracker_->IsAdScriptInStack(
           AdTracker::StackType::kTopOnly,
-          /*ignore_monkey_patch=*/AdTracker::MonkeyPatchableApi::kNone,
+          /*ignore_monkey_patch=*/
+          AdTracker::MonkeyPatchableApi::kNodeAppendChild,
           &ad_script_ancestry_);
 
   Initialize();
@@ -2674,7 +2685,7 @@ void LocalFrame::ForceSynchronousDocumentInstall(const AtomicString& mime_type,
   // around this problem.
   Vector<char> current_chunk;
   for (const auto& segment : data) {
-    current_chunk.AppendSpan(base::span(segment));
+    current_chunk.append_range(segment);
     if (current_chunk.size() > kMaxDocumentChunkSize) {
       parser->AppendBytes(base::as_byte_span(current_chunk));
       current_chunk.clear();
@@ -3234,7 +3245,7 @@ void LocalFrame::RequestExecuteScript(
   }
 
   Vector<WebScriptSource> script_sources;
-  script_sources.AppendSpan(sources);
+  script_sources.append_range(sources);
 
   ScriptState* script_state = ToScriptState(this, *world);
   // TODO(https://crbug.com/435149285): Remove this block and revert back to
@@ -4125,8 +4136,8 @@ void LocalFrame::ScheduleNextServiceForPostLayoutSnapshotClients() {
 
 void LocalFrame::CheckPositionAnchorsForCssVisibilityChanges() {
   for (auto& client : post_layout_snapshot_clients_) {
-    if (AnchorPositionScrollData* scroll_data =
-            DynamicTo<AnchorPositionScrollData>(client.Get())) {
+    auto* scroll_data = DynamicTo<AnchorPositionScrollData>(client.Get());
+    if (scroll_data && scroll_data->IsActive()) {
       if (auto* observer = scroll_data->GetAnchorPositionVisibilityObserver()) {
         observer->UpdateForCssAnchorVisibility();
       }
@@ -4269,7 +4280,7 @@ void LocalFrame::NotifyFrameVisibilityChanged(
 
 // TODO(crbug.com/447973489) - Add test coverage for this method
 #if BUILDFLAG(IS_ANDROID)
-void LocalFrame::PerformSpellCheck() {
+void LocalFrame::PerformFullContentSpellCheck() {
   if (!base::FeatureList::IsEnabled(
           blink::features::kAndroidSpellcheckFullApiBlink)) {
     return;
@@ -4283,6 +4294,7 @@ void LocalFrame::PerformSpellCheck() {
 
   const EphemeralRange range(Position(container_node, 0),
                              Position::LastPositionInNode(*container_node));
+
   GetSpellChecker().GetSpellCheckRequester().RequestCheckingFor(
       range,
       ExtractSpellingMarkersFromDocumentMarkerVector(

@@ -523,6 +523,7 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
 }
 
 - (void)setPageActionMenuEntryPointDispatcher {
+  CHECK(!IsChromeNextIaEnabled());
   [self.browser->GetCommandDispatcher()
       startDispatchingToTarget:self.viewController
                                    .pageActionMenuEntryPointHandler
@@ -578,6 +579,11 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
     [self setFakeboxButtonsSnapshotProvider:nil];
     [self.omniboxCoordinator focusOmnibox];
   }
+}
+
+- (void)insertTextToOmnibox:(NSString*)string {
+  CHECK(!IsComposeboxIOSEnabled());
+  [self.omniboxCoordinator insertTextToOmnibox:string];
 }
 
 - (void)focusOmniboxForVoiceOver {
@@ -685,6 +691,7 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
 }
 
 - (void)locationBarDidTapAIHubNewBadge {
+  _tracker->Dismissed(feature_engagement::kIPHiOSAIHubNewBadge);
   _tracker->NotifyUsedEvent(feature_engagement::kIPHiOSAIHubNewBadge);
 }
 
@@ -694,12 +701,6 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
   }
   return _tracker->ShouldTriggerHelpUI(
       feature_engagement::kIPHiOSAIHubNewBadge);
-}
-
-- (void)locationBarViewController:(LocationBarViewController*)controller
-         didChangeEditStateHeight:(CGFloat)height {
-  [self.heightDelegate locationBarCoordinator:self
-                     didChangeEditStateHeight:height];
 }
 
 #pragma mark - LocationBarBadgeCommands
@@ -717,6 +718,11 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
 - (void)markDisplayedBadgeAsUnread:(BOOL)read {
   CHECK(IsChromeNextIaEnabled());
   [self.locationBarBadgeCoordinator markDisplayedBadgeAsUnread:read];
+}
+
+- (void)togglePageActionMenuEntryPointHighlight:(BOOL)highlight {
+  [self.viewController.pageActionMenuEntryPointHandler
+      toggleEntryPointHighlight:highlight];
 }
 
 #pragma mark - ContextualPanelEntrypointCommands
@@ -746,7 +752,9 @@ const size_t kMaxURLDisplayChars = 32 * 1024;
 #pragma mark - LocationBarSteadyViewConsumer
 
 - (void)updateLocationText:(NSString*)text clipTail:(BOOL)clipTail {
-  [self.omniboxCoordinator updateOmniboxState];
+  if (IsOmniboxCrashFixKillSwitchEnabled()) {
+    [self.omniboxCoordinator updateOmniboxState];
+  }
   [self.viewController updateLocationText:text clipTail:clipTail];
   [self.viewController updateForNTP:NO];
   [self.mediator locationUpdated];

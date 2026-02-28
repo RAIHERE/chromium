@@ -29,6 +29,7 @@
 #import "components/url_formatter/url_fixer.h"
 #import "ios/chrome/browser/content_suggestions/coordinator/content_suggestions_delegate.h"
 #import "ios/chrome/browser/content_suggestions/model/content_suggestions_metrics_recorder.h"
+#import "ios/chrome/browser/content_suggestions/most_visited_tiles/public/metrics.h"
 #import "ios/chrome/browser/content_suggestions/most_visited_tiles/ui/most_visited_item.h"
 #import "ios/chrome/browser/content_suggestions/most_visited_tiles/ui/most_visited_tile_view.h"
 #import "ios/chrome/browser/content_suggestions/most_visited_tiles/ui/most_visited_tiles_config.h"
@@ -84,6 +85,16 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
   return (base::Time::Now() - earliest_visit_time) < base::Days(7);
 }
 
+// Fix up and validate the `url`. If the url is invalid, return an empty URL.
+GURL GetValidUrl(NSString* urlString) {
+  GURL fixedUpURL = url_formatter::FixupURL(base::SysNSStringToUTF8(urlString),
+                                            std::string());
+  if (fixedUpURL.IsStandard() || fixedUpURL.SchemeIs("chrome")) {
+    return fixedUpURL;
+  }
+  return GURL();
+}
+
 }  // namespace
 
 @interface MostVisitedTilesMediator () <ContentSuggestionsMenuElementsProvider,
@@ -102,11 +113,10 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
   BOOL _incognitoAvailable;
   BOOL _recordedPageImpression;
   raw_ptr<history::HistoryService> _historyService;
-  raw_ptr<PrefService, DanglingUntriaged> _prefService;
+  raw_ptr<PrefService> _prefService;
   PrefChangeRegistrar _prefChangeRegistrar;
-  raw_ptr<UrlLoadingBrowserAgent, DanglingUntriaged> _URLLoadingBrowserAgent;
-  raw_ptr<ChromeAccountManagerService, DanglingUntriaged>
-      _accountManagerService;
+  raw_ptr<UrlLoadingBrowserAgent> _URLLoadingBrowserAgent;
+  raw_ptr<ChromeAccountManagerService> _accountManagerService;
   raw_ptr<feature_engagement::Tracker> _engagementTracker;
   LayoutGuideCenter* _layoutGuideCenter;
   // Tracker for cancellable tasks initiated by the mediator.
@@ -147,7 +157,8 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
     _mostVisitedSites = std::move(mostVisitedSites);
     _mostVisitedBridge =
-        std::make_unique<ntp_tiles::MostVisitedSitesObserverBridge>(self);
+        std::make_unique<ntp_tiles::MostVisitedSitesObserverBridge>(
+            self, _mostVisitedSites.get());
     if (IsContentSuggestionsCustomizable()) {
       _mostVisitedSites->EnableTileTypes(
           ntp_tiles::MostVisitedSites::EnableTileTypesOptions()
@@ -163,12 +174,15 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
 - (void)disconnect {
   _cancelableTaskTracker.TryCancelAll();
-  _historyService = nullptr;
-  _engagementTracker = nullptr;
-  _prefChangeRegistrar.RemoveAll();
   _mostVisitedBridge.reset();
   _mostVisitedSites.reset();
   _mostVisitedAttributesProvider = nil;
+  _historyService = nullptr;
+  _engagementTracker = nullptr;
+  _accountManagerService = nullptr;
+  _URLLoadingBrowserAgent = nullptr;
+  _prefChangeRegistrar.RemoveAll();
+  _prefService = nullptr;
 }
 
 + (NSUInteger)maxSitesShown {
@@ -192,16 +206,16 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
 #pragma mark - MostVisitedSitesObserving
 
-- (void)onMostVisitedURLsAvailable:
-    (const ntp_tiles::NTPTilesVector&)mostVisited {
+- (void)mostVisitedSites:(ntp_tiles::MostVisitedSites*)mostVisitedSites
+          didUpdateTiles:(const ntp_tiles::NTPTilesVector&)tiles {
   // This is used by the shortcuts widget.
   content_suggestions_tile_saver::SaveMostVisitedToDisk(
-      mostVisited, _mostVisitedAttributesProvider,
+      tiles, _mostVisitedAttributesProvider,
       app_group::ShortcutsWidgetFaviconsFolder(), _accountManagerService);
 
   _freshMostVisitedItems = [NSMutableArray array];
   int index = 0;
-  for (const ntp_tiles::NTPTile& tile : mostVisited) {
+  for (const ntp_tiles::NTPTile& tile : tiles) {
     MostVisitedItem* item = [self convertNTPTile:tile];
     item.commandHandler = self;
     item.incognitoAvailable = _incognitoAvailable;
@@ -213,14 +227,15 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
   [self useFreshMostVisited];
 
-  if (mostVisited.size() && !_recordedPageImpression) {
+  if (tiles.size() && !_recordedPageImpression) {
     _recordedPageImpression = YES;
     [self recordMostVisitedTilesDisplayed];
-    ntp_tiles::metrics::RecordPageImpression(mostVisited.size());
+    ntp_tiles::metrics::RecordPageImpression(tiles.size());
   }
 }
 
-- (void)onIconMadeAvailable:(const GURL&)siteURL {
+- (void)mostVisitedSites:(ntp_tiles::MostVisitedSites*)mostVisitedSites
+    didUpdateFaviconForURL:(const GURL&)siteURL {
   // This is used by the shortcuts widget.
   content_suggestions_tile_saver::UpdateSingleFavicon(
       siteURL, _mostVisitedAttributesProvider,
@@ -297,6 +312,38 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
                               atIndex:item.index];
 }
 
+- (void)pinOrUnpinMostVisited:(MostVisitedItem*)item {
+  GURL url = item.URL;
+  __weak MostVisitedTilesMediator* weakSelf = self;
+  if (_mostVisitedSites->HasCustomLink(url)) {
+    // Remove the custom link.
+    if (_mostVisitedSites->DeleteCustomLink(url)) {
+      [self showSnackbarWithMessage:
+                l10n_util::GetNSString(
+                    IDS_IOS_CONTENT_SUGGESTIONS_PIN_SITE_SNACKBAR_UNPINNED)
+                         undoAction:^{
+                           [weakSelf undoLastPinAction];
+                           RecordSnackbarUndoUserAction(/*undo_pin=*/NO);
+                         }];
+    }
+    return;
+  }
+  if (!_mostVisitedSites->AddCustomLink(url,
+                                        base::SysNSStringToUTF16(item.title))) {
+    return;
+  }
+  _engagementTracker->NotifyEvent(
+      feature_engagement::events::kIOSPinMVTSiteUsed);
+  // Show snackbar message.
+  [self showSnackbarWithMessage:
+            l10n_util::GetNSString(
+                IDS_IOS_CONTENT_SUGGESTIONS_PIN_SITE_SNACKBAR_PINNED)
+                     undoAction:^{
+                       [weakSelf undoLastPinAction];
+                       RecordSnackbarUndoUserAction(/*undo_pin=*/YES);
+                     }];
+}
+
 - (void)removeMostVisited:(MostVisitedItem*)item {
   [self.contentSuggestionsMetricsRecorder recordMostVisitedTileRemoved];
   [self blockMostVisitedURL:item.URL];
@@ -310,10 +357,16 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
 - (void)moveMostVisitedItem:(MostVisitedItem*)item toIndex:(NSUInteger)index {
   _mostVisitedSites->ReorderCustomLink(item.URL, index);
+  RecordReorderUserAction();
 }
 
 - (void)openModalToAddPinnedSite {
   [self.contentSuggestionsHandler showPinnedSiteCreator];
+  RecordAddSiteUserAction();
+}
+
+- (void)openModalToEditPinnedSite:(MostVisitedItem*)item {
+  [self.contentSuggestionsHandler showPinnedSiteEditorForItem:item];
 }
 
 #pragma mark - ContentSuggestionsMenuProvider
@@ -372,8 +425,7 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
     [menuElements
         addObject:[self.actionFactory
                       actionToEditPinnedSiteOnMostVisitedTileWithBlock:^{
-                        [weakSelf.contentSuggestionsHandler
-                            showPinnedSiteEditorForItem:item];
+                        [weakSelf openModalToEditPinnedSite:item];
                       }]];
     [menuElements addObject:[self.actionFactory
                                 actionToUnpinSiteFromMostVisitedTileWithBlock:^{
@@ -396,12 +448,15 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
 
 #pragma mark - MostVisitedTilesPinnedSiteMutator
 
-- (BOOL)addPinnedSiteWithTitle:(NSString*)title URL:(NSString*)URL {
-  GURL fixedUpURL =
-      url_formatter::FixupURL(base::SysNSStringToUTF8(URL), std::string());
+- (PinnedSiteMutationResult)addPinnedSiteWithTitle:(NSString*)title
+                                               URL:(NSString*)URL {
+  GURL fixedUpURL = GetValidUrl(URL);
+  if (fixedUpURL.is_empty()) {
+    return PinnedSiteMutationResult::kURLInvalid;
+  }
   if (!_mostVisitedSites->AddCustomLink(fixedUpURL,
                                         base::SysNSStringToUTF16(title))) {
-    return NO;
+    return PinnedSiteMutationResult::kURLExisted;
   }
   _engagementTracker->NotifyEvent(
       feature_engagement::events::kIOSPinMVTSiteUsed);
@@ -411,23 +466,26 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
                 IDS_IOS_CONTENT_SUGGESTIONS_PIN_SITE_SNACKBAR_ADDED_AND_PINNED)
                      undoAction:^{
                        [weakSelf undoLastPinAction];
+                       RecordSnackbarUndoUserAction(/*undo_pin=*/YES);
                      }];
-  return YES;
+  return PinnedSiteMutationResult::kSuccess;
 }
 
-- (BOOL)editPinnedSiteForURL:(NSString*)oldURL
-                   withTitle:(NSString*)title
-                         URL:(NSString*)newURL {
+- (PinnedSiteMutationResult)editPinnedSiteForURL:(NSString*)oldURL
+                                       withTitle:(NSString*)title
+                                             URL:(NSString*)newURL {
+  GURL newKeyURL = GetValidUrl(newURL);
+  if (newKeyURL.is_empty()) {
+    return PinnedSiteMutationResult::kURLInvalid;
+  }
   GURL oldKeyURL = GURL(base::SysNSStringToUTF8(oldURL));
-  GURL newKeyURL =
-      url_formatter::FixupURL(base::SysNSStringToUTF8(newURL), std::string());
   if (oldKeyURL == newKeyURL) {
     // Do not provide the new URL if only the title is changing.
     newKeyURL = GURL();
   }
   if (!_mostVisitedSites->UpdateCustomLink(oldKeyURL, newKeyURL,
                                            base::SysNSStringToUTF16(title))) {
-    return NO;
+    return PinnedSiteMutationResult::kURLExisted;
   }
   __weak MostVisitedTilesMediator* weakSelf = self;
   [self showSnackbarWithMessage:
@@ -436,7 +494,7 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
                      undoAction:^{
                        [weakSelf undoLastPinAction];
                      }];
-  return YES;
+  return PinnedSiteMutationResult::kSuccess;
 }
 
 #pragma mark - Private
@@ -541,31 +599,6 @@ BOOL ShouldTriggerIPHForURLVisits(history::QueryURLAndVisitsResult result) {
       return;
     }
   }
-}
-
-// Pins or unpins the item to/from the most visited tile, depending on whether
-// the item is already pinned or not.
-- (void)pinOrUnpinMostVisited:(MostVisitedItem*)item {
-  GURL url = item.URL;
-  if (_mostVisitedSites->HasCustomLink(url)) {
-    // Remove the custom link.
-    _mostVisitedSites->DeleteCustomLink(url);
-    return;
-  }
-  if (!_mostVisitedSites->AddCustomLink(url,
-                                        base::SysNSStringToUTF16(item.title))) {
-    return;
-  }
-  _engagementTracker->NotifyEvent(
-      feature_engagement::events::kIOSPinMVTSiteUsed);
-  // Show snackbar message.
-  __weak MostVisitedTilesMediator* weakSelf = self;
-  [self showSnackbarWithMessage:
-            l10n_util::GetNSString(
-                IDS_IOS_CONTENT_SUGGESTIONS_PIN_SITE_SNACKBAR_PINNED)
-                     undoAction:^{
-                       [weakSelf undoLastPinAction];
-                     }];
 }
 
 // Undo the last action that adds/removes/edits a pinned site.

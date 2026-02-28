@@ -6,28 +6,47 @@
 
 #include <type_traits>
 
+#include "base/command_line.h"
+#include "base/metrics/histogram_functions.h"
 #include "chrome/browser/dom_distiller/tab_utils.h"
+#include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/read_anything/read_anything_controller.h"
 #include "chrome/browser/ui/read_anything/read_anything_enums.h"
 #include "chrome/browser/ui/read_anything/read_anything_prefs.h"
 #include "chrome/browser/ui/read_anything/read_anything_side_panel_controller_utils.h"
+#include "chrome/browser/ui/side_panel/side_panel_action_callback.h"
+#include "chrome/browser/ui/side_panel/side_panel_entry_id.h"
+#include "chrome/browser/ui/side_panel/side_panel_enums.h"
+#include "chrome/browser/ui/side_panel/side_panel_ui.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/page_action/page_action_controller.h"
 #include "chrome/browser/ui/views/page_action/page_action_triggers.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_action_callback.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_entry_id.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_enums.h"
-#include "chrome/browser/ui/views/side_panel/side_panel_ui.h"
+#include "components/feature_engagement/public/feature_constants.h"
 #include "components/prefs/pref_filter.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/common/content_switches.h"
 #include "ui/accessibility/accessibility_features.h"
 
 namespace {
 
 static const int kMaxChipIgnoredCount = 5;
+const char* const kDenyList[] = {
+    "mail.google.com",
+    "whatsapp.com",
+    "chatgpt.com",
+    "docs.google.com",
+    "docs.sandbox.google.com",
+    "calendar.google.com",
+    "drive.google.com",
+    "meet.google.com",
+    "instagram.com",
+    "tiktok.com",
+    "youtube.com",
+    "photos.google.com",
+};
 
 int GetOmniboxChipIgnoredCount(PrefService* prefs) {
   return prefs->GetInteger(
@@ -88,6 +107,10 @@ void ReadAnythingEntryPointController::ShowUI(
   if (!bwi) {
     return;
   }
+  if (!IsUIShowing(bwi)) {
+    base::UmaHistogramEnumeration("Accessibility.ReadAnything.ShowTriggered",
+                                  open_trigger);
+  }
 
   if (features::IsImmersiveReadAnythingEnabled()) {
     // TODO(crbug.com/471001915): Once IRM flag is enabled by default, change
@@ -115,6 +138,11 @@ void ReadAnythingEntryPointController::ToggleUI(
     ReadAnythingOpenTrigger open_trigger) {
   if (!bwi) {
     return;
+  }
+
+  if (!IsUIShowing(bwi)) {
+    base::UmaHistogramEnumeration("Accessibility.ReadAnything.ShowTriggered",
+                                  open_trigger);
   }
 
   if (features::IsImmersiveReadAnythingEnabled()) {
@@ -156,7 +184,7 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
     base::OnceCallback<void(user_education::FeaturePromoResult promo_result)>
         show_promo_callback) {
   if (!base::FeatureList::IsEnabled(features::kPageActionsMigration) ||
-      !features::IsReadAnythingOmniboxChipEnabled()) {
+      !features::IsReadAnythingOmniboxChipEnabled() || !bwi) {
     return;
   }
 
@@ -184,11 +212,17 @@ void ReadAnythingEntryPointController::UpdatePageActionVisibility(
 }
 
 // static
-void ReadAnythingEntryPointController::CheckIfShouldSuggestReadingMode(
-    BrowserWindowInterface* bwi,
-    base::OnceCallback<void(bool)> result_callback) {
+bool ReadAnythingEntryPointController::CheckIfShouldSuggestReadingModeNaive(
+    BrowserWindowInterface* bwi) {
   if (!features::IsReadAnythingOmniboxChipEnabled() || !bwi) {
-    return;
+    return false;
+  }
+
+  // Disable the omnibox on app windows, as these windows don't usually have
+  // omnibox support.
+  Browser* browser = bwi->GetBrowserForMigrationOnly();
+  if (browser && (browser->is_type_app() || browser->is_type_app_popup())) {
+    return false;
   }
 
   // Don't show the omnibox entrypoint for non-HTTP(S) URLs. These URLs are
@@ -197,12 +231,43 @@ void ReadAnythingEntryPointController::CheckIfShouldSuggestReadingMode(
   content::WebContents* contents = bwi->GetActiveTabInterface()->GetContents();
   const GURL& url = contents->GetLastCommittedURL();
   if (!url.SchemeIsHTTPOrHTTPS()) {
+    return false;
+  }
+
+  // Don't show the omnibox entrypoint for sites we know don't distill well.
+  for (const char* domain : kDenyList) {
+    if (url.DomainIs(domain)) {
+      return false;
+    }
+  }
+
+  return true;
+}
+
+// static
+void ReadAnythingEntryPointController::CheckIfShouldSuggestReadingMode(
+    BrowserWindowInterface* bwi,
+    base::OnceCallback<void(bool)> result_callback) {
+  if (!features::IsReadAnythingOmniboxChipEnabled() || !bwi) {
+    std::move(result_callback).Run(false);
+    return;
+  }
+  // Don't show the omnibox entrypoint if automation is enabled, such as
+  // during automated testing.
+  if (base::CommandLine::ForCurrentProcess()->HasSwitch(
+          switches::kEnableAutomation)) {
+    std::move(result_callback).Run(false);
+    return;
+  }
+
+  if (!CheckIfShouldSuggestReadingModeNaive(bwi)) {
     std::move(result_callback).Run(false);
     return;
   }
 
   // Readability will callback with whether or not the current contents are a
   // good candidate for distillation.
+  content::WebContents* contents = bwi->GetActiveTabInterface()->GetContents();
   RunReadabilityHeuristicsOnWebContents(contents, std::move(result_callback));
 }
 

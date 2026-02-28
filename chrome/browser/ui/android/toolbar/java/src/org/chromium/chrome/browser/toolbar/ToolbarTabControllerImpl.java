@@ -113,8 +113,11 @@ public class ToolbarTabControllerImpl implements ToolbarTabController {
             if (newTab == null) return false;
             newTab.goBack();
             if (mMultiInstanceManager == null) return false;
+            // Move tab to a new window.
             mMultiInstanceManager.moveTabsToNewWindow(
-                    Collections.singletonList(newTab), NewWindowAppSource.KEYBOARD_SHORTCUT);
+                    Collections.singletonList(newTab),
+                    /* finalizeCallback= */ null,
+                    NewWindowAppSource.KEYBOARD_SHORTCUT);
             // Don't run mOnSuccessRunnable since nothing happened in the current tab.
             return true;
         }
@@ -153,8 +156,11 @@ public class ToolbarTabControllerImpl implements ToolbarTabController {
             if (newTab == null) return false;
             newTab.goForward();
             if (mMultiInstanceManager == null) return false;
+            // Move tab to a new window.
             mMultiInstanceManager.moveTabsToNewWindow(
-                    Collections.singletonList(newTab), NewWindowAppSource.KEYBOARD_SHORTCUT);
+                    Collections.singletonList(newTab),
+                    /* finalizeCallback= */ null,
+                    NewWindowAppSource.KEYBOARD_SHORTCUT);
             // Don't run mOnSuccessRunnable since nothing happened in the current tab.
             return true;
         }
@@ -196,15 +202,15 @@ public class ToolbarTabControllerImpl implements ToolbarTabController {
         Tab currentTab = mTabSupplier.get();
         if (currentTab == null) return;
         String homePageUrl = mHomepageUrlSupplier.get();
-        boolean is_chrome_internal =
+        boolean isChromeInternal =
                 homePageUrl.startsWith(ContentUrlConstants.ABOUT_URL_SHORT_PREFIX)
                         || homePageUrl.startsWith(UrlConstants.CHROME_URL_SHORT_PREFIX)
                         || homePageUrl.startsWith(UrlConstants.CHROME_NATIVE_URL_SHORT_PREFIX);
         RecordHistogram.recordBooleanHistogram(
-                "Navigation.Home.IsChromeInternal", is_chrome_internal);
+                "Navigation.Home.IsChromeInternal", isChromeInternal);
         // Log a user action for the !is_chrome_internal case. This value is used as part of a
         // high-level guiding metric, which is being migrated to user actions.
-        if (!is_chrome_internal) {
+        if (!isChromeInternal) {
             RecordUserAction.record("Navigation.Home.NotChromeInternal");
         }
 

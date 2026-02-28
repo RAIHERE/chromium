@@ -241,17 +241,15 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
       const JavaScriptFrameworkDetectionResult&);
 
   // https://html.spec.whatwg.org/multipage/history.html#url-and-history-update-steps
-  void RunURLAndHistoryUpdateSteps(
-      const KURL&,
-      HistoryItem*,
-      mojom::blink::SameDocumentNavigationType,
-      scoped_refptr<SerializedScriptValue>,
-      WebFrameLoadType,
-      FirePopstate,
-      bool should_skip_screenshot,
-      bool is_browser_initiated = false,
-      bool is_synchronously_committed = true,
-      std::optional<scheduler::TaskAttributionId> task_state_id = std::nullopt);
+  void RunURLAndHistoryUpdateSteps(const KURL&,
+                                   HistoryItem*,
+                                   mojom::blink::SameDocumentNavigationType,
+                                   scoped_refptr<SerializedScriptValue>,
+                                   WebFrameLoadType,
+                                   FirePopstate,
+                                   bool should_skip_screenshot,
+                                   bool is_browser_initiated = false,
+                                   bool is_synchronously_committed = true);
 
   // |is_synchronously_committed| is described in comment for
   // CommitSameDocumentNavigation.
@@ -265,7 +263,6 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
       const SecurityOrigin* initiator_origin,
       bool is_browser_initiated,
       bool is_synchronously_committed,
-      std::optional<scheduler::TaskAttributionId> task_state_id,
       bool has_transient_user_activation,
       bool has_ua_visual_transition,
       bool should_skip_screenshot);
@@ -413,6 +410,14 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
   // to ensure the token can only be used to invoke a single text fragment.
   bool ConsumeTextFragmentToken();
 
+  // Returns the text fragment to scroll to and clears it.
+  std::optional<String> TakeInternalScrollToTextFragment();
+
+  // For testing purposes.
+  void SetInternalScrollToTextFragment(const String& text_fragment) {
+    internal_scroll_to_text_fragment_ = text_fragment;
+  }
+
   // Notifies that the prerendering document this loader is working for is
   // activated.
   void NotifyPrerenderingDocumentActivated(
@@ -547,7 +552,6 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
       bool is_browser_initiated,
       bool is_synchronously_committed,
       mojom::blink::TriggeringEventInfo,
-      std::optional<scheduler::TaskAttributionId> task_state_id,
       bool has_ua_visual_transition,
       bool should_skip_screenshot);
 
@@ -762,6 +766,10 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
   // through a redirect.
   bool has_text_fragment_token_ = false;
 
+  // If set, the document should attempt to scroll this text fragment into view
+  // upon load, without highlighting it.
+  std::optional<String> internal_scroll_to_text_fragment_;
+
   // See WebNavigationParams for definition.
   const bool was_discarded_ = false;
 
@@ -881,6 +889,18 @@ class CORE_EXPORT DocumentLoader : public GarbageCollected<DocumentLoader>,
   // Stores the total time taken by `UpdateSubresourceLoadMetrics()` for the
   // measurement purpose.
   base::TimeDelta total_taken_time_to_update_subresource_load_metrics_;
+
+  // Special case for same-document navigations initiated by a cross-origin
+  // frame: When a same-document navigation occurs in an iframe, we call
+  // FrameOwner::DispatchLoad() to fire a load event on the iframe that is
+  // embedding this frame. The parent frame containing that iframe might be
+  // cross-origin, and therefore shouldn't know whether the navigation was
+  // same-document or cross-document. We therefore schedule the DispatchLoad
+  // on a timer, which allows us to coalesce repeated same-document navigations
+  // into a single DispatchLoad, emulating the behavior of repeated
+  // cross-document navigations that will cancel each other if one doesn't have
+  // time to finish before the next one begins.
+  TaskHandle cross_origin_parent_load_event_task_;
 };
 
 DECLARE_WEAK_IDENTIFIER_MAP(DocumentLoader);

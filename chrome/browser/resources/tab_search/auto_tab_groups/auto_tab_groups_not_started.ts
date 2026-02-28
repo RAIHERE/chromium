@@ -22,17 +22,19 @@ import {getHtml} from './auto_tab_groups_not_started.html.js';
 
 const AutoTabGroupsNotStartedElementBase = WebUiListenerMixinLit(CrLitElement);
 
-export interface AutoTabGroupsNotStartedElement {
-  $: {
-    header: HTMLElement,
-  };
-}
-
 // Not started state for the auto tab groups UI.
 export class AutoTabGroupsNotStartedElement extends
     AutoTabGroupsNotStartedElementBase {
   static get is() {
     return 'auto-tab-groups-not-started';
+  }
+
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
   }
 
   static override get properties() {
@@ -56,14 +58,6 @@ export class AutoTabGroupsNotStartedElement extends
   private accessor signedIn_: boolean = false;
   private syncBrowserProxy_: TabSearchSyncBrowserProxy =
       TabSearchSyncBrowserProxyImpl.getInstance();
-
-  static override get styles() {
-    return getCss();
-  }
-
-  override render() {
-    return getHtml.bind(this)();
-  }
 
   override connectedCallback() {
     super.connectedCallback();
@@ -119,13 +113,13 @@ export class AutoTabGroupsNotStartedElement extends
     this.fire('learn-more-click');
   }
 
-  protected onLearnMoreKeyDown_(event: KeyboardEvent) {
+  protected onLearnMoreKeydown_(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       this.onLearnMoreClick_();
     }
   }
 
-  protected onModelStrategyChange_(
+  protected onModelStrategySelectedChanged_(
       e: CustomEvent<{value: TabOrganizationModelStrategy}>) {
     const modelStrategy = e.detail.value;
     if (Number(modelStrategy) !== Number(this.modelStrategy)) {
@@ -133,7 +127,7 @@ export class AutoTabGroupsNotStartedElement extends
     }
   }
 
-  protected onUserInstructionInputChange_(e: KeyboardEvent) {
+  protected onUserInstructionInputInput_(e: KeyboardEvent) {
     const value = (e.target as HTMLInputElement).value;
     this.fire('user-instruction-input-change', {value: value});
   }

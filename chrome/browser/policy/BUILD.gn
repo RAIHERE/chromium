@@ -259,6 +259,7 @@ source_set("policy_specific_browser_tests") {
     "test/standardized_browser_zoom_browsertest.cc",
     "test/url_keyed_anonymized_data_collection_enabled_browsertest.cc",
     "test/web_rtc_udp_port_range_policy_browsertest.cc",
+    "test/xslt_policy_browsertest.cc",
   ]
   if (is_chromeos) {
     sources += [ "test/policy_certs_browsertest.cc" ]
@@ -442,6 +443,7 @@ source_set("browser_tests") {
     deps += [
       "//chrome/browser/extensions",
       "//chrome/browser/extensions:test_support",
+      "//extensions/browser:crx_installer",
       "//extensions/browser/forced_extensions",
     ]
 

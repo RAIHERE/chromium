@@ -31,6 +31,7 @@
 #ifndef THIRD_PARTY_BLINK_RENDERER_CORE_EXPORTED_WEB_VIEW_IMPL_H_
 #define THIRD_PARTY_BLINK_RENDERER_CORE_EXPORTED_WEB_VIEW_IMPL_H_
 
+#include <cstdint>
 #include <memory>
 #include <vector>
 
@@ -580,13 +581,6 @@ class CORE_EXPORT WebViewImpl final : public WebView,
   // adjacent UI element in the containing window.
   void TakeFocus(bool reverse);
 
-  // Shows a previously created WebView (via window.open()).
-  void Show(const LocalFrameToken& opener_frame_token,
-            NavigationPolicy policy,
-            const gfx::Rect& requested_rect,
-            const gfx::Rect& adjusted_rect,
-            bool opened_by_user_gesture);
-
   // Send the window rect to the browser and call `ack_callback` when the
   // browser has processed it.
   void SendWindowRectToMainFrameHost(const gfx::Rect& bounds,
@@ -663,12 +657,14 @@ class CORE_EXPORT WebViewImpl final : public WebView,
   FRIEND_TEST_ALL_PREFIXES(WebViewTest, UpdateTargetURLWithInvalidURL);
   FRIEND_TEST_ALL_PREFIXES(WebViewTest, TouchDragContextMenu);
   FRIEND_TEST_ALL_PREFIXES(WebViewTest, ContextMenuAndDrag);
+  FRIEND_TEST_ALL_PREFIXES(WebViewTest,
+                           MouseFocusOnTabindexLinkDoesNotShowBubble);
+  FRIEND_TEST_ALL_PREFIXES(WebViewTest, KeyboardFocusOnTabindexLinkShowsBubble);
 
   friend class frame_test_helpers::WebViewHelper;
   friend class SimCompositor;
   friend class WebView;  // So WebView::Create can call our constructor
 
-  void AcceptLanguagesChanged();
   void ThemeChanged();
 
   // Update the target url locally and tell the browser that the target URL has
@@ -804,6 +800,7 @@ class CORE_EXPORT WebViewImpl final : public WebView,
   void UpdateInspectorDeviceScaleFactorOverride();
 
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+  // Additional Windowing Controls API helpers.
   void WasMaximized();
   void WasMinimized();
   void WasRestored();
@@ -813,6 +810,8 @@ class CORE_EXPORT WebViewImpl final : public WebView,
     kMinimize,
     kRestore,
   };
+  void PostDelayedRejectionForAWCPromise(uint64_t id);
+  void RejectAWCPromise(uint64_t id);
   void HandleWindowShowStateChangeCallbackWith(WindowShowStateChangeType type);
 #endif
 
@@ -1034,11 +1033,19 @@ class CORE_EXPORT WebViewImpl final : public WebView,
   // All the registered observers.
   base::ObserverList<WebViewObserver> observers_;
 #if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
-  std::optional<
-      std::pair<WindowShowStateChangeType, WindowingControlsChangeCallback>>
-      window_show_state_change_callback_;
-  std::optional<std::pair<bool, WindowingControlsChangeCallback>>
-      set_resizable_change_callback_;
+  struct WindowShowStateCallbackData {
+    uint64_t id;
+    WindowShowStateChangeType requested_action;
+    WindowingControlsChangeCallback callback;
+  };
+  std::optional<WindowShowStateCallbackData> window_show_state_change_callback_;
+
+  struct SetResizableCallbackData {
+    uint64_t id;
+    bool requested_resizable;
+    WindowingControlsChangeCallback callback;
+  };
+  std::optional<SetResizableCallbackData> set_resizable_change_callback_;
 #endif
 };
 

@@ -27,7 +27,6 @@
 #include "base/metrics/histogram_functions.h"
 #include "base/metrics/histogram_macros.h"
 #include "base/metrics/user_metrics.h"
-#include "base/no_destructor.h"
 #include "base/path_service.h"
 #include "base/pending_task.h"
 #include "base/power_monitor/power_monitor.h"
@@ -72,6 +71,7 @@
 #include "content/browser/browser_thread_impl.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/compositor/viz_process_transport_factory.h"
+#include "content/browser/cpu_performance/cpu_performance.h"
 #include "content/browser/download/save_file_manager.h"
 #include "content/browser/field_trial_synchronizer.h"
 #include "content/browser/first_party_sets/first_party_set_parser.h"
@@ -213,8 +213,6 @@
 
 #if defined(USE_GLIB)
 #include <glib-object.h>
-
-#include "base/synchronization/lock.h"
 #endif
 
 #if BUILDFLAG(IS_WIN)
@@ -272,18 +270,7 @@ static void GLibLogHandler(const gchar* log_domain,
   if (!message)
     message = "<no message>";
 
-  GLogLevelFlags always_fatal_flags;
-  GLogLevelFlags fatal_flags;
-  {
-    static base::NoDestructor<base::Lock> lock;
-    base::AutoLock auto_lock(*lock);
-    always_fatal_flags = g_log_set_always_fatal(G_LOG_LEVEL_MASK);
-    g_log_set_always_fatal(always_fatal_flags);
-    fatal_flags = g_log_set_fatal_mask(log_domain, G_LOG_LEVEL_MASK);
-    g_log_set_fatal_mask(log_domain, fatal_flags);
-  }
-
-  if ((always_fatal_flags | fatal_flags) & log_level) {
+  if (log_level & (G_LOG_FLAG_FATAL)) {
     LOG(DFATAL) << log_domain << ": " << message;
   } else if (log_level & (G_LOG_LEVEL_ERROR | G_LOG_LEVEL_CRITICAL)) {
     LOG(ERROR) << log_domain << ": " << message;
@@ -717,7 +704,6 @@ void BrowserMainLoop::PostCreateMainMessageLoop() {
     base::DiscardableMemoryAllocator::SetInstance(
         discardable_memory::DiscardableSharedMemoryManager::Get());
   }
-
 
   {
     // The process-wide accessibility state must be created before we complete
@@ -1487,6 +1473,12 @@ void BrowserMainLoop::PostCreateThreadsImpl() {
 #if defined(ENABLE_IPC_FUZZER)
   SetFileUrlPathAliasForIpcFuzzer();
 #endif
+
+  {
+    TRACE_EVENT0("startup",
+                 "BrowserMainLoop::PostCreateThreads:InitCpuPerformance");
+    content::cpu_performance::Initialize();
+  }
 }
 
 bool BrowserMainLoop::UsingInProcessGpu() const {

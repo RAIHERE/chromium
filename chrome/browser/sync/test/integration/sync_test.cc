@@ -72,6 +72,8 @@
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/identity_manager.h"
+#include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/skills/features.h"
 #include "components/sync/base/command_line_switches.h"
 #include "components/sync/base/data_type.h"
@@ -89,10 +91,12 @@
 #include "content/public/browser/network_service_instance.h"
 #include "content/public/browser/storage_partition.h"
 #include "content/public/browser/web_contents.h"
+#include "content/public/test/test_launcher.h"
 #include "content/public/test/url_loader_interceptor.h"
 #include "extensions/buildflags/buildflags.h"
 #include "google_apis/gaia/fake_oauth2_token_response.h"
 #include "google_apis/gaia/gaia_urls.h"
+#include "google_apis/gaia/google_service_auth_error.h"
 #include "net/base/port_util.h"
 #include "net/dns/mock_host_resolver.h"
 #include "net/traffic_annotation/network_traffic_annotation_test_helper.h"
@@ -808,7 +812,7 @@ bool SyncTest::SetupSyncWithMode(SetupSyncMode setup_mode,
     // It is deleted on certain conditions which are not satisfied by our tests,
     // and this causes the SigninTracker observer to stay hanging at shutdown.
     // Calling LoginUIService::SyncConfirmationUIClosed forces the observer to
-    // be removed. http://crbug.com/484388
+    // be removed. http://crbug.com/40416788
     for (int i = 0; i < num_clients_; ++i) {
       LoginUIServiceFactory::GetForProfile(GetProfile(i))
           ->SyncConfirmationUIClosed(
@@ -843,7 +847,7 @@ void SyncTest::TearDownOnMainThread() {
     CheckForDataTypeFailures(client_index);
   }
 
-  // Workaround for https://crbug.com/801569: |prefs::kProfileLastUsed| stores
+  // Workaround for https://crbug.com/41364511: |prefs::kProfileLastUsed| stores
   // the profile path relative to the user dir, but our testing profiles are
   // outside the user dir (see CreateProfile). So code trying to access the last
   // used profile by path will fail. To work around that, set the last used
@@ -860,24 +864,27 @@ void SyncTest::TearDownOnMainThread() {
     fake_server_.reset();
   }
 
-  for (size_t index = 0; index < profiles_.size(); ++index) {
+  for (Profile* profile : profiles_) {
     // Profile could be removed earlier.
-    if (profiles_[index]) {
-      profiles_[index]->RemoveObserver(this);
+    if (profile) {
+      profile->RemoveObserver(this);
 
 #if BUILDFLAG(IS_ANDROID)
-      if (server_type_ == EXTERNAL_LIVE_SERVER) {
-        // A profile could have backend tasks from the associate sync engine.
-        // In browser tests, on non-Android platforms, these tasks are cancelled
-        // during the browser process shutdown.
-        // On Android, however, browser process is not shutdown after test run.
-        // As a result, these backend tasks could keep running and cause timeout
-        // error during test shutdown.
-        // To fix this issue, we explicitly mimic a dashboard reset to cancel
-        // any ongoing sync engine's backend tasks.
-        GetSyncService(index)->OnActionableProtocolError(
-            {.error_type = syncer::NOT_MY_BIRTHDAY,
-             .action = syncer::DISABLE_SYNC_ON_CLIENT});
+      // In Android browser tests, the Profile and thus the SyncService does not
+      // get shut down in an orderly fashion. This can interfere with subsequent
+      // tests. To work around that, produce an auth error here, which results
+      // in the engine being shut down. (Note that auth errors are not
+      // persisted, so this does not interfere with PRE_ tests.)
+      signin::IdentityManager* identity_manager =
+          IdentityManagerFactory::GetForProfile(profile);
+      CoreAccountId primary_account =
+          identity_manager->GetPrimaryAccountId(signin::ConsentLevel::kSignin);
+      if (!primary_account.empty()) {
+        signin::UpdatePersistentErrorOfRefreshTokenForAccount(
+            identity_manager, primary_account,
+            GoogleServiceAuthError::FromInvalidGaiaCredentialsReason(
+                GoogleServiceAuthError::InvalidGaiaCredentialsReason::
+                    CREDENTIALS_REJECTED_BY_CLIENT));
       }
 #endif  // BUILDFLAG(IS_ANDROID)
     }
@@ -1098,13 +1105,13 @@ void SyncTest::DisableNetwork() {
           }));
 
   connection_change_simulator_.SetConnectionType(
-      network::mojom::ConnectionType::CONNECTION_NONE);
+      net::NetworkChangeNotifier::ConnectionType::CONNECTION_NONE);
 }
 
 void SyncTest::EnableNetwork() {
   url_loader_interceptor_.reset();
   connection_change_simulator_.SetConnectionType(
-      network::mojom::ConnectionType::CONNECTION_ETHERNET);
+      net::NetworkChangeNotifier::ConnectionType::CONNECTION_ETHERNET);
 }
 
 void SyncTest::TriggerSyncForDataTypes(int index,
@@ -1208,7 +1215,7 @@ std::string SetupSyncModeAsString(SyncTest::SetupSyncMode sync_test_mode) {
 // enabled by default, e.g. HISTORY requires a dedicated opt-in via
 // SyncUserSettings::SetSelectedTypes().
 syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
-  static_assert(61 == syncer::GetNumDataTypes(),
+  static_assert(63 == syncer::GetNumDataTypes(),
                 "Add new types below if they can run in transport mode");
 
 #if BUILDFLAG(IS_ANDROID)
@@ -1309,6 +1316,14 @@ syncer::DataTypeSet AllowedTypesInStandaloneTransportMode() {
 
   if (base::FeatureList::IsEnabled(syncer::kSyncGeminiThread)) {
     allowed_types.Put(syncer::GEMINI_THREAD);
+  }
+
+  if (base::FeatureList::IsEnabled(syncer::kSyncThemesIos)) {
+    allowed_types.Put(syncer::THEMES_IOS);
+  }
+
+  if (base::FeatureList::IsEnabled(syncer::kSyncAccessibilityAnnotation)) {
+    allowed_types.Put(syncer::ACCESSIBILITY_ANNOTATION);
   }
 
   if (base::FeatureList::IsEnabled(syncer::kSyncAccountSettings)) {

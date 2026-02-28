@@ -20,7 +20,7 @@
 #import "components/strings/grit/components_strings.h"
 #import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_animator.h"
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_entrypoint_view.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_entrypoint.h"
@@ -54,6 +54,7 @@
 #import "ios/chrome/browser/shared/ui/util/layout_guide_names.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/shared/ui/util/util_swift.h"
+#import "ios/chrome/browser/sharing/ui_bundled/sharing_metrics.h"
 #import "ios/chrome/browser/toolbar/legacy/ui_bundled/public/toolbar_type.h"
 #import "ios/chrome/common/NSString+Chromium.h"
 #import "ios/chrome/common/ui/util/constraints_ui_util.h"
@@ -85,8 +86,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 
 }  // namespace
 
-@interface LocationBarViewController () <TextFieldViewContainingHeightDelegate,
-                                         UIContextMenuInteractionDelegate,
+@interface LocationBarViewController () <UIContextMenuInteractionDelegate,
                                          UIIndirectScribbleInteractionDelegate>
 // The injected edit view.
 @property(nonatomic, strong) UIView<TextFieldViewContaining>* editView;
@@ -174,7 +174,6 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 - (void)setEditView:(UIView<TextFieldViewContaining>*)editView {
   DCHECK(!self.editView);
   _editView = editView;
-  _editView.heightDelegate = self;
   _textField = editView.textFieldView;
 }
 
@@ -309,7 +308,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
                                 underName:kPageActionMenuEntrypointGuide];
   }
 
-  if (IsLensOverlayAvailable(_profilePrefs)) {
+  if (IsLensOverlayAllowedByPolicy(_profilePrefs)) {
     _lensOverlayPlaceholderView = [[LensOverlayEntrypointButton alloc]
         initWithProfilePrefs:_profilePrefs];
     [self.layoutGuideCenter referenceView:_lensOverlayPlaceholderView
@@ -349,9 +348,8 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   [self updateTrailingButtonState];
   [self switchToEditing:NO];
 
-  NSArray<UITrait>* traits = TraitCollectionSetForTraits(
-      @[ UITraitHorizontalSizeClass.class, UITraitVerticalSizeClass.class ]);
-  [self registerForTraitChanges:traits
+  [self registerForTraitChanges:
+            @[ UITraitHorizontalSizeClass.class, UITraitVerticalSizeClass.class ]
                      withAction:@selector(updateTrailingButtonState)];
 
   [self registerForTraitChanges:@[ UITraitHorizontalSizeClass.class ]
@@ -425,9 +423,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 #pragma mark - LocationBarSteadyViewConsumer
 
 - (void)updateLocationText:(NSString*)string clipTail:(BOOL)clipTail {
-  [self.locationBarSteadyView setLocationLabelText:string];
-  self.locationBarSteadyView.locationLabel.lineBreakMode =
-      clipTail ? NSLineBreakByTruncatingTail : NSLineBreakByTruncatingHead;
+  [self.locationBarSteadyView setLocationLabelText:string clipTail:clipTail];
 }
 
 - (void)updateLocationIcon:(UIImage*)icon
@@ -473,7 +469,8 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 }
 
 - (void)attemptShowingLensOverlayIPH {
-  if (IsLensOverlayAvailable(_profilePrefs) && !IsPageActionMenuEnabled() &&
+  if (IsLensOverlayAllowedByPolicy(_profilePrefs) &&
+      !IsPageActionMenuEnabled() &&
       !self.locationBarSteadyView.badgesContainerView.placeholderView.hidden) {
     [self.helpCommandsHandler
         presentInProductHelpWithType:InProductHelpType::kLensOverlayEntrypoint];
@@ -684,7 +681,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
     case kShareButton: {
       [self.locationBarSteadyView.trailingButton
                  addTarget:self.dispatcher
-                    action:@selector(showShareSheet)
+                    action:@selector(showShareSheetFromShareButton:)
           forControlEvents:UIControlEventTouchUpInside];
 
       // Add self as a target to collect the metrics.
@@ -756,10 +753,22 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 }
 
 - (void)setTrailingButtonState:(TrailingButtonState)state {
+  // This is dirty, but this is experiment-only and will be removed in one
+  // milestone.
+  if (base::FeatureList::IsEnabled(kDisableShareButton) &&
+      state == kShareButton) {
+    state = kNoButton;
+  }
+
   if (_trailingButtonState == state) {
     return;
   }
   _trailingButtonState = state;
+
+  if (state == kShareButton) {
+    base::UmaHistogramEnumeration("Mobile.ShareThisPage.Shown",
+                                  ShareThisPageLocation::kLocationBar);
+  }
 
   [self updateTrailingButton];
 }
@@ -777,6 +786,8 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 // here.
 - (void)shareButtonPressed {
   RecordAction(UserMetricsAction("MobileToolbarShareMenu"));
+  base::UmaHistogramEnumeration("Mobile.ShareThisPage.Used",
+                                ShareThisPageLocation::kLocationBar);
   [self.delegate recordShareButtonPressed];
 }
 
@@ -808,6 +819,30 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
 - (UIMenu*)contextMenuUIMenu:(NSArray<UIMenuElement*>*)suggestedActions {
   NSMutableArray<UIMenuElement*>* menuElements = [[NSMutableArray alloc] init];
   __weak __typeof__(self) weakSelf = self;
+
+  if (base::FeatureList::IsEnabled(kShareInOmniboxLongPress) &&
+      self.shareButtonEnabled) {
+    base::UmaHistogramEnumeration("Mobile.ShareThisPage.Shown",
+                                  ShareThisPageLocation::kOmniboxLongPress);
+    UIImage* image =
+        DefaultSymbolWithPointSize(kShareSymbol, kSymbolImagePointSize);
+
+    UIAction* shareThisPageAction =
+        [UIAction actionWithTitle:l10n_util::GetNSString(
+                                      IDS_IOS_TOOLS_MENU_SHARE_THIS_PAGE)
+                            image:image
+                       identifier:nil
+                          handler:^(UIAction* action) {
+                            [weakSelf shareThisPage];
+                          }];
+
+    UIMenu* divider = [UIMenu menuWithTitle:@""
+                                      image:nil
+                                 identifier:nil
+                                    options:UIMenuOptionsDisplayInline
+                                   children:@[ shareThisPageAction ]];
+    [menuElements addObject:divider];
+  }
 
   UIImage* pasteImage = nil;
   if (IsBottomOmniboxAvailable()) {
@@ -889,7 +924,7 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   }
 
   // Used to easily trigger the Assistant sheet during development.
-  if (IsAssistantSheetEnabled()) {
+  if (IsAssistantContainerEnabled()) {
     UIAction* assistantAction =
         [UIAction actionWithTitle:l10n_util::GetNSString(
                                       IDS_IOS_DIAMOND_PROTOTYPE_ASK_GEMINI)
@@ -978,21 +1013,9 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
     return;
   }
 
-  [self.geminiHandler hideFloatyIfInvokedAnimated:YES];
-}
-
-- (void)contextMenuInteraction:(UIContextMenuInteraction*)interaction
-       willEndForConfiguration:(UIContextMenuConfiguration*)configuration
-                      animator:(id<UIContextMenuInteractionAnimating>)animator {
-  if (!IsGeminiCopresenceEnabled()) {
-    return;
-  }
-
-  // Ensure floaty is shown after the context menu has fully dismissed.
-  __weak __typeof(self) weakSelf = self;
-  [animator addCompletion:^() {
-    [weakSelf.geminiHandler showFloatyIfInvokedAnimated:YES];
-  }];
+  [self.geminiHandler
+      hideFloatyIfInvokedAnimated:YES
+                       fromSource:gemini::FloatyUpdateSource::ContextMenu];
 }
 
 - (BOOL)canPerformAction:(SEL)action withSender:(id)sender {
@@ -1055,6 +1078,13 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
       }));
 }
 
+/// Shows the Share this page sheet.
+- (void)shareThisPage {
+  base::UmaHistogramEnumeration("Mobile.ShareThisPage.Used",
+                                ShareThisPageLocation::kOmniboxLongPress);
+  [self.dispatcher showShareSheetFromShareButton:_locationBarSteadyView];
+}
+
 /// Set the preferred omnibox position to `toolbarType`.
 - (void)moveOmniboxToToolbarType:(ToolbarType)toolbarType {
   GetApplicationContext()->GetLocalState()->SetBoolean(
@@ -1087,7 +1117,9 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
   }
   if (IsDirectBWGEntryPoint()) {
     [self.geminiHandler
-        startGeminiFlowWithEntryPoint:gemini::EntryPoint::OmniboxChip];
+        startGeminiFlowWithStartupState:
+            [[GeminiStartupState alloc]
+                initWithEntryPoint:gemini::EntryPoint::OmniboxChip]];
   } else {
     RecordAIHubIconTapped();
     [self.pageActionMenuHandler showPageActionMenu];
@@ -1173,14 +1205,6 @@ const CGFloat kShareIconBalancingHeightPadding = 1;
       lens::ContainerPresentationType::kFullscreenCover;
   [_lensOverlayPlaceholderView
       setLensOverlayActive:shouldIndicateLensInUse && _lensOverlayVisible];
-}
-
-#pragma mark - TextFieldViewContainingHeightDelegate
-
-- (void)textFieldViewContaining:(UIView<TextFieldViewContaining>*)sender
-                didChangeHeight:(CGFloat)height {
-  [self.delegate locationBarViewController:self
-                  didChangeEditStateHeight:height];
 }
 
 - (UIView*)locationBarSteadyViewVisualCopy {

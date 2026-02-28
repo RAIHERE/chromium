@@ -22,7 +22,7 @@
 #include "base/threading/sequence_bound.h"
 #include "base/time/time.h"
 #include "base/types/pass_key.h"
-#include "storage/common/database/db_status.h"
+#include "components/services/storage/dom_storage/db_status.h"
 #include "third_party/blink/public/common/storage_key/storage_key.h"
 
 namespace base {
@@ -73,8 +73,13 @@ class DomStorageDatabase {
   // `map_id`. Some maps are loaded on demand where `map_id` remains unknown
   // until the first read or write.
   //
-  // The number of sessions consuming a map can increase or decrease. A session
-  // can clone a map, which then shares the same map across multiple sessions.
+  // Local storage does not use `session_id`.  Instead, local storage contains a
+  // single global session where each `storage_key` owns one map of key value
+  // pairs.
+  //
+  // In session storage, each map must have at least one `session_id`. The
+  // number of sessions consuming a map can increase or decrease. A session can
+  // clone a map, which then shares the same map across multiple sessions.
   // Cloned maps have at least 2 IDs in `session_ids_`. A session may also stop
   // using a map by deleting it or forking it, which then removes an ID from
   // `session_ids_`. `session_ids_` is empty for an unused map.
@@ -86,11 +91,16 @@ class DomStorageDatabase {
   // Maps without sessions are not in use. They can be deleted.
   class MapLocator {
    public:
-    MapLocator(std::string source_session_id,
-               blink::StorageKey source_storage_key);
-    MapLocator(std::string source_session_id,
-               blink::StorageKey source_storage_key,
-               int64_t source_map_id);
+    // Construct a map locator for the global session in local storage.
+    explicit MapLocator(blink::StorageKey storage_key);
+    MapLocator(blink::StorageKey storage_key, int64_t map_id);
+
+    // Construct a map locator for a specific `session_id` in session storage.
+    MapLocator(std::string session_id, blink::StorageKey storage_key);
+    MapLocator(std::string session_id,
+               blink::StorageKey storage_key,
+               int64_t map_id);
+
     ~MapLocator();
 
     MapLocator(MapLocator&&);
@@ -299,6 +309,7 @@ class DomStorageDatabase {
   // NOTE: If `RewriteDB()` fails, this DomStorageDatabase may no longer
   // be usable; in such cases, all future operations will return an IOError
   // status.
+  // TODO(crbug.com/485785252): Also implement this for the SQLite backend.
   virtual DbStatus RewriteDB() = 0;
 
   // Test-only functions.
@@ -346,6 +357,7 @@ class DomStorageDatabaseFactory {
  private:
   friend class LocalStorageLevelDBTest;
   friend class LocalStorageSqliteTest;
+  friend class DomStorageDatabaseTest;
   friend class SessionStorageLevelDBTest;
   friend class SessionStorageSqliteTest;
 
@@ -366,6 +378,17 @@ class DomStorageDatabaseFactory {
   // Allow unit tests to create a database instance without `SequenceBound`.
   static PassKey CreatePassKeyForTesting();
 };
+
+// A shared implementation of `DomStorageDatabase::PurgeOrigins()` from above.
+// Both LevelDB and SQLite implementations use this helper function.
+DbStatus PurgeOrigins(DomStorageDatabase& database,
+                      std::set<url::Origin> origins);
+
+// Migrates all metadata and map entries from `source` to `destination`.
+// Intended for migrating from LevelDB to SQLite. The `destination` must be
+// empty.
+DbStatus MigrateDatabase(DomStorageDatabase& source,
+                         DomStorageDatabase& destination);
 
 }  // namespace storage
 

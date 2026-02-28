@@ -113,7 +113,6 @@ class TestBrowserWindow : public BrowserWindow, public BrowserListObserver {
   void Maximize() override {}
   void Minimize() override {}
   void Restore() override {}
-  void OnWebApiWindowResizableChanged() override {}
   bool GetCanResize() override;
   ui::mojom::WindowShowState GetWindowShowState() const override;
   bool ShouldHideUIForFullscreen() const override;
@@ -158,7 +157,7 @@ class TestBrowserWindow : public BrowserWindow, public BrowserListObserver {
   bool IsToolbarVisible() const override;
   bool IsLocationBarVisible() const override;
   bool IsToolbarShowing() const override;
-  bool IsBorderlessModeEnabled() const override;
+  bool IsUnframedModeEnabled() const override;
   void ShowChromeLabs() override {}
   BrowserView* AsBrowserView() override;
   SharingDialog* ShowSharingDialog(content::WebContents* contents,
@@ -277,13 +276,15 @@ class TestBrowserWindow : public BrowserWindow, public BrowserListObserver {
     ~TestLocationBar() override = default;
 
     // LocationBar:
-    void FocusLocation(bool select_all) override {}
+    void FocusLocation(bool select_all, bool clear_focus_if_failed) override {}
     void FocusSearch() override {}
+    void UpdateFocusBehavior(bool toolbar_visible) override {}
     void UpdateContentSettingsIcons() override {}
     void SaveStateToContents(content::WebContents* contents) override {}
     void Revert() override {}
     OmniboxView* GetOmniboxView() override;
     OmniboxController* GetOmniboxController() override;
+    bool ShouldCloseOmniboxPopup(ui::MouseEvent* event) override;
     ChipController* GetChipController() override;
     LocationBarTesting* GetLocationBarForTesting() override;
     LocationBarModel* GetLocationBarModel() override;
@@ -292,7 +293,14 @@ class TestBrowserWindow : public BrowserWindow, public BrowserListObserver {
         override;
     void OnChanged() override {}
     void UpdateWithoutTabRestore() override {}
+    ui::TrackedElement* GetAnchorOrNull() override;
+    Browser* GetBrowser() override;
+    bool IsInitialized() const override;
     bool IsVisible() const override;
+    bool IsDrawn() const override;
+    bool IsFullscreen() const override;
+    bool IsEditingOrEmpty() const override;
+    void InvalidateLayout() override {}
     gfx::Rect Bounds() const override;
     gfx::Size MinimumSize() const override;
     gfx::Size PreferredSize() const override;

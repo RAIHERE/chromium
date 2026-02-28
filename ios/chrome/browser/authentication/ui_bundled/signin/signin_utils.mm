@@ -133,8 +133,7 @@ bool IsStrictSubset(NSArray<NSString*>* recorded_gaia_ids,
 bool ShouldSwitchProfileAtSignout(AuthenticationService* authentication_service,
                                   ProfileIOS* profile) {
   bool is_work_profile = !IsPersonalProfile(profile);
-  return AreSeparateProfilesForManagedAccountsEnabled() &&
-         authentication_service->HasPrimaryIdentityManaged(
+  return authentication_service->HasPrimaryIdentityManaged(
              signin::ConsentLevel::kSignin) &&
          is_work_profile;
 }
@@ -387,12 +386,16 @@ Tribool TriboolFromCapabilityResult(SystemIdentityCapabilityResult result) {
 NSArray<id<SystemIdentity>>* GetIdentitiesOnDevice(
     signin::IdentityManager* identityManager,
     ChromeAccountManagerService* accountManagerService) {
+  CHECK(identityManager);
+  CHECK(accountManagerService);
   std::vector<AccountInfo> accountInfos =
       identityManager->GetAccountsOnDevice();
   return accountManagerService->GetIdentitiesOnDeviceWithGaiaIDs(accountInfos);
 }
 
 NSArray<id<SystemIdentity>>* GetIdentitiesOnDevice(ProfileIOS* profile) {
+  CHECK(profile);
+  CHECK(!profile->IsOffTheRecord());
   return GetIdentitiesOnDevice(
       IdentityManagerFactory::GetForProfile(profile),
       ChromeAccountManagerServiceFactory::GetForProfile(profile));

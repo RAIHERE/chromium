@@ -18,16 +18,22 @@
 #include "chrome/browser/optimization_guide/optimization_guide_keyed_service_factory.h"
 #include "chrome/browser/password_manager/actor_login/actor_login_service.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/common/actor.mojom-shared.h"
 #include "chrome/common/actor/action_result.h"
 #include "chrome/common/actor_webui.mojom.h"
 #include "components/favicon/core/favicon_service.h"
 #include "components/password_manager/core/browser/actor_login/actor_login_types.h"
 #include "components/password_manager/core/browser/features/password_features.h"
+#include "components/password_manager/core/browser/password_manager_util.h"
 #include "content/public/browser/web_contents.h"
 #include "ui/gfx/image/image.h"
 #include "url/gurl.h"
+
+// TODO(crbug.com/482430429): Reconsider the use of BrowserWindowInterface on
+// Android.
+#if !BUILDFLAG(IS_ANDROID)
+#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
+#endif
 
 namespace actor {
 
@@ -75,11 +81,16 @@ mojom::ActionResultCode LoginResultToActorResult(
 
 }  // namespace
 
-AttemptLoginTool::AttemptLoginTool(TaskId task_id,
-                                   ToolDelegate& tool_delegate,
-                                   tabs::TabInterface& tab)
+AttemptLoginTool::AttemptLoginTool(
+    TaskId task_id,
+    ToolDelegate& tool_delegate,
+    tabs::TabInterface& tab,
+    std::optional<PageTarget> password_button,
+    std::optional<PageTarget> sign_in_with_google_button)
     : Tool(task_id, tool_delegate),
       tab_handle_(tab.GetHandle()),
+      password_button_(password_button),
+      sign_in_with_google_button_(sign_in_with_google_button),
       attempt_login_tool_start_time_(base::TimeTicks::Now()) {}
 
 AttemptLoginTool::~AttemptLoginTool() {
@@ -97,8 +108,7 @@ AttemptLoginTool::~AttemptLoginTool() {
   OptimizationGuideKeyedService* opt_guide_service =
       OptimizationGuideKeyedServiceFactory::GetForProfile(profile);
   if (opt_guide_service &&
-      base::FeatureList::IsEnabled(
-          password_manager::features::kActorLoginQualityLogs)) {
+      password_manager_util::ShouldUploadActorLoginMqls()) {
     // TODO(crbug.com/459393643): Add a check for filtering out logs of
     // enterprise users.
     quality_logger_.UploadFinalLog(
@@ -442,6 +452,9 @@ void AttemptLoginTool::ObserveTabToAwaitFocus() {
       &AttemptLoginTool::OnWillDetach, base::Unretained(this)));
   tab_did_activate_subscription_ = tab->RegisterDidActivate(base::BindRepeating(
       &AttemptLoginTool::HandleTabActivatedChange, base::Unretained(this)));
+// TODO(crbug.com/482430429): Reconsider the use of BrowserWindowInterface on
+// Android.
+#if !BUILDFLAG(IS_ANDROID)
   BrowserWindowInterface* browser_window = tab->GetBrowserWindowInterface();
   // TODO(mcnee): Should we update the window subscription if the tab is moved?
   // The tab would probably be focused first which would cause us to stop
@@ -450,6 +463,7 @@ void AttemptLoginTool::ObserveTabToAwaitFocus() {
       browser_window->RegisterDidBecomeActive(
           base::BindRepeating(&AttemptLoginTool::HandleWindowActivatedChange,
                               base::Unretained(this)));
+#endif
 }
 
 void AttemptLoginTool::StopObservingTab() {
@@ -465,15 +479,23 @@ void AttemptLoginTool::MaybeRetryCredentialNeedingFocus() {
 
   tabs::TabInterface* tab = tab_handle_.Get();
   CHECK(tab);
-  BrowserWindowInterface* browser_window = tab->GetBrowserWindowInterface();
 
   // Note that this is more specific than the conditions checked in
   // `ActorLoginDelegateImpl::IsTaskInFocus`, but for simplicity we check for
   // the specific tab being activated, since the task nudge will take the user
   // there anyway.
-  if (!browser_window->IsActive() || !tab->IsActivated()) {
+  if (!tab->IsActivated()) {
     return;
   }
+
+  // TODO(crbug.com/482430429): Reconsider the use of BrowserWindowInterface on
+  // Android.
+#if !BUILDFLAG(IS_ANDROID)
+  BrowserWindowInterface* browser_window = tab->GetBrowserWindowInterface();
+  if (!browser_window->IsActive()) {
+    return;
+  }
+#endif
 
   StopObservingTab();
   tool_delegate().UninterruptFromTool();

@@ -59,6 +59,11 @@ public class AccountManagerTestRule implements TestRule {
         AccountManagerFacadeProvider.setInstanceForTests(mFakeAccountManagerFacade);
     }
 
+    /** Returns the {@link FakeAccountManagerFacade} used by this test rule. */
+    public FakeAccountManagerFacade getAccountManagerFacade() {
+        return mFakeAccountManagerFacade;
+    }
+
     /** Returns the {@link FakeIdentityManager} used by this test rule. */
     public FakeIdentityManager getIdentityManager() {
         return mFakeIdentityManager;
@@ -66,8 +71,8 @@ public class AccountManagerTestRule implements TestRule {
 
     /** Adds an account to the {@link FakeAccountManagerFacade} and {@link FakeIdentityManager}. */
     public void addAccount(AccountInfo accountInfo) {
-        mFakeAccountManagerFacade.addAccount(accountInfo);
         mFakeIdentityManager.addOrUpdateExtendedAccountInfo(accountInfo);
+        mFakeAccountManagerFacade.addAccount(accountInfo);
     }
 
     /**
@@ -90,14 +95,35 @@ public class AccountManagerTestRule implements TestRule {
     /** Removes an account with the given {@link CoreAccountId}. */
     public void removeAccount(CoreAccountId accountId) {
         mFakeAccountManagerFacade.removeAccount(accountId);
+        mFakeIdentityManager.removeAccount(accountId);
     }
 
     public void setAccountFetchFailed() {
         mFakeAccountManagerFacade.setAccountFetchFailed();
     }
 
-    /** See {@link FakeAccountManagerFacade#blockGetAccounts(boolean)}. */
-    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdate(boolean populateCache) {
-        return mFakeAccountManagerFacade.blockGetAccounts(populateCache);
+    /**
+     * Block updates from {@link FakeAccountManagerFacade}. See {@link
+     * FakeAccountManagerFacade#blockGetAccounts()}.
+     */
+    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdate() {
+        return mFakeAccountManagerFacade.blockGetAccounts();
+    }
+
+    /**
+     * Block updates from {@link FakeAccountManagerFacade} and populates the AccountManagerFacade
+     * with the currently available accounts. See {@link
+     * FakeAccountManagerFacade#blockGetAccountsAndPopulateCache()}.
+     */
+    public FakeAccountManagerFacade.UpdateBlocker blockGetAccountsUpdateAndPopulateCache() {
+        return mFakeAccountManagerFacade.blockGetAccountsAndPopulateCache();
+    }
+
+    /**
+     * Block updates from {@link FakeIdentityManager}. See {@link
+     * FakeIdentityManager#blockExtendedAccountInfoUpdate(boolean)}.
+     */
+    public void blockExtendedAccountInfoUpdate() {
+        mFakeIdentityManager.blockExtendedAccountInfoUpdate();
     }
 }

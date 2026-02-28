@@ -30,6 +30,7 @@
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink.h"
 #include "third_party/blink/public/mojom/manifest/manifest.mojom-blink.h"
 #include "third_party/blink/public/mojom/manifest/manifest_launch_handler.mojom-blink.h"
+#include "third_party/blink/public/mojom/manifest/manifest_migration_behavior.mojom-blink.h"
 #include "third_party/blink/public/platform/url_conversion.h"
 #include "third_party/blink/public/platform/web_icon_sizes_parser.h"
 #include "third_party/blink/public/platform/web_string.h"
@@ -82,7 +83,7 @@ const int kFileHandlerExtensionLimit = 300;
 int g_file_handler_extension_limit_for_testing = 0;
 
 bool IsValidMimeType(const String& mime_type) {
-  if (mime_type.StartsWith('.')) {
+  if (mime_type.starts_with('.')) {
     return true;
   }
   return net::ParseMimeTypeWithoutParameter(mime_type.Utf8(), nullptr, nullptr);
@@ -135,10 +136,10 @@ static bool IsCrLfOrTabChar(UChar c) {
 
 std::optional<mojom::blink::ManifestFileHandler::LaunchType>
 FileHandlerLaunchTypeFromString(const std::string& launch_type) {
-  if (EqualIgnoringASCIICase(String(launch_type), "single-client")) {
+  if (EqualIgnoringAsciiCase(String(launch_type), "single-client")) {
     return mojom::blink::ManifestFileHandler::LaunchType::kSingleClient;
   }
-  if (EqualIgnoringASCIICase(String(launch_type), "multiple-clients")) {
+  if (EqualIgnoringAsciiCase(String(launch_type), "multiple-clients")) {
     return mojom::blink::ManifestFileHandler::LaunchType::kMultipleClients;
   }
   return std::nullopt;
@@ -271,13 +272,11 @@ bool IsAbsolutePathname(String pathname) {
 String ResolveRelativePathnamePattern(const KURL& base_url, String pathname) {
   if (base_url.IsStandard() && !IsAbsolutePathname(pathname)) {
     String base_path = EscapePatternString(base_url.GetPath());
-    auto slash_index = base_path.ReverseFind('/');
+    auto slash_index = base_path.rfind('/');
     if (slash_index != kNotFound) {
       // Extract the base_url path up to and including the last slash. Append
       // the relative pathname to it.
-      base_path.Truncate(slash_index + 1);
-      base_path = StrCat({base_path, pathname});
-      return base_path;
+      return StrCat({StringView(base_path, 0, slash_index + 1), pathname});
     }
   }
   return pathname;
@@ -285,10 +284,10 @@ String ResolveRelativePathnamePattern(const KURL& base_url, String pathname) {
 
 std::optional<mojom::blink::ManifestMigrationBehavior>
 MigrationBehaviorFromString(const std::string& behavior) {
-  if (EqualIgnoringASCIICase(String(behavior), "suggest")) {
+  if (EqualIgnoringAsciiCase(String(behavior), "suggest")) {
     return mojom::blink::ManifestMigrationBehavior::kSuggest;
   }
-  if (EqualIgnoringASCIICase(String(behavior), "force")) {
+  if (EqualIgnoringAsciiCase(String(behavior), "force")) {
     return mojom::blink::ManifestMigrationBehavior::kForce;
   }
   return std::nullopt;
@@ -409,7 +408,7 @@ bool ManifestParser::Parse() {
         UseCounter::Count(execution_context_,
                           WebFeature::kWebAppWindowControlsOverlay);
         break;
-      case mojom::blink::DisplayMode::kBorderless:
+      case mojom::blink::DisplayMode::kUnframed:
         UseCounter::Count(
             execution_context_,
             base::FeatureList::IsEnabled(blink::features::kWebAppBorderless)
@@ -424,11 +423,6 @@ bool ManifestParser::Parse() {
     }
   }
 
-  if (base::FeatureList::IsEnabled(blink::features::kWebAppBorderless)) {
-    manifest_->borderless_url_patterns =
-        ParseUrlPatterns(root_object.get(), "borderless_url_patterns");
-  }
-
   manifest_->orientation = ParseOrientation(root_object.get());
   manifest_->icons = ParseIcons(root_object.get());
   if (!manifest_->icons.empty()) {
@@ -438,8 +432,6 @@ bool ManifestParser::Parse() {
     auto icons_localized = ParseIconsLocalized(root_object.get());
     if (!icons_localized.empty()) {
       manifest_->icons_localized = std::move(icons_localized);
-      UseCounter::Count(execution_context_,
-                        WebFeature::kWebAppManifestIconsLocalized);
     }
   }
   manifest_->screenshots = ParseScreenshots(root_object.get());
@@ -498,19 +490,14 @@ bool ManifestParser::Parse() {
     manifest_->migrate_to = ParseMigrateTo(root_object.get());
   }
 
-  std::optional<RGBA32> theme_color = ParseThemeColor(root_object.get());
-  manifest_->has_theme_color = theme_color.has_value();
-  if (manifest_->has_theme_color) {
-    manifest_->theme_color = *theme_color;
+  manifest_->theme_color = ParseThemeColor(root_object.get());
+  if (manifest_->theme_color.has_value()) {
     UseCounter::Count(execution_context_,
                       WebFeature::kWebAppManifestThemeColor);
   }
 
-  std::optional<RGBA32> background_color =
-      ParseBackgroundColor(root_object.get());
-  manifest_->has_background_color = background_color.has_value();
-  if (manifest_->has_background_color) {
-    manifest_->background_color = *background_color;
+  manifest_->background_color = ParseBackgroundColor(root_object.get());
+  if (manifest_->background_color.has_value()) {
     UseCounter::Count(execution_context_,
                       WebFeature::kWebAppManifestBackgroundColor);
   }
@@ -522,12 +509,7 @@ bool ManifestParser::Parse() {
                                   WebDXFeature::kAppShortcuts);
   }
 
-  manifest_->permissions_policy =
-      ParseIsolatedAppPermissions(root_object.get());
-  if (!manifest_->permissions_policy.empty()) {
-    UseCounter::Count(execution_context_,
-                      WebFeature::kWebAppManifestPermissionsPolicy);
-  }
+  CheckIsolatedAppPermissions(root_object.get());
 
   manifest_->update_manifest_url =
       ParseIsolatedAppUpdateManifestUrl(root_object.get());
@@ -564,22 +546,16 @@ bool ManifestParser::Parse() {
     auto name_localized = ParseNameLocalized(root_object.get());
     if (!name_localized.empty()) {
       manifest_->name_localized = std::move(name_localized);
-      UseCounter::Count(execution_context_,
-                        WebFeature::kWebAppManifestNameLocalized);
     }
 
     auto short_name_localized = ParseShortNameLocalized(root_object.get());
     if (!short_name_localized.empty()) {
       manifest_->short_name_localized = std::move(short_name_localized);
-      UseCounter::Count(execution_context_,
-                        WebFeature::kWebAppManifestShortNameLocalized);
     }
 
     auto description_localized = ParseDescriptionLocalized(root_object.get());
     if (!description_localized.empty()) {
       manifest_->description_localized = std::move(description_localized);
-      UseCounter::Count(execution_context_,
-                        WebFeature::kWebAppManifestDescriptionLocalized);
     }
   }
 
@@ -750,7 +726,14 @@ KURL ManifestParser::ParseURL(const JSONObject* object,
     return KURL();
   }
 
-  KURL resolved = KURL(base_url, *url_str);
+  // When the manifest is embedded via a data: URL, relative URLs cannot be
+  // resolved against it (data URLs have opaque origins). In this case, fall
+  // back to using the document URL as the base for resolution. This matches
+  // the intent that relative URLs in an embedded manifest should work relative
+  // to the document that embeds it.
+  const KURL& effective_base_url =
+      base_url.ProtocolIsData() ? document_url_ : base_url;
+  KURL resolved = KURL(effective_base_url, *url_str);
   if (!resolved.IsValid()) {
     AddErrorInfo(StrCat({"property '", key, "' ignored, URL is invalid."}));
     return KURL();
@@ -1005,7 +988,7 @@ Vector<blink::Manifest::DisplayOverride> ManifestParser::ParseDisplayOverride(
 
     if (!base::FeatureList::IsEnabled(blink::features::kWebAppBorderless) &&
         !base::FeatureList::IsEnabled(blink::features::kUnframedIwa) &&
-        display_enum == mojom::blink::DisplayMode::kBorderless) {
+        display_enum == mojom::blink::DisplayMode::kUnframed) {
       display_enum = mojom::blink::DisplayMode::kUndefined;
     }
 
@@ -1015,7 +998,7 @@ Vector<blink::Manifest::DisplayOverride> ManifestParser::ParseDisplayOverride(
         url_patterns = ToStdVector(
             ParseUrlPatterns(display_override_object, "url_patterns"));
       }
-      if (display_enum == mojom::blink::DisplayMode::kBorderless) {
+      if (display_enum == mojom::blink::DisplayMode::kUnframed) {
         display_override.push_back(
             blink::Manifest::DisplayOverride::CreateUnframed(
                 std::move(url_patterns)));
@@ -1089,9 +1072,8 @@ ManifestParser::ParseIconPurpose(const JSONObject* icon) {
     return purposes;
   }
 
-  Vector<String> keywords;
-  purpose_str.value().Split(/*separator=*/" ", /*allow_empty_entries=*/false,
-                            keywords);
+  Vector<StringView> keywords =
+      StringView(purpose_str.value()).SplitSkippingEmpty(' ');
 
   // "any" is the default if there are no other keywords.
   if (keywords.empty()) {
@@ -1100,18 +1082,18 @@ ManifestParser::ParseIconPurpose(const JSONObject* icon) {
   }
 
   bool unrecognised_purpose = false;
-  for (auto& keyword : keywords) {
+  for (auto keyword : keywords) {
     keyword = keyword.StripWhiteSpace();
     if (keyword.empty()) {
       continue;
     }
 
-    if (EqualIgnoringASCIICase(keyword, "any")) {
+    if (EqualIgnoringAsciiCase(keyword, "any")) {
       purposes.push_back(mojom::blink::ManifestImageResource::Purpose::ANY);
-    } else if (EqualIgnoringASCIICase(keyword, "monochrome")) {
+    } else if (EqualIgnoringAsciiCase(keyword, "monochrome")) {
       purposes.push_back(
           mojom::blink::ManifestImageResource::Purpose::MONOCHROME);
-    } else if (EqualIgnoringASCIICase(keyword, "maskable")) {
+    } else if (EqualIgnoringAsciiCase(keyword, "maskable")) {
       purposes.push_back(
           mojom::blink::ManifestImageResource::Purpose::MASKABLE);
     } else {
@@ -1147,9 +1129,9 @@ ManifestParser::ParseScreenshotFormFactor(const JSONObject* screenshot) {
 
   String form_factor = form_factor_str.value();
 
-  if (EqualIgnoringASCIICase(form_factor, "wide")) {
+  if (EqualIgnoringAsciiCase(form_factor, "wide")) {
     return mojom::blink::ManifestScreenshot::FormFactor::kWide;
-  } else if (EqualIgnoringASCIICase(form_factor, "narrow")) {
+  } else if (EqualIgnoringAsciiCase(form_factor, "narrow")) {
     return mojom::blink::ManifestScreenshot::FormFactor::kNarrow;
   }
 
@@ -1204,6 +1186,10 @@ ManifestParser::ParseIconsLocalized(const JSONObject* object) {
     }
   }
 
+  if (!localized_icons.empty()) {
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kManifestLocalization);
+  }
   return localized_icons;
 }
 
@@ -1808,7 +1794,7 @@ bool ManifestParser::ParseFileHandlerAcceptExtension(const JSONValue* extension,
     return false;
   }
 
-  if (!output->StartsWith(".")) {
+  if (!output->starts_with('.')) {
     AddErrorInfo(
         "property 'accept' file extension ignored, must start with a '.'.");
     return false;
@@ -1895,7 +1881,7 @@ ManifestParser::ParseProtocolHandler(const JSONObject* object) {
     const char kToken[] = "%s";
     String user_url = protocol_handler->url.GetString();
     String tokenless_url = protocol_handler->url.GetString();
-    tokenless_url.Remove(user_url.Find(kToken), std::size(kToken) - 1);
+    tokenless_url.Remove(user_url.find(kToken), std::size(kToken) - 1);
     KURL full_url(manifest_url_, tokenless_url);
 
     if (!VerifyCustomHandlerURLSyntax(full_url, manifest_url_, user_url,
@@ -2028,7 +2014,7 @@ ManifestParser::ParseScopeExtensionOrigin(const String& origin_string) {
   // Check for wildcard *.
   if (base::FeatureList::IsEnabled(
           blink::features::kWebAppEnableScopeExtensionsBySite) &&
-      host.StartsWith(kOriginWildcardPrefix)) {
+      host.starts_with(kOriginWildcardPrefix)) {
     scope_extension->has_origin_wildcard = true;
     // Trim the wildcard prefix to get the effective host. Minus one to exclude
     // the length of the null terminator.
@@ -2205,6 +2191,13 @@ Vector<mojom::blink::ManifestMigrateFromPtr> ManifestParser::ParseMigrateFrom(
     return migrate_from_list;
   }
 
+  if (!manifest_->has_custom_id) {
+    AddErrorInfo(
+        "property 'migrate_from' ignored, manifest must specify an 'id' "
+        "property in order to receive a migration.");
+    return migrate_from_list;
+  }
+
   JSONArray* migrate_from_array = object->GetArray("migrate_from");
   if (!migrate_from_array) {
     AddErrorInfo(
@@ -2338,21 +2331,23 @@ String ManifestParser::ParseGCMSenderID(const JSONObject* object) {
   return gcm_sender_id.has_value() ? *gcm_sender_id : String();
 }
 
-Vector<network::ParsedPermissionsPolicyDeclaration>
-ManifestParser::ParseIsolatedAppPermissions(const JSONObject* object) {
-  PermissionsPolicyParser::Node policy{
-      network::OriginWithPossibleWildcards::NodeType::kHeader};
-
+// Errors here fail the whole manifest parsing because an IWA with manlformed
+// permissions_policy entry wouldn't be able to launch anyway. Hence, it's best
+// to fail early, during installation.
+void ManifestParser::CheckIsolatedAppPermissions(const JSONObject* object) {
   JSONValue* json_value = object->Get("permissions_policy");
   if (!json_value) {
-    return Vector<network::ParsedPermissionsPolicyDeclaration>();
+    return;
   }
 
-  JSONObject* permissions_dict = object->GetJSONObject("permissions_policy");
+  JSONObject* permissions_dict = JSONObject::Cast(json_value);
   if (!permissions_dict) {
     AddErrorInfo(
-        "property 'permissions_policy' ignored, type object expected.");
-    return Vector<network::ParsedPermissionsPolicyDeclaration>();
+        "property 'permissions_policy' invalid: object expected, found: " +
+            json_value->ToJSONString(),
+        /*critical=*/true);
+    failed_ = true;
+    return;
   }
 
   for (wtf_size_t i = 0; i < permissions_dict->size(); ++i) {
@@ -2362,57 +2357,29 @@ ManifestParser::ParseIsolatedAppPermissions(const JSONObject* object) {
     JSONArray* origin_allowlist = JSONArray::Cast(entry.second);
     if (!origin_allowlist) {
       AddErrorInfo(
-          StrCat({"permission '", feature,
-                  "' ignored, invalid allowlist: type array expected."}));
-      continue;
+          "property 'permissions_policy' invalid: allowlist for '" + feature +
+              "': array expected, found: " + entry.second->ToJSONString(),
+          /*critical=*/true);
+      failed_ = true;
+      return;
     }
 
-    Vector<String> allowlist = ParseOriginAllowlist(origin_allowlist, feature);
-    if (!allowlist.size()) {
-      continue;
-    }
-    PermissionsPolicyParser::Declaration new_policy;
-    new_policy.feature_name = feature;
-    for (const auto& origin : allowlist) {
-      // PermissionsPolicyParser expects 4 types of origin strings:
-      // - "self": wrapped in single quotes (as in a header)
-      // - "none": wrapped in single quotes (as in a header)
-      // - "*" (asterisk): not wrapped
-      // - "<origin>": actual origin names should not be wrapped in single
-      //        quotes
-      // The "src" origin string type can be ignored here as it's only used in
-      // the iframe "allow" attribute.
-      //
-      // Sidenote: Actual origin names ("<origin>") are parsed using
-      // OriginWithPossibleWildcards::Parse() which fails if the origin string
-      // contains any non-alphanumeric characters, such as a single quote. For
-      // this reason, actual origin names must not be wrapped since the parser
-      // will just drop them as being improperly formatted (i.e. they would be
-      // the equivalent to some manifest containing an origin wrapped in single
-      // quotes, which is invalid).
-      String wrapped_origin = origin;
-      if (EqualIgnoringASCIICase(origin, "self") ||
-          EqualIgnoringASCIICase(origin, "none")) {
-        wrapped_origin = StrCat({"'", origin, "'"});
-        ;
+    for (const JSONValue& origin_value : *origin_allowlist) {
+      String origin_string;
+      if (!origin_value.AsString(&origin_string)) {
+        AddErrorInfo("property 'permissions_policy' invalid: allowlist for '" +
+                         feature +
+                         "': invalid element: string expected, found: " +
+                         origin_value.ToJSONString(),
+                     /*critical=*/true);
+        failed_ = true;
+        return;
       }
-      new_policy.allowlist.push_back(wrapped_origin);
     }
-    policy.declarations.push_back(new_policy);
   }
 
-  PolicyParserMessageBuffer logger(
-      "Error with permissions_policy manifest field: ");
-  network::ParsedPermissionsPolicy parsed_policy =
-      PermissionsPolicyParser::ParsePolicyFromNode(
-          policy, *SecurityOrigin::Create(manifest_url_), logger,
-          execution_context_);
-
-  Vector<network::ParsedPermissionsPolicyDeclaration> out;
-  for (const auto& decl : parsed_policy) {
-    out.push_back(std::move(decl));
-  }
-  return out;
+  UseCounter::Count(execution_context_,
+                    WebFeature::kWebAppManifestPermissionsPolicy);
 }
 
 std::optional<KURL> ManifestParser::ParseIsolatedAppUpdateManifestUrl(
@@ -2424,40 +2391,6 @@ std::optional<KURL> ManifestParser::ParseIsolatedAppUpdateManifestUrl(
   }
 
   return url;
-}
-
-Vector<String> ManifestParser::ParseOriginAllowlist(
-    const JSONArray* json_allowlist,
-    const String& feature) {
-  Vector<String> out;
-  for (const JSONValue& json_value : *json_allowlist) {
-    String origin_string;
-    if (!json_value.AsString(&origin_string) || origin_string.IsNull()) {
-      AddErrorInfo(
-          "permissions_policy entry ignored, required property 'origin' "
-          "contains "
-          "an invalid element: type string expected.");
-      return Vector<String>();
-    }
-
-    if (!origin_string.length()) {
-      AddErrorInfo(
-          "permissions_policy entry ignored, required property 'origin' is "
-          "contains an empty string.");
-      return Vector<String>();
-    }
-
-    if (origin_string.length() > kMaxOriginLength) {
-      AddErrorInfo(
-          StrCat({"permissions_policy entry ignored, 'origin' exceeds maximum "
-                  "character length of ",
-                  String::Number(kMaxOriginLength), " ."}));
-      return Vector<String>();
-    }
-    out.push_back(origin_string);
-  }
-
-  return out;
 }
 
 mojom::blink::ManifestLaunchHandlerPtr ManifestParser::ParseLaunchHandler(
@@ -2561,7 +2494,7 @@ mojom::blink::ManifestTabStripPtr ManifestParser::ParseTabStrip(
     JSONValue* home_tab_icons = home_tab_object->Get("icons");
     String string_value;
     if (home_tab_icons && !(home_tab_icons->AsString(&string_value) &&
-                            EqualIgnoringASCIICase(string_value, "auto"))) {
+                            EqualIgnoringAsciiCase(string_value, "auto"))) {
       home_tab_params->icons = ParseIcons(home_tab_object);
     }
 
@@ -2584,7 +2517,7 @@ mojom::blink::ManifestTabStripPtr ManifestParser::ParseTabStrip(
 
     String string_value;
     if (new_tab_button_url && !(new_tab_button_url->AsString(&string_value) &&
-                                EqualIgnoringASCIICase(string_value, "auto"))) {
+                                EqualIgnoringAsciiCase(string_value, "auto"))) {
       KURL url = ParseURL(new_tab_button_object, "url", manifest_url_,
                           ParseURLRestrictions::kWithinScope);
       if (!url.IsNull()) {
@@ -2605,7 +2538,7 @@ ManifestParser::ParseTabStripMemberVisibility(const JSONValue* json_value) {
 
   String string_value;
   if (json_value->AsString(&string_value) &&
-      EqualIgnoringASCIICase(string_value, "absent")) {
+      EqualIgnoringAsciiCase(string_value, "absent")) {
     return mojom::blink::TabStripMemberVisibility::kAbsent;
   }
 
@@ -2943,6 +2876,10 @@ ManifestParser::ParseLocalizedField(const JSONObject* object,
     localized_text->lang = std::move(lang);
     localized_text->dir = dir;
     result.Set(*locale, std::move(localized_text));
+  }
+  if (!result.empty()) {
+    UseCounter::CountWebDXFeature(execution_context_,
+                                  WebDXFeature::kManifestLocalization);
   }
   return result;
 }

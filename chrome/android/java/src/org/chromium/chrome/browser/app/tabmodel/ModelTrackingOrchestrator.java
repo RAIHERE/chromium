@@ -15,7 +15,6 @@ import org.chromium.base.task.ChainedTasks;
 import org.chromium.base.task.TaskTraits;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.tab.CollectionSaveForwarder;
 import org.chromium.chrome.browser.tab.CollectionStorageObserverFactory;
@@ -28,6 +27,7 @@ import org.chromium.chrome.browser.tab.TabStateStorageService;
 import org.chromium.chrome.browser.tab.TabStateStorageServiceFactory;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabModel;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabModelObserver;
+import org.chromium.chrome.browser.tabmodel.PersistentStoreMigrationManager;
 import org.chromium.chrome.browser.tabmodel.TabGroupModelFilter;
 import org.chromium.chrome.browser.tabmodel.TabGroupModelFilterObserver;
 import org.chromium.chrome.browser.tabmodel.TabGroupVisualDataStore;
@@ -47,12 +47,31 @@ import java.util.Map;
  */
 @NullMarked
 public class ModelTrackingOrchestrator {
+    /** Factory for creating a {@link ModelTrackingOrchestrator}. */
+    @FunctionalInterface
+    public interface Factory {
+        /**
+         * @param windowTag The window tag to use for the window.
+         * @param migrationManager The migration manager for the window.
+         * @param tabModelSelector The {@link TabModelSelector} to observe changes for.
+         * @param hasCipherFactory Whether a cipher factory was provided for OTR data.
+         * @param isAuthoritative Whether this store is the authoritative store for the window.
+         */
+        ModelTrackingOrchestrator build(
+                String windowTag,
+                PersistentStoreMigrationManager migrationManager,
+                TabModelSelector tabModelSelector,
+                boolean hasCipherFactory,
+                boolean isAuthoritative);
+    }
+
     /** The state of the synchronization lifecycle for a specific model. */
     @IntDef({
         SynchronizerState.START,
         SynchronizerState.MODEL_PENDING,
         SynchronizerState.RESTORING,
-        SynchronizerState.TRACKING
+        SynchronizerState.TRACKING,
+        SynchronizerState.CANCELLED,
     })
     @Retention(RetentionPolicy.SOURCE)
     private @interface SynchronizerState {
@@ -75,6 +94,9 @@ public class ModelTrackingOrchestrator {
 
         /** Tracking changes to the TabModel. */
         int TRACKING = 3;
+
+        /** After a restore has been cancelled. */
+        int CANCELLED = 4;
     }
 
     /** Used to manage the orchestration lifecycle of a Synchronizer. */
@@ -93,16 +115,24 @@ public class ModelTrackingOrchestrator {
          */
         default void onModelCreated() {}
 
-        /** Called when the CombinedTabRestorer has finished restoring all tabs for this model. */
+        /**
+         * Called when the CombinedTabRestorer has finished or cancelled restoring all tabs for this
+         * model.
+         */
         void onRestoreFinished();
+
+        /** Called when the CombinedTabRestorer has cancelled restoring all tabs for this model. */
+        void onRestoreCancelled();
 
         /** Destroys the synchronizer and resets the manager state. */
         void reset();
     }
 
     private final String mWindowTag;
+    private final PersistentStoreMigrationManager mMigrationManager;
     private final TabModelSelector mTabModelSelector;
-    private final Map<Token, CollectionSaveForwarder> mGroupForwarderMap = new HashMap<>();
+    private final boolean mIsAuthoritative;
+    private final Map<Token, Boolean> mGroupIncognitoStatus = new HashMap<>();
     private final IncognitoTabModelObserver mIncognitoTabModelObserver =
             new IncognitoTabModelObserver() {
                 @Override
@@ -137,22 +167,14 @@ public class ModelTrackingOrchestrator {
                 public void didCreateNewGroup(Tab destinationTab, TabGroupModelFilter filter) {
                     Token groupId = destinationTab.getTabGroupId();
                     assert groupId != null;
-
-                    TabStripCollection collection = filter.getTabModel().getTabStripCollection();
-                    if (collection == null) return;
-
-                    CollectionSaveForwarder forwarder =
-                            CollectionSaveForwarder.createForTabGroup(
-                                    destinationTab.getProfile(), groupId, collection);
-                    mGroupForwarderMap.put(groupId, forwarder);
+                    mGroupIncognitoStatus.put(groupId, filter.getTabModel().isOffTheRecord());
                 }
 
                 @Override
                 public void didRemoveTabGroup(
                         int oldRootId, @Nullable Token oldTabGroupId, int removalReason) {
                     if (oldTabGroupId == null) return;
-                    CollectionSaveForwarder forwarder = mGroupForwarderMap.remove(oldTabGroupId);
-                    if (forwarder != null) forwarder.destroy();
+                    mGroupIncognitoStatus.remove(oldTabGroupId);
                 }
 
                 @Override
@@ -175,13 +197,21 @@ public class ModelTrackingOrchestrator {
 
     /**
      * @param windowTag The window tag to use for the window.
+     * @param migrationManager The migration manager for the window.
      * @param tabModelSelector The {@link TabModelSelector} to observe changes for.
      * @param hasCipherFactory Whether a cipher factory was provided for OTR data.
+     * @param isAuthoritative Whether this store is the authoritative store for the window.
      */
     public ModelTrackingOrchestrator(
-            String windowTag, TabModelSelector tabModelSelector, boolean hasCipherFactory) {
+            String windowTag,
+            PersistentStoreMigrationManager migrationManager,
+            TabModelSelector tabModelSelector,
+            boolean hasCipherFactory,
+            boolean isAuthoritative) {
         mWindowTag = windowTag;
+        mMigrationManager = migrationManager;
         mTabModelSelector = tabModelSelector;
+        mIsAuthoritative = isAuthoritative;
 
         if (hasCipherFactory) {
             mIncognitoSynchronizerManager = new IncognitoSynchronizerManager();
@@ -211,7 +241,7 @@ public class ModelTrackingOrchestrator {
      * @param incognito Whether the data is for an incognito model.
      */
     public void onDataLoaded(StorageLoadedData data, boolean incognito) {
-        if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
+        if (mIsAuthoritative) {
             TabGroupVisualDataStore.cacheGroups(data.getGroupsData());
         }
 
@@ -225,27 +255,40 @@ public class ModelTrackingOrchestrator {
     }
 
     /**
+     * Called when the {@link CombinedTabRestorer} has finished restoring all tabs for one model.
+     *
+     * @param incognito Whether the model is incognito.
+     */
+    public void onRestoredForModel(boolean incognito) {
+        if (!incognito) {
+            mRegularSynchronizerManager.onRestoreFinished();
+        } else if (mIncognitoSynchronizerManager != null) {
+            mIncognitoSynchronizerManager.onRestoreFinished();
+        }
+    }
+
+    /** Called when the {@link CombinedTabRestorer} has been cancelled for both models. */
+    public void onRestoreCancelled() {
+        mRegularSynchronizerManager.onRestoreCancelled();
+        if (mIncognitoSynchronizerManager != null) {
+            mIncognitoSynchronizerManager.onRestoreCancelled();
+        }
+    }
+
+    /**
      * Called when the {@link CombinedTabRestorer} has finished restoring all tabs for both models.
      */
     public void onRestoreFinished() {
+        if (!mIsAuthoritative) {
+            onRestoredForModel(/* incognito= */ false);
+            onRestoredForModel(/* incognito= */ true);
+            return;
+        }
+
+        Callback<TabModel> clearUnusedNodesForModel = this::clearUnusedNodesForModel;
         ChainedTasks tasks = new ChainedTasks();
-        if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
-            mRegularSynchronizerManager.onRestoreFinished();
-            if (mIncognitoSynchronizerManager != null) {
-                mIncognitoSynchronizerManager.onRestoreFinished();
-            }
-
-            assert mTabModelSelector.isTabStateInitialized();
-            Callback<TabModel> clearUnusedNodesForModel = this::clearUnusedNodesForModel;
-
-            for (TabModel model : mTabModelSelector.getModels()) {
-                tasks.add(TaskTraits.UI_DEFAULT, clearUnusedNodesForModel.bind(model));
-            }
-        } else {
-            tasks.add(TaskTraits.UI_DEFAULT, mRegularSynchronizerManager::onRestoreFinished);
-            if (mIncognitoSynchronizerManager != null) {
-                tasks.add(TaskTraits.UI_DEFAULT, mIncognitoSynchronizerManager::onRestoreFinished);
-            }
+        for (TabModel model : mTabModelSelector.getModels()) {
+            tasks.add(TaskTraits.UI_DEFAULT, clearUnusedNodesForModel.bind(model));
         }
         tasks.start(/* coalesceTasks= */ false);
     }
@@ -258,10 +301,7 @@ public class ModelTrackingOrchestrator {
             itm.removeIncognitoObserver(mIncognitoTabModelObserver);
         }
 
-        for (CollectionSaveForwarder forwarder : mGroupForwarderMap.values()) {
-            forwarder.destroy();
-        }
-        mGroupForwarderMap.clear();
+        mGroupIncognitoStatus.clear();
 
         for (boolean incognito : new boolean[] {false, true}) {
             TabGroupModelFilter filter = getFilter(incognito);
@@ -272,6 +312,25 @@ public class ModelTrackingOrchestrator {
 
         mRegularSynchronizerManager.reset();
         if (mIncognitoSynchronizerManager != null) mIncognitoSynchronizerManager.reset();
+    }
+
+    /** Saves the tab through an associated synchronizer. */
+    public void saveTab(Tab tab) {
+        StorageCollectionSynchronizer synchronizer =
+                tab.isOffTheRecord() ? mIncognitoSynchronizer : mRegularSynchronizer;
+        if (synchronizer == null) return;
+        synchronizer.saveTab(tab);
+    }
+
+    /**
+     * Whether the synchronizer for the given model is present.
+     *
+     * @param incognito Whether the synchronizer is for an incognito model.
+     */
+    public boolean isSynchronizerPresent(boolean incognito) {
+        StorageCollectionSynchronizer synchronizer =
+                incognito ? mIncognitoSynchronizer : mRegularSynchronizer;
+        return synchronizer != null;
     }
 
     private StorageCollectionSynchronizer getSynchronizer(
@@ -318,7 +377,7 @@ public class ModelTrackingOrchestrator {
     }
 
     private void fullSaveAndInitTracking(boolean incognito) {
-        assert !ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue();
+        assert !mIsAuthoritative;
 
         Profile profile = mTabModelSelector.getModel(incognito).getProfile();
         if (profile == null) return;
@@ -326,15 +385,32 @@ public class ModelTrackingOrchestrator {
         try (ScopedStorageBatch ignored = createBatch(profile)) {
             var profileAndCollection = getProfileAndCollection(mTabModelSelector, incognito);
             getSynchronizer(profileAndCollection, incognito).fullSave();
+            mMigrationManager.onShadowStoreCaughtUp();
         }
 
         initializeTrackingSuite(incognito);
     }
 
+    private void cancelRestore(boolean incognito) {
+        assert mIsAuthoritative;
+
+        Profile profile = mTabModelSelector.getModel(incognito).getProfile();
+        if (profile == null) return;
+
+        var profileAndCollection = getProfileAndCollection(mTabModelSelector, incognito);
+        getSynchronizer(profileAndCollection, incognito).cancelRestore();
+    }
+
     private void saveTabGroupPayload(Token tabGroupId) {
-        CollectionSaveForwarder forwarder = mGroupForwarderMap.get(tabGroupId);
-        if (forwarder == null) return;
-        forwarder.savePayload();
+        Boolean isIncognito = mGroupIncognitoStatus.get(tabGroupId);
+        if (isIncognito == null) return;
+
+        StorageCollectionSynchronizer synchronizer =
+                isIncognito ? mIncognitoSynchronizer : mRegularSynchronizer;
+
+        if (synchronizer != null) {
+            synchronizer.saveTabGroupPayload(tabGroupId);
+        }
     }
 
     private void initActiveTabTracking(boolean incognito) {
@@ -350,20 +426,19 @@ public class ModelTrackingOrchestrator {
         }
         Callback<@Nullable Tab> obs =
                 incognito ? mIncognitoActiveTabObserver : mRegularActiveTabObserver;
-        mTabModelSelector.getModel(incognito).getCurrentTabSupplier().addObserver(obs);
+        mTabModelSelector
+                .getModel(incognito)
+                .getCurrentTabSupplier()
+                .addSyncObserverAndPostIfNonNull(obs);
     }
 
     private void initVisualDataTracking(boolean incognito) {
-        var profileAndCollection = getProfileAndCollection(mTabModelSelector, incognito);
         TabGroupModelFilter filter = getFilter(incognito);
         assert filter != null;
 
         // Add forwarders for untracked groups.
         for (Token groupId : filter.getAllTabGroupIds()) {
-            CollectionSaveForwarder forwarder =
-                    CollectionSaveForwarder.createForTabGroup(
-                            profileAndCollection.profile, groupId, profileAndCollection.collection);
-            mGroupForwarderMap.put(groupId, forwarder);
+            mGroupIncognitoStatus.put(groupId, incognito);
         }
 
         filter.addTabGroupObserver(mVisualDataUpdateObserver);
@@ -443,7 +518,7 @@ public class ModelTrackingOrchestrator {
 
         @Override
         public void onDataLoaded(StorageLoadedData data) {
-            if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
+            if (mIsAuthoritative && mState != SynchronizerState.CANCELLED) {
                 assert mState == SynchronizerState.START;
                 mState = SynchronizerState.RESTORING;
                 initRestoreOrchestrator(data, /* incognito= */ false);
@@ -454,7 +529,8 @@ public class ModelTrackingOrchestrator {
 
         @Override
         public void onRestoreFinished() {
-            if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
+            if (mState == SynchronizerState.CANCELLED) return;
+            if (mIsAuthoritative) {
                 assert mState == SynchronizerState.RESTORING;
                 mState = SynchronizerState.TRACKING;
                 initCollectionTracking(/* incognito= */ false);
@@ -462,6 +538,14 @@ public class ModelTrackingOrchestrator {
                 assert mState == SynchronizerState.START;
                 fullSaveAndInitTracking(/* incognito= */ false);
                 mState = SynchronizerState.TRACKING;
+            }
+        }
+
+        @Override
+        public void onRestoreCancelled() {
+            if (mState == SynchronizerState.START && mLoadIncognitoTabsOnStart) {
+                cancelRestore(/* incognito= */ false);
+                mState = SynchronizerState.CANCELLED;
             }
         }
 
@@ -483,7 +567,7 @@ public class ModelTrackingOrchestrator {
 
         @Override
         public void onDataLoaded(StorageLoadedData data) {
-            if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
+            if (mIsAuthoritative && mState != SynchronizerState.CANCELLED) {
                 if (data.getLoadedTabStates().length > 0) {
                     assert mState == SynchronizerState.START;
                     mState = SynchronizerState.MODEL_PENDING;
@@ -495,9 +579,7 @@ public class ModelTrackingOrchestrator {
 
         @Override
         public void onModelCreated() {
-            boolean authoritative =
-                    ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue();
-            if (authoritative) {
+            if (mIsAuthoritative) {
                 if (mState == SynchronizerState.MODEL_PENDING) {
                     mState = SynchronizerState.RESTORING;
                     assumeNonNull(mInitRestoreOrchestratorCallback).run();
@@ -516,7 +598,8 @@ public class ModelTrackingOrchestrator {
 
         @Override
         public void onRestoreFinished() {
-            if (ChromeFeatureList.sTabStorageSqlitePrototypeAuthoritativeReadSource.getValue()) {
+            if (mState == SynchronizerState.CANCELLED) return;
+            if (mIsAuthoritative) {
                 if (mState == SynchronizerState.RESTORING) {
                     mState = SynchronizerState.TRACKING;
                     initCollectionTracking(/* incognito= */ true);
@@ -529,14 +612,26 @@ public class ModelTrackingOrchestrator {
         }
 
         @Override
+        public void onRestoreCancelled() {
+            if (mState == SynchronizerState.START && mLoadIncognitoTabsOnStart) {
+                cancelRestore(/* incognito= */ true);
+                mState = SynchronizerState.CANCELLED;
+            }
+            mLoadIncognitoTabsOnStart = false;
+        }
+
+        @Override
         public void reset() {
             if (mIncognitoSynchronizer != null) {
                 mIncognitoSynchronizer.destroy();
                 mIncognitoSynchronizer = null;
             }
 
+            if (mState != SynchronizerState.CANCELLED) {
+                mLoadIncognitoTabsOnStart = false;
+            }
+
             mState = SynchronizerState.START;
-            mLoadIncognitoTabsOnStart = false;
             mInitRestoreOrchestratorCallback = null;
 
             cleanActiveTabTracking(/* incognito= */ true);

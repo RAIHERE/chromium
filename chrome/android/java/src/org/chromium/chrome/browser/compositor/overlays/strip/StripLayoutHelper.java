@@ -22,6 +22,7 @@ import android.animation.Animator.AnimatorListener;
 import android.animation.AnimatorListenerAdapter;
 import android.animation.AnimatorSet;
 import android.annotation.SuppressLint;
+import android.app.Activity;
 import android.content.Context;
 import android.content.res.Resources;
 import android.graphics.Color;
@@ -38,8 +39,6 @@ import android.util.TypedValue;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
-import android.widget.AdapterView;
-import android.widget.AdapterView.OnItemClickListener;
 import android.widget.ArrayAdapter;
 import android.widget.ListPopupWindow;
 
@@ -57,6 +56,7 @@ import org.chromium.base.ResettersForTesting;
 import org.chromium.base.Token;
 import org.chromium.base.metrics.RecordHistogram;
 import org.chromium.base.metrics.RecordUserAction;
+import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableNonNullObservableSupplier;
 import org.chromium.base.supplier.SettableNullableObservableSupplier;
@@ -68,6 +68,9 @@ import org.chromium.build.annotations.MonotonicNonNull;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.R;
+import org.chromium.chrome.browser.bookmarks.BookmarkManagerOpenerImpl;
+import org.chromium.chrome.browser.bookmarks.BookmarkModel;
+import org.chromium.chrome.browser.bookmarks.BookmarkUtils;
 import org.chromium.chrome.browser.collaboration.CollaborationServiceFactory;
 import org.chromium.chrome.browser.compositor.LayerTitleCache;
 import org.chromium.chrome.browser.compositor.layouts.LayoutManagerHost;
@@ -99,6 +102,8 @@ import org.chromium.chrome.browser.layouts.animation.CompositorAnimator;
 import org.chromium.chrome.browser.layouts.components.VirtualView;
 import org.chromium.chrome.browser.multiwindow.MultiInstanceManager;
 import org.chromium.chrome.browser.multiwindow.UiUtils.NameWindowDialogSource;
+import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
+import org.chromium.chrome.browser.preferences.ChromeSharedPreferences;
 import org.chromium.chrome.browser.profiles.Profile;
 import org.chromium.chrome.browser.share.ShareDelegate;
 import org.chromium.chrome.browser.tab.Tab;
@@ -131,6 +136,7 @@ import org.chromium.chrome.browser.tasks.tab_management.TabOverflowMenuCoordinat
 import org.chromium.chrome.browser.tasks.tab_management.TabShareUtils;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiThemeProvider;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiUtils;
+import org.chromium.chrome.browser.ui.messages.snackbar.SnackbarManager;
 import org.chromium.chrome.browser.user_education.UserEducationHelper;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.styles.SemanticColorUtils;
@@ -150,6 +156,8 @@ import org.chromium.ui.util.ColorUtils;
 import org.chromium.ui.util.MotionEventUtils;
 import org.chromium.ui.widget.RectProvider;
 
+import java.lang.annotation.Retention;
+import java.lang.annotation.RetentionPolicy;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -201,7 +209,7 @@ public class StripLayoutHelper
     private static final boolean IS_DESKTOP_DENSITY = StripLayoutUtils.shouldApplyMoreDensity();
     private static final float NEW_TAB_BUTTON_CLICK_SLOP_DP =
             (BUTTON_TOUCH_TARGET_SIZE_DP - BUTTON_BACKGROUND_SIZE_DP) / 2;
-    private static final float NEW_TAB_BUTTON_WITH_MODEL_SELECTOR_BUTTON_PADDING =
+    private static final float NEW_TAB_BUTTON_WITH_STRIP_BUTTON_PADDING =
             IS_DESKTOP_DENSITY ? 24.f : 8.f;
 
     private static final int MESSAGE_UPDATE_SPINNER = 1;
@@ -485,7 +493,7 @@ public class StripLayoutHelper
     private @MonotonicNonNull LayerTitleCache mLayerTitleCache;
 
     private final BottomSheetController mBottomSheetController;
-    private final Supplier<ShareDelegate> mShareDelegateSupplier;
+    private final MonotonicObservableSupplier<ShareDelegate> mShareDelegateSupplier;
 
     private final TabGroupListBottomSheetCoordinatorFactory
             mTabGroupListBottomSheetCoordinatorFactory;
@@ -519,11 +527,12 @@ public class StripLayoutHelper
     private final Set<StripLayoutGroupTitle> mClosingGroupTitles = new HashSet<>();
 
     private final TintedCompositorButton mNewTabButton;
+    private final @Nullable TintedCompositorButton mGlicButton;
     private final @Nullable CompositorButton mModelSelectorButton;
 
     // Layout Constants
     private final float mNewTabButtonWidth;
-    private final ListPopupWindow mCloseButtonMenu;
+    private @Nullable ListPopupWindow mGlicButtonMenu;
 
     // All views are overlapped by TAB_OVERLAP_WIDTH_DP. Group titles do not need to be overlapped
     // by this much, so we offset the drawX.
@@ -587,9 +596,6 @@ public class StripLayoutHelper
     // Whether tab strip scrolling is in progress
     private boolean mIsStripScrollInProgress;
 
-    // Tab menu item IDs
-    public static final int ID_CLOSE_ALL_TABS = 0;
-
     private final Context mContext;
 
     // Animation states. True while the relevant animations are running, and false otherwise.
@@ -652,6 +658,7 @@ public class StripLayoutHelper
     // Set when the context menu triggered by a gesture on empty strip space is shown for the first
     // time.
     private @MonotonicNonNull TabStripContextMenuCoordinator mTabStripContextMenuCoordinator;
+    private final SnackbarManager mSnackbarManager;
 
     // Tab group share.
     // These are set if shouldEnableGroupSharing() is true.
@@ -684,6 +691,25 @@ public class StripLayoutHelper
         int EMPTY_SPACE_CONTEXT_MENU = 1;
     }
 
+    // These values are persisted to logs. Entries should not be renumbered and
+    // numeric values should never be reused.
+    // LINT.IfChange(BookmarkAllTabsResult)
+    @IntDef({
+        BookmarkAllTabsResult.SUCCESS,
+        BookmarkAllTabsResult.MODEL_NULL,
+        BookmarkAllTabsResult.TAB_LIST_EMPTY,
+    })
+    @Retention(RetentionPolicy.SOURCE)
+    private @interface BookmarkAllTabsResult {
+        int SUCCESS = 0;
+        int MODEL_NULL = 1;
+        int TAB_LIST_EMPTY = 2;
+
+        int NUM_ENTRIES = 3;
+    }
+
+    // LINT.ThenChange(//tools/metrics/histograms/metadata/android/enums.xml:AndroidTabStripBookmarkAllTabsResult)
+
     /**
      * Creates an instance of the {@link StripLayoutHelper}.
      *
@@ -692,6 +718,7 @@ public class StripLayoutHelper
      * @param updateHost The parent {@link LayoutUpdateHost}.
      * @param renderHost The {@link LayoutRenderHost}.
      * @param incognito Whether or not this tab strip is incognito.
+     * @param glicButton The {@link TintedCompositorButton} used to toggle Glic in the sidepanel.
      * @param modelSelectorButton The {@link CompositorButton} used to toggle between regular and
      *     incognito models.
      * @param tabStripDragHandler The @{@link TabStripDragHandler} instance to initiate drag and
@@ -708,6 +735,9 @@ public class StripLayoutHelper
      * @param multiInstanceManager The {@link MultiInstanceManager} used to move tabs to other
      *     windows.
      * @param shareDelegateSupplier Supplies {@link ShareDelegate} to share tab URLs.
+     * @param tabGroupListBottomSheetCoordinatorFactory The factory used to create the {@link
+     *     TabGroupListBottomSheetCoordinator}.
+     * @param snackbarManager The {@link SnackbarManager} used to show snackbar UI.
      */
     public StripLayoutHelper(
             Context context,
@@ -716,6 +746,7 @@ public class StripLayoutHelper
             LayoutUpdateHost updateHost,
             LayoutRenderHost renderHost,
             boolean incognito,
+            @Nullable TintedCompositorButton glicButton,
             @Nullable CompositorButton modelSelectorButton,
             @Nullable TabStripDragHandler tabStripDragHandler,
             View toolbarContainerView,
@@ -725,11 +756,13 @@ public class StripLayoutHelper
             Supplier<Boolean> tabStripVisibleSupplier,
             BottomSheetController bottomSheetController,
             MultiInstanceManager multiInstanceManager,
-            Supplier<ShareDelegate> shareDelegateSupplier,
-            TabGroupListBottomSheetCoordinatorFactory tabGroupListBottomSheetCoordinatorFactory) {
+            MonotonicObservableSupplier<ShareDelegate> shareDelegateSupplier,
+            TabGroupListBottomSheetCoordinatorFactory tabGroupListBottomSheetCoordinatorFactory,
+            SnackbarManager snackbarManager) {
         mGroupTitleDrawXOffset = TAB_OVERLAP_WIDTH_DP - FOLIO_FOOT_LENGTH_DP;
         mGroupTitleOverlapWidth = FOLIO_FOOT_LENGTH_DP - mGroupTitleDrawXOffset;
         mNewTabButtonWidth = BUTTON_BACKGROUND_SIZE_DP;
+        mGlicButton = glicButton;
         mModelSelectorButton = modelSelectorButton;
         mToolbarContainerView = toolbarContainerView;
         mTabStripDragHandler = tabStripDragHandler;
@@ -741,6 +774,7 @@ public class StripLayoutHelper
         mMultiInstanceManager = multiInstanceManager;
         mShareDelegateSupplier = shareDelegateSupplier;
         mTabGroupListBottomSheetCoordinatorFactory = tabGroupListBottomSheetCoordinatorFactory;
+        mSnackbarManager = snackbarManager;
         mScrollDelegate = new ScrollDelegate(context);
 
         // Use toolbar menu button padding to align NTB with menu button.
@@ -842,52 +876,8 @@ public class StripLayoutHelper
         mContext = context;
         mIncognito = incognito;
 
-        // Create tab menu
-        mCloseButtonMenu = new ListPopupWindow(mContext);
-
-        mCloseButtonMenu.setBackgroundDrawable(
-                AppCompatResources.getDrawable(
-                        mContext, R.drawable.tablet_tab_strip_close_all_tabs_context_menu));
-
-        mCloseButtonMenu.setAdapter(
-                new ArrayAdapter<>(
-                        mContext,
-                        R.layout.one_line_list_item,
-                        new String[] {
-                            mContext.getString(
-                                    !mIncognito
-                                            ? R.string.menu_close_all_tabs
-                                            : R.string.menu_close_all_incognito_tabs)
-                        }));
-        mCloseButtonMenu.setOnItemClickListener(
-                new OnItemClickListener() {
-                    @Override
-                    public void onItemClick(
-                            AdapterView<?> parent, View view, int position, long id) {
-                        mCloseButtonMenu.dismiss();
-                        if (mTabGroupModelFilter == null) return;
-                        if (position == ID_CLOSE_ALL_TABS) {
-                            mTabGroupModelFilter
-                                    .getTabModel()
-                                    .getTabRemover()
-                                    .closeTabs(
-                                            TabClosureParams.closeAllTabs()
-                                                    .hideTabGroups(true)
-                                                    .tabClosingSource(
-                                                            TabClosingSource.TABLET_TAB_STRIP)
-                                                    .build(),
-                                            /* allowDialog= */ true);
-                            RecordUserAction.record("MobileToolbarCloseAllTabs");
-                        }
-                    }
-                });
-
-        int menuWidth = mContext.getResources().getDimensionPixelSize(R.dimen.menu_width);
-        mCloseButtonMenu.setWidth(menuWidth);
-        mCloseButtonMenu.setModal(true);
-
         mActionConfirmationManager = actionConfirmationManager;
-        mGroupIdToHideSupplier.addObserver(
+        mGroupIdToHideSupplier.addSyncObserverAndPostIfNonNull(
                 (newIdToHide) -> {
                     // If a close animation is requested, we'll just rebuild after the close
                     // animation completes. Doing so now can hit a NPE. Even if it didn't, it would
@@ -897,6 +887,30 @@ public class StripLayoutHelper
                     // confirmation dialog, and then the closure is confirmed.
                     if (!mCloseAnimationsRequested) rebuildStripViews();
                 });
+
+        // Create Glic unpin menu
+        if (mGlicButton != null) {
+            mGlicButtonMenu = new ListPopupWindow(mContext);
+            mGlicButtonMenu.setBackgroundDrawable(
+                    AppCompatResources.getDrawable(
+                            mContext, R.drawable.tablet_tab_strip_context_menu));
+            mGlicButtonMenu.setAdapter(
+                    new ArrayAdapter<>(
+                            mContext,
+                            R.layout.one_line_list_item,
+                            new String[] {mContext.getString(R.string.menu_unpin_glic_button)}));
+            mGlicButtonMenu.setOnItemClickListener(
+                    (parent, view, position, id) -> {
+                        if (mGlicButtonMenu != null) {
+                            mGlicButtonMenu.dismiss();
+                            // TODO(crbug.com/480741391): Unpin Glic button
+                        }
+                    });
+            int glicButtonMenuWidth =
+                    mContext.getResources().getDimensionPixelSize(R.dimen.glic_button_menu_width);
+            mGlicButtonMenu.setWidth(glicButtonMenuWidth);
+            mGlicButtonMenu.setModal(true);
+        }
 
         mIsFirstLayoutPass = true;
 
@@ -936,9 +950,16 @@ public class StripLayoutHelper
             mTabGroupListBottomSheetCoordinator.destroy();
             mTabGroupListBottomSheetCoordinator = null;
         }
+        if (mTabStripContextMenuCoordinator != null) {
+            mTabStripContextMenuCoordinator.destroy();
+            mTabStripContextMenuCoordinator = null;
+        }
         if (mModel != null) {
             mModel.removeObserver(mTabModelObserver);
             mModel = null;
+        }
+        if (mGlicButtonMenu != null) {
+            mGlicButtonMenu = null;
         }
     }
 
@@ -1141,17 +1162,28 @@ public class StripLayoutHelper
     }
 
     /**
+     * @param glicTouchTargetSize The touch target size for the Glic button.
      * @param msbTouchTargetSize The touch target size for the model selector button.
      */
-    public void updateEndMarginForStripButtons(float msbTouchTargetSize) {
-        // When MSB is not visible we add strip end padding here. When MSB is visible strip end
-        // padding will be included in MSB margin, so just add padding between NTB and MSB here.
-        mReservedEndMargin =
-                msbTouchTargetSize
-                        + mNewTabButtonWidth
-                        + (mModelSelectorButton != null && mModelSelectorButton.isVisible()
-                                ? NEW_TAB_BUTTON_WITH_MODEL_SELECTOR_BUTTON_PADDING
-                                : mFixedEndPadding);
+    // TODO(crbug.com/483119043): Fading assets only support 2 buttons (NTB and MSB)
+    // TODO(crbug.com/483140976): Align NTB, Glic, MSB when all 3 are showing
+    public void updateEndMarginForStripButtons(
+            float glicTouchTargetSize, float msbTouchTargetSize) {
+        // There are two additional tab strip buttons: Glic & MSB
+        // When both buttons are not visible we add strip end padding here.
+        // When either is visible, the strip end padding will be included in the visible button
+        // margin, so just add padding between NTB and visible button here. When both are visible,
+        // add additional padding between Glic and MSB.
+        float stripButtonsTouchTargetSize = glicTouchTargetSize + msbTouchTargetSize;
+        float padding =
+                stripButtonsTouchTargetSize > 0
+                        ? NEW_TAB_BUTTON_WITH_STRIP_BUTTON_PADDING
+                        : mFixedEndPadding;
+        padding +=
+                glicTouchTargetSize > 0 && msbTouchTargetSize > 0
+                        ? StripLayoutHelperManager.GLIC_MSB_BUTTON_PADDING_DP
+                        : 0;
+        mReservedEndMargin = stripButtonsTouchTargetSize + mNewTabButtonWidth + padding;
         updateMargins(true);
     }
 
@@ -1248,7 +1280,7 @@ public class StripLayoutHelper
         if (mStripViews.length > 0) mUpdateHost.requestUpdate();
 
         // Dismiss tab menu, similar to how the app menu is dismissed on orientation change
-        mCloseButtonMenu.dismiss();
+        if (mGlicButtonMenu != null) mGlicButtonMenu.dismiss();
 
         // Dismiss iph on orientation change, as its position might become incorrect.
         dismissTabStripSyncIph();
@@ -1645,7 +1677,6 @@ public class StripLayoutHelper
         } else {
             clearLastHoveredTab();
             finishAnimations();
-            mCloseButtonMenu.dismiss();
         }
     }
 
@@ -2077,6 +2108,8 @@ public class StripLayoutHelper
         boolean anyVisibilityChange = false;
 
         final int count = mStripTabs.length;
+        float visibleLeftBound = getVisibleLeftBound(/* clampToUnpinnedViews= */ true);
+        float visibleRightBound = getVisibleRightBound(/* clampToUnpinnedViews= */ true);
 
         for (int i = 0; i < count; i++) {
             final StripLayoutTab tab = mStripTabs[i];
@@ -2087,8 +2120,8 @@ public class StripLayoutHelper
                             isLastTab,
                             mLeftFadeWidth,
                             mRightFadeWidth,
-                            getVisibleLeftBound(/* clampToUnpinnedViews= */ true),
-                            getVisibleRightBound(/* clampToUnpinnedViews= */ true),
+                            visibleLeftBound,
+                            visibleRightBound,
                             mNewTabButton,
                             mIsFirstLayoutPass);
         }
@@ -2321,6 +2354,8 @@ public class StripLayoutHelper
      * @param y The y coordinate of the position of the press event.
      */
     public void onLongPress(float x, float y) {
+        // TODO(crbug.com/485925830): Refactor to a long-press handler, similar to the existing
+        //  click handler.
         StripLayoutView stripView = determineClickedView(x, y, /* buttons= */ 0);
 
         if (stripView == null) {
@@ -2345,14 +2380,17 @@ public class StripLayoutHelper
                         && mTabGroupContextMenuCoordinator.isMenuShowing())
                 || (mTabContextMenuCoordinator != null
                         && mTabContextMenuCoordinator.isMenuShowing())
-                || (mCloseButtonMenu != null && mCloseButtonMenu.isShowing());
+                || (mTabStripContextMenuCoordinator != null
+                        && mTabStripContextMenuCoordinator.isMenuShowing())
+                || (mGlicButtonMenu != null && mGlicButtonMenu.isShowing());
     }
 
     @VisibleForTesting
     void dismissContextMenu() {
         if (mTabGroupContextMenuCoordinator != null) mTabGroupContextMenuCoordinator.dismiss();
         if (mTabContextMenuCoordinator != null) mTabContextMenuCoordinator.dismiss();
-        if (mCloseButtonMenu != null) mCloseButtonMenu.dismiss();
+        if (mTabStripContextMenuCoordinator != null) mTabStripContextMenuCoordinator.dismiss();
+        if (mGlicButtonMenu != null) mGlicButtonMenu.dismiss();
     }
 
     /**
@@ -2655,6 +2693,7 @@ public class StripLayoutHelper
             return;
         }
 
+        finishAnimations();
         mReorderDelegate.startReorderMode(
                 mStripViews,
                 mStripTabs,
@@ -2752,10 +2791,11 @@ public class StripLayoutHelper
         mUpdateHost.requestUpdate();
     }
 
-    /** Called in post delay task in q#onDown to clear tab hover state. */
+    /** Clears the tab hover state and requests a UI update if a tab was being hovered. */
     protected void clearTabHoverState() {
-        clearLastHoveredTab();
-        mUpdateHost.requestUpdate();
+        if (clearLastHoveredTab()) {
+            mUpdateHost.requestUpdate();
+        }
     }
 
     /** Check whether model selector button or new tab button is being hovered. */
@@ -2825,9 +2865,9 @@ public class StripLayoutHelper
         ResettersForTesting.register(() -> mTabStripContextMenuCoordinator = null);
     }
 
-    private void clearLastHoveredTab() {
+    private boolean clearLastHoveredTab() {
         if (mLastHoveredTab == null) {
-            return;
+            return false;
         }
         mTabDelegate.setIsTabHovered(mLastHoveredTab, false);
         mLastHoveredTab = null;
@@ -2840,6 +2880,7 @@ public class StripLayoutHelper
             }
             mTabHoverCardView.hide();
         }
+        return true;
     }
 
     @VisibleForTesting
@@ -3130,7 +3171,18 @@ public class StripLayoutHelper
      */
     private boolean showContextMenu(StripLayoutView clickedView) {
         if (clickedView == null) return false;
-        if (clickedView instanceof StripLayoutTab clickedTab) {
+        boolean isCloseButtonClicked =
+                clickedView instanceof CompositorButton button
+                        && button.getType() == ButtonType.TAB_CLOSE;
+        if (isCloseButtonClicked || clickedView instanceof StripLayoutTab) {
+            StripLayoutTab clickedTab;
+            if (isCloseButtonClicked) {
+                clickedTab =
+                        assumeNonNull(
+                                (StripLayoutTab) ((CompositorButton) clickedView).getParentView());
+            } else {
+                clickedTab = (StripLayoutTab) clickedView;
+            }
             // The current tab is always multi selected. So we need to check if there are more tabs
             // in multi-selection.
             if (mModel != null
@@ -3145,11 +3197,8 @@ public class StripLayoutHelper
             }
             return true;
         } else if (clickedView instanceof CompositorButton button
-                && button.getType() == ButtonType.TAB_CLOSE) {
-            if (mModel != null) {
-                mModel.clearMultiSelection(/* notifyObservers= */ true);
-            }
-            showCloseButtonMenu(assumeNonNull((StripLayoutTab) button.getParentView()));
+                && button.getType() == ButtonType.GLIC) {
+            showGlicButtonMenu(clickedView);
             return true;
         } else if (clickedView instanceof StripLayoutGroupTitle groupTitle) {
             if (mModel != null) {
@@ -3192,13 +3241,84 @@ public class StripLayoutHelper
                                 public void onReopenClosedEntry() {
                                     RecordUserAction.record(
                                             "Android.TabStripMenu.ReopenClosedEntry");
-                                    if (mModel != null) mModel.openMostRecentlyClosedEntry();
+                                    if (mModel != null) {
+                                        RecordHistogram.recordBooleanHistogram(
+                                                "Android.TabStripMenu.ReopenClosedEntry.Result",
+                                                true);
+                                        mModel.openMostRecentlyClosedEntry();
+                                    } else {
+                                        RecordHistogram.recordBooleanHistogram(
+                                                "Android.TabStripMenu.ReopenClosedEntry.Result",
+                                                false);
+                                    }
+                                }
+
+                                @Override
+                                public int getTabCount() {
+                                    return mModel != null ? mModel.getCount() : 0;
+                                }
+
+                                @Override
+                                public void onBookmarkAllTabs() {
+                                    RecordUserAction.record("Android.TabStripMenu.BookmarkAllTabs");
+                                    if (mModel == null) {
+                                        RecordHistogram.recordEnumeratedHistogram(
+                                                "Android.TabStripMenu.BookmarkAllTabs.Result",
+                                                BookmarkAllTabsResult.MODEL_NULL,
+                                                BookmarkAllTabsResult.NUM_ENTRIES);
+                                        return;
+                                    }
+                                    List<Tab> tabs =
+                                            TabModelUtils.convertTabListToListOfTabs(mModel);
+                                    if (tabs.isEmpty()) {
+                                        RecordHistogram.recordEnumeratedHistogram(
+                                                "Android.TabStripMenu.BookmarkAllTabs.Result",
+                                                BookmarkAllTabsResult.TAB_LIST_EMPTY,
+                                                BookmarkAllTabsResult.NUM_ENTRIES);
+                                        return;
+                                    }
+
+                                    RecordHistogram.recordEnumeratedHistogram(
+                                            "Android.TabStripMenu.BookmarkAllTabs.Result",
+                                            BookmarkAllTabsResult.SUCCESS,
+                                            BookmarkAllTabsResult.NUM_ENTRIES);
+                                    Profile profile = tabs.get(0).getProfile();
+                                    BookmarkModel bookmarkModel =
+                                            BookmarkModel.getForProfile(profile);
+                                    bookmarkModel.finishLoadingBookmarkModel(
+                                            () -> {
+                                                Activity activity =
+                                                        mWindowAndroid.getActivity().get();
+                                                if (activity == null) return;
+                                                BookmarkUtils.addBookmarksOnMultiSelect(
+                                                        activity,
+                                                        bookmarkModel,
+                                                        tabs,
+                                                        mSnackbarManager,
+                                                        new BookmarkManagerOpenerImpl());
+                                            });
                                 }
 
                                 @Override
                                 public void onNameWindow() {
                                     mMultiInstanceManager.showNameWindowDialog(
                                             NameWindowDialogSource.TAB_STRIP);
+                                }
+
+                                @Override
+                                public void onPinGlic() {
+                                    RecordUserAction.record("Android.TabStripMenu.PinGlic");
+                                    ChromeSharedPreferences.getInstance()
+                                            .writeBoolean(
+                                                    ChromePreferenceKeys.GLIC_BUTTON_PINNED, true);
+                                }
+
+                                @Override
+                                public void onUnpinGlic() {
+                                    RecordUserAction.record("Android.TabStripMenu.UnpinGlic");
+                                    ChromeSharedPreferences.getInstance()
+                                            .writeBoolean(
+                                                    ChromePreferenceKeys.GLIC_BUTTON_PINNED, false);
                                 }
                             });
         }
@@ -3584,6 +3704,9 @@ public class StripLayoutHelper
 
     private @Nullable StripLayoutView determineClickedView(float x, float y, int buttons) {
         if (mNewTabButton.click(x, y, buttons)) return mNewTabButton;
+        if (mGlicButton != null && mGlicButton.isVisible() && mGlicButton.click(x, y, buttons)) {
+            return mGlicButton;
+        }
         StripLayoutView view = getViewAtPositionX(x, true);
         if (view instanceof StripLayoutTab clickedTab) {
             if (clickedTab.checkCloseHitTest(x, y) || MotionEventUtils.isTertiaryButton(buttons)) {
@@ -3697,6 +3820,12 @@ public class StripLayoutHelper
             // Passes startQueuedCloseAnimations as false to prevent clobbering the close animations
             // for any other simultaneously removed views.
             finishAnimations(/* startQueuedCloseAnimations= */ false);
+
+            // TODO(crbug.com/450076798): Unify closing tabs + closing group titles logic.
+            // Set initial state.
+            for (StripLayoutView view : mClosingTabs) view.setIsDying(true);
+            for (StripLayoutView view : mClosingGroupTitles) view.setIsDying(true);
+
             mUpdateHost.requestUpdate();
         }
     }
@@ -3704,11 +3833,6 @@ public class StripLayoutHelper
     private void queueCloseAnimationsIfAny() {
         if (!mCloseAnimationsRequested) return;
         mCloseAnimationsRequested = false;
-
-        // TODO(crbug.com/450076798): Unify closing tabs + closing group titles logic.
-        // Set initial state.
-        for (StripLayoutView view : mClosingTabs) view.setIsDying(true);
-        for (StripLayoutView view : mClosingGroupTitles) view.setIsDying(true);
 
         // Create animators.
         List<Animator> animationList = getTabClosingAnimators();
@@ -4978,7 +5102,9 @@ public class StripLayoutHelper
     private float calculateDeltaToMakeViewVisible(@Nullable StripLayoutView view) {
         if (view == null) return 0.f;
         // These are always in view.
-        if (view.equals(mNewTabButton) || view.equals(mModelSelectorButton)) return 0.f;
+        if (view.equals(mNewTabButton)
+                || view.equals(mGlicButton)
+                || view.equals(mModelSelectorButton)) return 0.f;
         if (view instanceof StripLayoutTab tab && tab.getIsPinned()) return 0.f;
 
         // 1. Calculate the bounds to fully show the regular view on the left/right side of the
@@ -5066,6 +5192,16 @@ public class StripLayoutHelper
                         endOpacity,
                         ANIM_BUTTONS_FADE_MS)
                 .start();
+        if (mGlicButton != null) {
+            CompositorAnimator.ofFloatProperty(
+                            mUpdateHost.getAnimationHandler(),
+                            mGlicButton,
+                            CompositorButton.OPACITY,
+                            mGlicButton.getOpacity(),
+                            endOpacity,
+                            ANIM_BUTTONS_FADE_MS)
+                    .start();
+        }
         if (mModelSelectorButton != null) {
             CompositorAnimator.ofFloatProperty(
                             mUpdateHost.getAnimationHandler(),
@@ -5287,50 +5423,55 @@ public class StripLayoutHelper
     }
 
     /**
-     * Displays the tab menu below the anchor tab.
+     * Displays the unpin menu below the Glic button.
      *
-     * @param anchorTab The tab the menu will be anchored to
+     * @param anchorView The Glic button the menu will be anchored to
      */
-    @VisibleForTesting
-    void showCloseButtonMenu(StripLayoutTab anchorTab) {
-        if (mModel == null) return;
-
-        // 1. Bring the anchor tab to the foreground.
-        int tabIndex = TabModelUtils.getTabIndexById(mModel, anchorTab.getTabId());
-        TabModelUtils.setIndex(mModel, tabIndex);
-
-        // 2. Anchor the popupMenu to the view associated with the tab
-        @Nullable Tab tab = TabModelUtils.getCurrentTab(mModel);
-        if (tab == null) return;
-        View tabView = tab.getView();
-        mCloseButtonMenu.setAnchorView(tabView);
-        // 3. Set the vertical offset to align the close button menu with bottom of the tab strip
-        int tabHeight = mManagerHost.getHeight();
+    private void showGlicButtonMenu(StripLayoutView anchorView) {
+        if (mGlicButtonMenu == null) return;
+        // We anchor to the toolbar container view
+        // We shift up by the combined height of the tab strip and the Glic button to align the menu
+        // with the bottom of the tab strip.
         int verticalOffset =
-                -(tabHeight - (int) mContext.getResources().getDimension(R.dimen.tab_strip_height));
-        mCloseButtonMenu.setVerticalOffset(verticalOffset);
+                (int)
+                        -(mContext.getResources().getDimension(R.dimen.tab_strip_height)
+                                + StripLayoutHelperManager.BUTTON_BACKGROUND_HEIGHT_DP);
+        showMenuBelowStripView(mGlicButtonMenu, anchorView, mToolbarContainerView, verticalOffset);
+    }
 
-        // 4. Set the horizontal offset to align the close button menu with the right side of the
-        // tab
+    /**
+     * Helper method to show a menu anchored to a specific StripLayoutView.
+     *
+     * @param menu The ListPopupWindow to show.
+     * @param anchorStripView The virtual view to align the menu with horizontally.
+     * @param anchorView The actual Android View to anchor the popup to.
+     * @param verticalOffset The vertical offset to apply to the menu relative to the anchor.
+     */
+    private void showMenuBelowStripView(
+            ListPopupWindow menu,
+            StripLayoutView anchorStripView,
+            View anchorView,
+            int verticalOffset) {
+        menu.setAnchorView(anchorView);
+        menu.setVerticalOffset(verticalOffset);
+
+        // Set the horizontal offset to align the menu with the right side of the strip view
+        float density = mContext.getResources().getDisplayMetrics().density;
         int horizontalOffset =
-                Math.round(
-                                (anchorTab.getDrawX() + anchorTab.getWidth())
-                                        * mContext.getResources().getDisplayMetrics().density)
-                        - mCloseButtonMenu.getWidth();
-        // Cap the horizontal offset so that the close button menu doesn't get drawn off screen.
-        horizontalOffset = Math.max(horizontalOffset, 0);
-        mCloseButtonMenu.setHorizontalOffset(horizontalOffset);
+                Math.round((anchorStripView.getDrawX() + anchorStripView.getWidth()) * density)
+                        - menu.getWidth();
 
-        mCloseButtonMenu.show();
+        // Cap the horizontal offset so that the menu doesn't get drawn off screen.
+        menu.setHorizontalOffset(Math.max(horizontalOffset, 0));
 
-        // Set clipToOutline to true to contain the mouse hover effect inside thepopup's outline.
-        // Also set the background of the list view to tablet_tab_strip_close_all_tabs_context_menu
-        // to make its shape the same as the popup.
-        assumeNonNull(mCloseButtonMenu.getListView());
-        mCloseButtonMenu
-                .getListView()
-                .setBackgroundResource(R.drawable.tablet_tab_strip_close_all_tabs_context_menu);
-        mCloseButtonMenu.getListView().setClipToOutline(true);
+        menu.show();
+
+        // Set clipToOutline to true to contain the mouse hover effect inside the popup's outline.
+        // Also set the background of the list view to tablet_tab_strip_context_menu to make its
+        // shape the same as the popup.
+        assumeNonNull(menu.getListView());
+        menu.getListView().setBackgroundResource(R.drawable.tablet_tab_strip_context_menu);
+        menu.getListView().setClipToOutline(true);
     }
 
     /**
@@ -5426,16 +5567,20 @@ public class StripLayoutHelper
                 || viewX >= rightBound;
     }
 
-    /** Returns true if the close button menu is showing */
-    public boolean isCloseButtonMenuShowingForTesting() {
-        return mCloseButtonMenu.isShowing();
+    @Nullable /* package */ TintedCompositorButton getGlicButtonForTesting() {
+        return mGlicButton;
+    }
+
+    /** Returns true if the Glic button menu is showing */
+    public boolean isGlicButtonMenuShowingForTesting() {
+        return mGlicButtonMenu != null && mGlicButtonMenu.isShowing();
     }
 
     /**
      * @param menuItemId The id of the menu item to click
      */
-    public void clickCloseButtonMenuItemForTesting(int menuItemId) {
-        mCloseButtonMenu.performItemClick(menuItemId);
+    public void clickGlicButtonMenuItemForTesting(int menuItemId) {
+        if (mGlicButtonMenu != null) mGlicButtonMenu.performItemClick(menuItemId);
     }
 
     /** Returns The width of the tab strip. */
@@ -5603,10 +5748,22 @@ public class StripLayoutHelper
             return R.string.accessibility_tabstrip_tab_notification;
         }
 
-        final boolean selected = !isHidden;
         if (mediaState != MediaState.NONE) {
-            if (isMultiSelected) {
-                if (isPinned) {
+            return getMediaTabAccessibilityLabelRes(
+                    isHidden, isMultiSelected, isPinned, mediaState);
+        }
+
+        return getSimpleTabAccessibilityLabelRes(isHidden, isMultiSelected, isPinned);
+    }
+
+    private @StringRes int getMediaTabAccessibilityLabelRes(
+            boolean isHidden,
+            boolean isMultiSelected,
+            boolean isPinned,
+            @MediaState int mediaState) {
+        if (isHidden) {
+            if (isPinned) {
+                if (isMultiSelected) {
                     return getMediaAccessibilityString(
                             mediaState,
                             mIncognito,
@@ -5626,48 +5783,6 @@ public class StripLayoutHelper
                     return getMediaAccessibilityString(
                             mediaState,
                             mIncognito,
-                            R.string.accessibility_tabstrip_tab_multiselected_audible,
-                            R.string.accessibility_tabstrip_tab_multiselected_muted,
-                            R.string.accessibility_tabstrip_tab_multiselected_recording,
-                            R.string.accessibility_tabstrip_tab_multiselected_sharing,
-                            R.string.accessibility_tabstrip_tab_multiselected_audible_incognito,
-                            R.string.accessibility_tabstrip_tab_multiselected_muted_incognito,
-                            R.string.accessibility_tabstrip_tab_multiselected_recording_incognito,
-                            R.string.accessibility_tabstrip_tab_multiselected_sharing_incognito);
-                }
-            }
-
-            if (selected) {
-                if (isPinned) {
-                    return getMediaAccessibilityString(
-                            mediaState,
-                            mIncognito,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_audible,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_muted,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_recording,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_sharing,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_audible_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_muted_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_recording_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_pinned_sharing_incognito);
-                } else {
-                    return getMediaAccessibilityString(
-                            mediaState,
-                            mIncognito,
-                            R.string.accessibility_tabstrip_tab_selected_audible,
-                            R.string.accessibility_tabstrip_tab_selected_muted,
-                            R.string.accessibility_tabstrip_tab_selected_recording,
-                            R.string.accessibility_tabstrip_tab_selected_sharing,
-                            R.string.accessibility_tabstrip_tab_selected_audible_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_muted_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_recording_incognito,
-                            R.string.accessibility_tabstrip_tab_selected_sharing_incognito);
-                }
-            } else { // not selected and not multiselected
-                if (isPinned) {
-                    return getMediaAccessibilityString(
-                            mediaState,
-                            mIncognito,
                             R.string.accessibility_tabstrip_tab_pinned_audible,
                             R.string.accessibility_tabstrip_tab_pinned_muted,
                             R.string.accessibility_tabstrip_tab_pinned_recording,
@@ -5676,6 +5791,20 @@ public class StripLayoutHelper
                             R.string.accessibility_tabstrip_tab_pinned_muted_incognito,
                             R.string.accessibility_tabstrip_tab_pinned_recording_incognito,
                             R.string.accessibility_tabstrip_tab_pinned_sharing_incognito);
+                }
+            } else {
+                if (isMultiSelected) {
+                    return getMediaAccessibilityString(
+                            mediaState,
+                            mIncognito,
+                            R.string.accessibility_tabstrip_tab_multiselected_audible,
+                            R.string.accessibility_tabstrip_tab_multiselected_muted,
+                            R.string.accessibility_tabstrip_tab_multiselected_recording,
+                            R.string.accessibility_tabstrip_tab_multiselected_sharing,
+                            R.string.accessibility_tabstrip_tab_multiselected_audible_incognito,
+                            R.string.accessibility_tabstrip_tab_multiselected_muted_incognito,
+                            R.string.accessibility_tabstrip_tab_multiselected_recording_incognito,
+                            R.string.accessibility_tabstrip_tab_multiselected_sharing_incognito);
                 } else {
                     return getMediaAccessibilityString(
                             mediaState,
@@ -5690,8 +5819,37 @@ public class StripLayoutHelper
                             R.string.accessibility_tabstrip_tab_sharing_incognito);
                 }
             }
+        } else {
+            if (isPinned) {
+                return getMediaAccessibilityString(
+                        mediaState,
+                        mIncognito,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_audible,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_muted,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_recording,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_sharing,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_audible_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_muted_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_recording_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_pinned_sharing_incognito);
+            } else {
+                return getMediaAccessibilityString(
+                        mediaState,
+                        mIncognito,
+                        R.string.accessibility_tabstrip_tab_selected_audible,
+                        R.string.accessibility_tabstrip_tab_selected_muted,
+                        R.string.accessibility_tabstrip_tab_selected_recording,
+                        R.string.accessibility_tabstrip_tab_selected_sharing,
+                        R.string.accessibility_tabstrip_tab_selected_audible_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_muted_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_recording_incognito,
+                        R.string.accessibility_tabstrip_tab_selected_sharing_incognito);
+            }
         }
+    }
 
+    private @StringRes int getSimpleTabAccessibilityLabelRes(
+            boolean isHidden, boolean isMultiSelected, boolean isPinned) {
         @StringRes
         int pinnedUnselected =
                 mIncognito
@@ -5886,13 +6044,17 @@ public class StripLayoutHelper
     }
 
     public int getTabIndexForTabDrop(float x, boolean isPinned) {
+        int tabIndex = 0;
         for (int i = 0; i < mStripViews.length; i++) {
             final StripLayoutView stripView = mStripViews[i];
             final float leftEdge;
             final float rightEdge;
             boolean rtl = LocalizationUtils.isLayoutRtl();
             if (stripView instanceof StripLayoutTab tab) {
-                if (tab.isCollapsed()) continue;
+                if (tab.isCollapsed()) {
+                    tabIndex++;
+                    continue;
+                }
                 final float halfTabWidth = getCachedTabWidth(tab.getIsPinned()) / 2;
                 leftEdge = tab.getTouchTargetLeft();
                 rightEdge = tab.getTouchTargetRight();
@@ -5900,9 +6062,9 @@ public class StripLayoutHelper
                 boolean hasReachedThreshold =
                         rtl ? x > rightEdge - halfTabWidth : x < leftEdge + halfTabWidth;
                 if (hasReachedThreshold) {
-                    int tabIndex = StripLayoutUtils.findIndexForTab(mStripTabs, tab.getTabId());
                     return isPinned == tab.getIsPinned() ? tabIndex : getNumLivePinnedTabs();
                 }
+                tabIndex++;
             } else {
                 final StripLayoutGroupTitle groupTitle = (StripLayoutGroupTitle) stripView;
                 final float halfGroupTitleWidth = groupTitle.getWidth() / 2;
@@ -5914,9 +6076,6 @@ public class StripLayoutHelper
                                 ? x > rightEdge - halfGroupTitleWidth
                                 : x < leftEdge + halfGroupTitleWidth;
                 if (hasReachedThreshold) {
-                    int tabIndex =
-                            StripLayoutUtils.findIndexForTab(
-                                    mStripTabs, ((StripLayoutTab) mStripViews[i + 1]).getTabId());
                     return isPinned ? getNumLivePinnedTabs() : tabIndex;
                 }
             }

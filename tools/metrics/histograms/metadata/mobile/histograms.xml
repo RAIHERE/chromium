@@ -76,7 +76,7 @@ chromium-metrics-reviews@google.com.
 </variants>
 
 <histogram name="Mobile.AppMenu.TimeToTakeAction.Abandoned" units="ms"
-    expires_after="2026-06-21">
+    expires_after="2026-08-23">
   <owner>gangwu@chromium.org</owner>
   <owner>twellington@chromium.org</owner>
   <summary>
@@ -91,7 +91,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.AppMenu.TimeToTakeAction.SelectedItem" units="ms"
-    expires_after="2026-06-14">
+    expires_after="2026-08-16">
   <owner>gangwu@chromium.org</owner>
   <owner>twellington@chromium.org</owner>
   <summary>
@@ -135,7 +135,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.ContextMenu.EntryPoints" enum="IOSMenuScenario"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>gambard@chromium.org</owner>
   <owner>bling-team@chromium.org</owner>
   <summary>
@@ -199,7 +199,9 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.ContextMenu.{EntryPoint}.Actions" enum="IOSMenuAction"
-    expires_after="2026-07-05">
+    expires_after="never">
+<!-- expires-never: part of vital metric ChromeSearch.Actions -->
+
   <owner>gambard@chromium.org</owner>
   <owner>bling-team@chromium.org</owner>
   <summary>
@@ -354,7 +356,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.Messages.Banner.Dismiss.{MobileInfobarType}"
-    enum="MobileMessagesBannerDismissType" expires_after="2026-06-06">
+    enum="MobileMessagesBannerDismissType" expires_after="2026-08-09">
   <owner>thegreenfrog@chromium.org</owner>
   <owner>bling-team@google.com</owner>
   <summary>
@@ -364,7 +366,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.Messages.Banner.Event.{MobileInfobarType}"
-    enum="MobileMessagesBannerEvent" expires_after="2026-06-13">
+    enum="MobileMessagesBannerEvent" expires_after="2026-08-16">
   <owner>thegreenfrog@chromium.org</owner>
   <owner>bling-team@google.com</owner>
   <summary>Records infobar banner events. {MobileInfobarType}</summary>
@@ -384,7 +386,7 @@ chromium-metrics-reviews@google.com.
 
 <histogram
     name="Mobile.Messages.Confirm.Accept.Time{Mobile_Messages_Confirm_Type}"
-    units="ms" expires_after="2026-04-06">
+    units="ms" expires_after="2027-04-06">
   <owner>thegreenfrog@chromium.org</owner>
   <owner>bling-team@chromium.org</owner>
   <summary>
@@ -404,7 +406,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Mobile.Messages.Modal.Event.{MobileInfobarType}"
-    enum="MobileMessagesModalEvent" expires_after="2026-06-06">
+    enum="MobileMessagesModalEvent" expires_after="2026-08-09">
   <owner>thegreenfrog@chromium.org</owner>
   <owner>bling-team@google.com</owner>
   <summary>Records generic infobar modal events. {MobileInfobarType}</summary>
@@ -548,6 +550,29 @@ chromium-metrics-reviews@google.com.
     <variant name="TabShareButton" summary="current tab"/>
     <variant name="TabStripItem" summary="tab strip item"/>
   </token>
+</histogram>
+
+<histogram name="Mobile.ShareThisPage.Shown" enum="ShareThisPageLocation"
+    expires_after="2026-06-28">
+  <owner>ameurhosni@google.com</owner>
+  <owner>bling-team@google.com</owner>
+  <summary>
+    Tracks the impressions of the &quot;Share This Page&quot; button. Recorded
+    when the button is shown to the user. To view how often this button was
+    clicked, take a look at: Mobile.ShareThisPage.Used. Currently only on iOS.
+  </summary>
+</histogram>
+
+<histogram name="Mobile.ShareThisPage.Used" enum="ShareThisPageLocation"
+    expires_after="2026-06-28">
+  <owner>ameurhosni@google.com</owner>
+  <owner>bling-team@google.com</owner>
+  <summary>
+    Tracks the sharing actions executed for the &quot;Share This Page&quot;
+    button. Recorded when the user taps on the button. To view how often this
+    button was shown, take a look at: Mobile.ShareThisPage.Shown. Currently only
+    on iOS.
+  </summary>
 </histogram>
 
 <histogram name="Mobile.Spotlight.LensSupportStatus"

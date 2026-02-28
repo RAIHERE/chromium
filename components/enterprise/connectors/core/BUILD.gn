@@ -74,6 +74,7 @@ source_set("core") {
     "//components/security_interstitials/core:unsafe_resource",
     "//components/signin/public/identity_manager",
     "//components/strings:components_strings_grit",
+    "//components/ukm",
     "//components/url_matcher",
     "//ui/base",
     "//ui/base/clipboard:clipboard_types",
@@ -114,8 +115,12 @@ source_set("cloud_content_scanning") {
     "cloud_content_scanning/connector_upload_request.h",
     "cloud_content_scanning/file_analysis_request_base.cc",
     "cloud_content_scanning/file_analysis_request_base.h",
+    "cloud_content_scanning/multipart_uploader.cc",
+    "cloud_content_scanning/multipart_uploader.h",
     "cloud_content_scanning/multipart_uploader_base.cc",
     "cloud_content_scanning/multipart_uploader_base.h",
+    "cloud_content_scanning/resumable_uploader.cc",
+    "cloud_content_scanning/resumable_uploader.h",
     "cloud_content_scanning/resumable_uploader_base.cc",
     "cloud_content_scanning/resumable_uploader_base.h",
   ]
@@ -227,6 +232,7 @@ source_set("cloud_content_scanning_unittests") {
     "cloud_content_scanning/connector_data_pipe_getter_unittest.cc",
     "cloud_content_scanning/file_analysis_request_base_unittest.cc",
     "cloud_content_scanning/multipart_uploader_base_unittest.cc",
+    "cloud_content_scanning/multipart_uploader_unittest.cc",
     "cloud_content_scanning/resumable_uploader_base_unittest.cc",
   ]
 

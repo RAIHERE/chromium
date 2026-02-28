@@ -439,7 +439,7 @@ inline constexpr char kNetworkEasterEggHighScore[] =
 // if prediction of network actions is allowed, depending on network type.
 // Actions include DNS prefetching, TCP and SSL preconnection, prerendering
 // of web pages, and resource prefetching.
-// TODO(bnc): Implement this preference as per crbug.com/334602.
+// TODO(bnc): Implement this preference as per crbug.com/40347636.
 inline constexpr char kNetworkPredictionOptions[] =
     "net.network_prediction_options";
 
@@ -515,55 +515,6 @@ inline constexpr char kResolveTimezoneByGeolocationMethod[] =
 // has been migrated to kResolveTimezoneByGeolocationMethod.
 inline constexpr char kResolveTimezoneByGeolocationMigratedToMethod[] =
     "settings.resolve_timezone_by_geolocation_migrated_to_method";
-
-// A string pref set to the current input method.
-// TODO: b/308389509 - Remove this constant to complete migration.
-inline constexpr char kLanguageCurrentInputMethod[] =
-    "settings.language.current_input_method";
-
-// A string pref set to the previous input method.
-inline constexpr char kLanguagePreviousInputMethod[] =
-    "settings.language.previous_input_method";
-
-// A list pref set to the allowed input methods (see policy
-// "AllowedInputMethods").
-inline constexpr char kLanguageAllowedInputMethods[] =
-    "settings.language.allowed_input_methods";
-
-// A boolean pref that enforces allowed input methods to be enabled (see policy
-// "AllowedInputMethodsForceEnabled").
-inline constexpr char kLanguageAllowedInputMethodsForceEnabled[] =
-    "settings.language.allowed_input_methods_force_enabled";
-
-// A string pref (comma-separated list) set to the preloaded (active) input
-// method IDs (ex. "pinyin,mozc").
-// TODO: b/308389509 - Remove this constant to complete migration.
-inline constexpr char kLanguagePreloadEngines[] =
-    "settings.language.preload_engines";
-inline constexpr char kLanguagePreloadEnginesSyncable[] =
-    "settings.language.preload_engines_syncable";
-
-// A string pref (comma-separated list) set to the extension and ARC IMEs to be
-// enabled.
-inline constexpr char kLanguageEnabledImes[] =
-    "settings.language.enabled_extension_imes";
-inline constexpr char kLanguageEnabledImesSyncable[] =
-    "settings.language.enabled_extension_imes_syncable";
-
-// A boolean pref set to true if the IME menu is activated.
-inline constexpr char kLanguageImeMenuActivated[] =
-    "settings.language.ime_menu_activated";
-
-// A dictionary of input method IDs and their settings. Each value is itself a
-// dictionary of key / value string pairs, with each pair representing a setting
-// and its value.
-inline constexpr char kLanguageInputMethodSpecificSettings[] =
-    "settings.language.input_method_specific_settings";
-
-// A boolean pref to indicate whether we still need to add the globally synced
-// input methods. False after the initial post-OOBE sync.
-inline constexpr char kLanguageShouldMergeInputMethods[] =
-    "settings.language.merge_input_methods";
 
 // A boolean pref which turns on Advanced Filesystem
 // (USB support, SD card, etc).
@@ -1417,17 +1368,27 @@ inline constexpr char kPluginsAlwaysOpenPdfExternally[] =
 
 // Int64 containing the internal value of the time at which the default browser
 // infobar was last dismissed by the user.
-inline constexpr char kDefaultBrowserLastDeclined[] =
+inline constexpr char kDefaultBrowserInfobarLastDeclined[] =
     "browser.default_browser_infobar_last_declined";
 
 // base::Time containing time at which the default browser infobar was last
 // dismissed by the user.
-inline constexpr char kDefaultBrowserLastDeclinedTime[] =
+inline constexpr char kDefaultBrowserInfobarLastDeclinedTime[] =
     "browser.default_browser_infobar_last_declined_time";
 
 // Int representing the number of times the user has dismissed the infobar.
-inline constexpr char kDefaultBrowserDeclinedCount[] =
+inline constexpr char kDefaultBrowserInfobarDeclinedCount[] =
     "browser.default_browser_infobar_declined_count";
+
+// base::Time containing the time at which the user last dismissed the default
+// browser experiment surface.
+inline constexpr char kDefaultBrowserLastDeclinedTime[] =
+    "browser.default_browser_last_declined_time";
+
+// Int representing the number of times the user has dismissed the default
+// browser experiment surface.
+inline constexpr char kDefaultBrowserDeclinedCount[] =
+    "browser.default_browser_declined_count";
 
 // base::Time containing first time the default browser app menu chip was shown.
 inline constexpr char kDefaultBrowserFirstShownTime[] =
@@ -1808,7 +1769,7 @@ inline constexpr char kMigratedToSiteNotificationChannels[] =
     "notifications.migrated_to_channels";
 
 // Boolean pref indicating whether blocked site notification channels underwent
-// a one-time reset yet for https://crbug.com/835232.
+// a one-time reset yet for https://crbug.com/41384604.
 // TODO(crbug.com/40573963): Remove this after a few releases (M69?).
 inline constexpr char kClearedBlockedSiteNotificationChannels[] =
     "notifications.cleared_blocked_channels";
@@ -1857,6 +1818,10 @@ inline constexpr char kWebRTCIPHandlingUrl[] = "webrtc.ip_handling_url";
 // post-quantum key agreement for WebRTC.
 inline constexpr char kWebRTCPostQuantumKeyAgreement[] =
     "webrtc.post_quantum_key_agreement";
+// Define the WebRTCDiagnosticLogCollectionAllowedForOrigins policy that
+// controls enabling diagnostic log collection for WebRTC.
+inline constexpr char kWebRTCDiagnosticLogCollectionAllowedForOrigins[] =
+    "webrtc.diagnostic_log_collection_allowed_for_origins";
 // Define range of UDP ports allowed to be used by WebRTC PeerConnections.
 inline constexpr char kWebRTCUDPPortRange[] = "webrtc.udp_port_range";
 // Whether WebRTC event log collection by Google domains is allowed.
@@ -1934,6 +1899,11 @@ inline constexpr char kSuppressDifferentOriginSubframeJSDialogs[] =
 inline constexpr char kUserAgentReduction[] = "user_agent_reduction";
 
 #if !BUILDFLAG(IS_ANDROID)
+// Boolean determining whether the projects panel entrypoint is displayed in the
+// tab strip.
+inline constexpr char kProjectsPanelEntrypointEnabled[] =
+    "projects_panel.entrypoint_enabled";
+
 // Boolean determining the side the side panel will be appear on (left / right).
 // True when the side panel is aligned to the right.
 inline constexpr char kSidePanelHorizontalAlignment[] =
@@ -1952,8 +1922,32 @@ inline constexpr char kGoogleSearchSidePanelEnabled[] =
 // RTL.
 inline constexpr char kTabSearchRightAligned[] = "tab_search.is_right_aligned";
 
+// Boolean determining whether the tab search button is pinned to the tab strip.
+inline constexpr char kTabSearchPinnedToTabstrip[] =
+    "tab_search.pinned_to_tabstrip";
+
+// Boolean indicating whether the tab search pinning migration to the tab strip
+// is complete.
+inline constexpr char kTabSearchPinnedToTabstripMigrationComplete[] =
+    "tab_search.pinned_to_tabstrip_migration_complete";
+
+// Boolean determining whether the projects panel button is pinned to the tab
+// strip.
+inline constexpr char kProjectsPanelPinnedToTabstrip[] =
+    "projects_panel.pinned_to_tabstrip";
+
+// Boolean determining whether the everything menu button is pinned to the tab
+// strip.
+inline constexpr char kEverythingMenuPinnedToTabstrip[] =
+    "everything_menu.pinned_to_tabstrip";
+
 // Boolean determining whether vertical tabs are enabled.
 inline constexpr char kVerticalTabsEnabled[] = "vertical_tabs.enabled";
+
+// Records whether the user has enabled vertical tabs for the first time. Only
+// used for metrics reporting purposes.
+inline constexpr char kVerticalTabsEnabledFirstTime[] =
+    "vertical_tabs.enabled_first_time";
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_COMPOSE)
@@ -2084,7 +2078,7 @@ inline constexpr char kProfilesOrder[] = "profile.profiles_order";
 
 // A list of profile paths that should be deleted on shutdown. The deletion does
 // not happen if the browser crashes, so we remove the profile on next start.
-inline constexpr char kProfilesDeleted[] = "profiles.profiles_deleted";
+inline constexpr char kProfilesDeleted[] = "profiles.profile_basenames_deleted";
 
 // On Chrome OS, total number of non-Chrome user process crashes
 // since the last report.
@@ -2813,6 +2807,11 @@ inline constexpr char kBasicAuthOverHttpEnabled[] =
 inline constexpr char kIsolatedWebAppInstallForceList[] =
     "profile.isolated_web_app.install.forcelist";
 
+// Boolean pref that specifies whether user installation of
+// Isolated Web Apps is permitted.
+inline constexpr char kIsolatedWebAppUserInstallationEnabled[] =
+    "profile.isolated_web_app.install.user_install_enabled";
+
 // An integer pref that remembers how many force install initializations are
 // pending. If more than `kIsolatedWebAppForceInstallMaxRetryTreshold`
 // initializations are pending, the initialization is delayed for
@@ -2889,14 +2888,6 @@ inline constexpr char kH2ClientCertCoalescingHosts[] =
 // from http to https.
 inline constexpr char kHSTSPolicyBypassList[] =
     "hsts.policy.upgrade_bypass_list";
-
-// If false, disable post-quantum key agreement in TLS connections.
-inline constexpr char kPostQuantumKeyAgreementEnabled[] =
-    "ssl.post_quantum_enabled";
-#if BUILDFLAG(IS_CHROMEOS)
-inline constexpr char kDevicePostQuantumKeyAgreementEnabled[] =
-    "ssl.device_post_quantum_enabled";
-#endif
 
 // String identifying the compliance regime, if any, that must be adhered to for
 // key exchange in TLS.
@@ -3339,11 +3330,22 @@ inline constexpr char kChromeForTestingAllowed[] = "chrome_for_testing.allowed";
 #endif
 
 #if BUILDFLAG(IS_WIN)
-inline constexpr char kUiAutomationProviderEnabled[] =
-    "accessibility.ui_automation_provider_enabled";
-
 inline constexpr char kForegroundLaunchOnLogin[] =
     "launch_on_login.foreground.enabled";
+
+// Boolean representing whether the infobar has been accepted by the user.
+inline constexpr char kStartupLaunchInfobarAccepted[] =
+    "launch_on_login.infobar_accepted";
+
+// base::Time containing time at which the startup launch infobar was last
+// dismissed by the user.
+inline constexpr char kStartupLaunchInfobarLastDeclinedTime[] =
+    "launch_on_login.infobar_last_declined_time";
+
+// Int representing the number of times the user has dismissed the startup
+// launch infobar.
+inline constexpr char kStartupLaunchInfobarDeclinedCount[] =
+    "launch_on_login.infobar_declined_count";
 #endif
 
 // A boolean pref which determines whether the QR Code generator feature is
@@ -4323,7 +4325,24 @@ inline constexpr char kAndroidTipNotificationShownLens[] =
     "android.tips.notifications.lens_shown";
 inline constexpr char kAndroidTipNotificationShownBottomOmnibox[] =
     "android.tips.notifications.bottom_omnibox_shown";
+inline constexpr char kAndroidTipNotificationShownPasswordAutofill[] =
+    "android.tips.notifications.password_autofill_shown";
+inline constexpr char kAndroidTipNotificationShownSignin[] =
+    "android.tips.notifications.signin_shown";
+inline constexpr char kAndroidTipNotificationShownCreateTabGroups[] =
+    "android.tips.notifications.create_tab_group_shown";
+inline constexpr char kAndroidTipNotificationShownCustomizeMVT[] =
+    "android.tips.notifications.customize_mvt_shown";
+inline constexpr char kAndroidTipNotificationShownRecentTabs[] =
+    "android.tips.notifications.recent_tabs_shown";
 // LINT.ThenChange(//chrome/android/java/src/org/chromium/chrome/browser/notifications/tips/TipsUtils.java:TipsShownPrefs)
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_ANDROID)
+// Time pref indicating the timestamp of the most recently visited browsing
+// history entry that is donated to AppSearch.
+inline constexpr char kAuxiliarySearchLastDonatedHistoryEntryVisitTime[] =
+    "auxiliary_search.last_donated_history_entry_visit_time";
 #endif  // BUILDFLAG(IS_ANDROID)
 
 }  // namespace prefs

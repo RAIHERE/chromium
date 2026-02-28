@@ -33,7 +33,6 @@
 #include "third_party/blink/renderer/platform/graphics/paint/drawing_recorder.h"
 #include "third_party/blink/renderer/platform/graphics/paint/foreign_layer_display_item.h"
 #include "third_party/blink/renderer/platform/graphics/paint/geometry_mapper.h"
-#include "third_party/blink/renderer/platform/graphics/paint/scoped_canvas_subtree_id.h"
 #include "third_party/blink/renderer/platform/graphics/paint/scoped_display_item_fragment.h"
 #include "third_party/blink/renderer/platform/graphics/paint/scoped_effectively_invisible.h"
 #include "third_party/blink/renderer/platform/graphics/paint/scoped_paint_chunk_properties.h"
@@ -270,6 +269,10 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
       [[unlikely]] {
     // Skip if we need layout. This should never happen. See crbug.com/1423308
     // and crbug.com/330051489.
+
+    // TODO(crbug.com/478682594): Remove when done investigating.
+    object.DumpForBug478682594();
+
     return kFullyPainted;
   }
 
@@ -396,21 +399,6 @@ PaintResult PaintLayerPainter::Paint(GraphicsContext& context,
     effectively_invisible.emplace(controller);
   }
 
-  std::optional<ScopedCanvasSubtreeId> canvas_subtree_id_scope;
-  if (RuntimeEnabledFeatures::CanvasDrawElementEnabled()) {
-    // Start a canvas subtree id scope with the id of each direct child of a
-    // layoutsubtree canvas.
-    auto* element = DynamicTo<Element>(object.GetNode());
-    if (element && element->IsInCanvasSubtree()) [[unlikely]] {
-      auto* canvas = DynamicTo<HTMLCanvasElement>(element->parentElement());
-      if (canvas && canvas->layoutSubtree()) {
-        auto canvas_subtree_id =
-            CompositorElementIdFromDOMNodeId(element->GetDomNodeId());
-        canvas_subtree_id_scope.emplace(controller, canvas_subtree_id);
-      }
-    }
-  }
-
   std::optional<ScopedPaintChunkProperties> layer_chunk_properties;
 
   // The parent effect (before creating layer_chunk_properties for the current
@@ -531,11 +519,17 @@ void PaintLayerPainter::PaintTransitionScopeSnapshotIfNeeded(
     return;
   }
 
-  PhysicalRect box_border_rect =
-      paint_layer_.LocalBoundingBoxIncludingSelfPaintingDescendants();
-  PhysicalRect ink_overflow_rect = object.ApplyFiltersToRect(box_border_rect);
-  PhysicalOffset paint_offset = ink_overflow_rect.offset;
-  layer->SetBounds(ink_overflow_rect.PixelSnappedSize());
+  gfx::Point paint_offset;
+  if (layer->is_live_content_layer()) {
+    PhysicalRect box_border_rect =
+        paint_layer_.LocalBoundingBoxIncludingSelfPaintingDescendants();
+    PhysicalRect ink_overflow_rect = object.ApplyFiltersToRect(box_border_rect);
+    paint_offset = ToRoundedPoint(ink_overflow_rect.offset);
+    layer->SetBounds(ink_overflow_rect.PixelSnappedSize());
+    layer->SetPaintOffset(paint_offset);
+  } else {
+    paint_offset = layer->paint_offset();
+  }
   layer->SetIsDrawable(true);
 
   PropertyTreeStateOrAlias properties =
@@ -543,9 +537,9 @@ void PaintLayerPainter::PaintTransitionScopeSnapshotIfNeeded(
   DCHECK(effect);
   properties.SetEffect(*effect);
 
-  RecordForeignLayer(
-      context, paint_layer_, DisplayItem::kForeignLayerViewTransitionContent,
-      std::move(layer), ToRoundedPoint(paint_offset), &properties);
+  RecordForeignLayer(context, paint_layer_,
+                     DisplayItem::kForeignLayerViewTransitionContent,
+                     std::move(layer), paint_offset, &properties);
 }
 
 PaintResult PaintLayerPainter::PaintTransitionPseudos(
@@ -589,12 +583,19 @@ PaintResult PaintLayerPainter::PaintChildren(
     return result;
   }
 
-  if (auto* canvas = DynamicTo<HTMLCanvasElement>(layout_object.GetNode())) {
+  bool painting_canvas_child = false;
+  auto* canvas = DynamicTo<HTMLCanvasElement>(layout_object.GetNode());
+  if (canvas) {
     if (RuntimeEnabledFeatures::CanvasDrawElementEnabled() &&
         canvas->layoutSubtree()) {
       // We need to paint the children for later use by drawElementImage, but
       // make sure we enforce privacy-preserving paint behavior.
       paint_flags |= PaintFlag::kPrivacyPreserving;
+      // TODO(https://crbug.com/480074850): Determine how hit test data works
+      // in non-composited subtrees, and test if this is needed.
+      paint_flags |= PaintFlag::kOmitCompositingInfo;
+
+      painting_canvas_child = true;
     } else {
       // Prevent canvas fallback content from being rendered.
       return result;
@@ -631,6 +632,11 @@ PaintResult PaintLayerPainter::PaintChildren(
           result = kMayBeClippedByCullRect;
         }
       }
+    }
+
+    if (painting_canvas_child && child->SelfOrDescendantNeedsRepaint()) {
+      auto* child_el = To<Element>(child->GetLayoutObject().GetNode());
+      layout_object.GetFrameView()->DidPaintCanvasChild(*canvas, *child_el);
     }
   }
 

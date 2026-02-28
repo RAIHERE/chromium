@@ -5,7 +5,7 @@
 #import "components/webauthn/ios/passkey_tab_helper.h"
 
 #import "base/rand_util.h"
-#import "base/strings/to_string.h"
+#import "base/strings/string_number_conversions.h"
 #import "base/test/metrics/histogram_tester.h"
 #import "base/test/run_until.h"
 #import "components/password_manager/core/browser/mock_password_manager.h"
@@ -13,8 +13,10 @@
 #import "components/password_manager/ios/shared_password_controller.h"
 #import "components/webauthn/core/browser/passkey_model.h"
 #import "components/webauthn/core/browser/test_passkey_model.h"
+#import "components/webauthn/ios/fake_ios_passkey_client.h"
 #import "components/webauthn/ios/ios_webauthn_credentials_delegate.h"
 #import "components/webauthn/ios/passkey_java_script_feature.h"
+#import "components/webauthn/ios/passkey_test_util.h"
 #import "ios/web/public/test/fakes/fake_browser_state.h"
 #import "ios/web/public/test/fakes/fake_web_client.h"
 #import "ios/web/public/test/fakes/fake_web_frame.h"
@@ -39,116 +41,20 @@ using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::kGetRequested;
 using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::kGetResolvedGpm;
 using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::
     kGetResolvedNonGpm;
+using PasskeyTabHelper::WebAuthenticationIOSContentAreaEvent::
+    kIncognitoInterstitialShown;
 
 namespace {
 
 constexpr char kCredentialId[] = "credential_id";
 constexpr char kCredentialId2[] = "credential_id_2";
-constexpr char kRpId[] = "example.com";
 constexpr char kWellKnownURL[] = "https://example.com/.well-known/webauthn";
 constexpr char kOriginURL[] = "https://example.com";
 constexpr char kRelatedOriginURL[] = "https://example.ca";
-constexpr char kFakeRequestId[] = "1effd8f52a067c8d3a01762d3c41dfd9";
 
 constexpr char kWebAuthenticationIOSContentAreaEventHistogram[] =
     "WebAuthentication.IOS.ContentAreaEvent";
-
-// Converts an std::string to a uint8_t vector.
-std::vector<uint8_t> AsByteVector(std::string str) {
-  return std::vector<uint8_t>(str.begin(), str.end());
-}
-
-// Creates a test passkey using the default rp id.
-sync_pb::WebauthnCredentialSpecifics GetTestPasskey(
-    const std::string& credential_id) {
-  sync_pb::WebauthnCredentialSpecifics passkey;
-  passkey.set_rp_id(kRpId);
-  passkey.set_credential_id(credential_id);
-  passkey.set_sync_id(base::RandBytesAsString(16));
-  passkey.set_user_id(base::RandBytesAsString(16));
-  passkey.set_user_name(base::RandBytesAsString(16));
-  passkey.set_user_display_name(base::RandBytesAsString(16));
-  return passkey;
-}
-
-// Builds PasskeyRequestParams using the default rp id.
-PasskeyRequestParams BuildPasskeyRequestParams() {
-  IOSPasskeyClient::RequestInfo request_info(web::kMainFakeFrameId,
-                                             kFakeRequestId);
-  device::PublicKeyCredentialRpEntity rp_entity(kRpId);
-  std::vector<uint8_t> challenge;
-  bool is_conditional = false;
-  PasskeyExtensionData extension_data;
-  return PasskeyRequestParams(std::move(request_info), std::move(rp_entity),
-                              std::move(challenge),
-                              device::UserVerificationRequirement::kPreferred,
-                              is_conditional, std::move(extension_data));
-}
-
-// Builds RegistrationRequestParams from an exclude credentials list.
-RegistrationRequestParams BuildRegistrationRequestParams(
-    const std::vector<device::PublicKeyCredentialDescriptor>&
-        exclude_credentials) {
-  device::PublicKeyCredentialUserEntity user_entity;
-  return RegistrationRequestParams(BuildPasskeyRequestParams(),
-                                   std::move(user_entity), exclude_credentials);
-}
-
-// Builds AssertionRequestParams from an allow credentials list.
-AssertionRequestParams BuildAssertionRequestParams(
-    const std::vector<device::PublicKeyCredentialDescriptor>&
-        allow_credentials) {
-  return AssertionRequestParams(BuildPasskeyRequestParams(), allow_credentials);
-}
-
 }  // namespace
-
-class FakeIOSPasskeyClient : public IOSPasskeyClient {
- public:
-  explicit FakeIOSPasskeyClient(web::WebState* web_state)
-      : delegate_(web_state) {}
-  ~FakeIOSPasskeyClient() override = default;
-
-  void SetIOSPasskeyClientCommandsHandler(
-      id<IOSPasskeyClientCommands> handler) override {}
-  bool PerformUserVerification() override { return false; }
-  void FetchKeys(ReauthenticatePurpose purpose,
-                 KeysFetchedCallback callback) override {
-    if (!callback.is_null()) {
-      std::move(callback).Run({});
-    }
-  }
-
-  void ShowSuggestionBottomSheet(RequestInfo request_info) override {
-    show_suggestion_bottom_sheet_called_ = true;
-  }
-
-  void ShowCreationBottomSheet(RequestInfo request_info) override {
-    show_creation_bottom_sheet_called_ = true;
-  }
-
-  bool DidShowSuggestionBottomSheet() const {
-    return show_suggestion_bottom_sheet_called_;
-  }
-
-  bool DidShowCreationBottomSheet() const {
-    return show_creation_bottom_sheet_called_;
-  }
-
-  void AllowPasskeyCreationInfobar(bool allowed) override {}
-  password_manager::WebAuthnCredentialsDelegate*
-  GetWebAuthnCredentialsDelegateForDriver(
-      IOSPasswordManagerDriver* driver) override {
-    return &delegate_;
-  }
-
-  IOSWebAuthnCredentialsDelegate* delegate() { return &delegate_; }
-
- private:
-  IOSWebAuthnCredentialsDelegate delegate_;
-  bool show_creation_bottom_sheet_called_ = false;
-  bool show_suggestion_bottom_sheet_called_ = false;
-};
 
 class PasskeyTabHelperTest : public PlatformTest {
  public:
@@ -221,6 +127,25 @@ class PasskeyTabHelperTest : public PlatformTest {
     test_url_loader_factory_.AddResponse(
         GURL(kWellKnownURL), std::move(head), body,
         network::URLLoaderCompletionStatus(net_error));
+  }
+
+  // Returns a random request ID of the same charset as the fake request ID.
+  std::string GetUniqueRequestId() {
+    return base::HexEncodeLower(base::RandBytesAsVector(16));
+  }
+
+  // Verifies that ShouldPerformUserVerification returns the expected results
+  // with and without biometric authentication enabled.
+  void VerifyShouldPerformUserVerification(const std::string& request_id,
+                                           bool expected_with_biometrics,
+                                           bool expected_without_biometrics) {
+    SCOPED_TRACE(testing::Message() << "ID: " << request_id);
+    EXPECT_EQ(passkey_tab_helper()->ShouldPerformUserVerification(
+                  request_id, /*is_biometric_authentication_enabled=*/true),
+              std::optional<bool>(expected_with_biometrics));
+    EXPECT_EQ(passkey_tab_helper()->ShouldPerformUserVerification(
+                  request_id, /*is_biometric_authentication_enabled=*/false),
+              std::optional<bool>(expected_without_biometrics));
   }
 
   web::WebTaskEnvironment task_environment_;
@@ -452,6 +377,123 @@ TEST_F(PasskeyTabHelperTest, CreatePasskeyFromRelatedOriginFailure) {
   }));
 
   EXPECT_FALSE(client_->DidShowCreationBottomSheet());
+}
+
+// Tests that ShouldPerformUserVerification returns the correct value for
+// assertion and registration requests.
+TEST_F(PasskeyTabHelperTest, ShouldPerformUserVerification) {
+  SetUpWebFramesManagerAndWebFrame(GURL(kOriginURL));
+  SetUpIOSPasswordManagerDriver();
+
+  // Test with non-existent request ID.
+  EXPECT_EQ(
+      passkey_tab_helper()->ShouldPerformUserVerification("non-existent", true),
+      std::nullopt);
+
+  // An array of user verification requirements, and their expected values.
+  struct UserVerificationRequirementTest {
+    device::UserVerificationRequirement requirement;
+    bool expected_with_biometrics;
+    bool expected_without_biometrics;
+  };
+
+  std::vector<UserVerificationRequirementTest> user_verification_requirements =
+      {{device::UserVerificationRequirement::kPreferred,
+        /*expected_with_biometrics=*/true,
+        /*expected_without_biometrics=*/false},
+       {device::UserVerificationRequirement::kRequired,
+        /*expected_with_biometrics=*/true,
+        /*expected_without_biometrics=*/true},
+       {device::UserVerificationRequirement::kDiscouraged,
+        /*expected_with_biometrics=*/false,
+        /*expected_without_biometrics=*/false}};
+
+  // Tests assertion requests.
+  for (const auto& test : user_verification_requirements) {
+    std::string request_id = GetUniqueRequestId();
+    passkey_tab_helper()->HandleGetRequestedEvent(
+        BuildAssertionRequestParams({}, test.requirement, request_id));
+    VerifyShouldPerformUserVerification(request_id,
+                                        test.expected_with_biometrics,
+                                        test.expected_without_biometrics);
+  }
+
+  // Tests registration requests.
+  for (const auto& test : user_verification_requirements) {
+    std::string request_id = GetUniqueRequestId();
+    passkey_tab_helper()->HandleCreateRequestedEvent(
+        BuildRegistrationRequestParams({}, test.requirement, request_id));
+    VerifyShouldPerformUserVerification(request_id,
+                                        test.expected_with_biometrics,
+                                        test.expected_without_biometrics);
+  }
+}
+
+TEST_F(PasskeyTabHelperTest, ShowCreationInterstitialAndContinue) {
+  fake_browser_state_.SetOffTheRecord(true);
+
+  bool callback_executed = false;
+  bool callback_result = false;
+  auto callback = base::BindOnce(
+      [](bool* executed, bool* result, bool proceed) {
+        *executed = true;
+        *result = proceed;
+      },
+      &callback_executed, &callback_result);
+
+  client_->SetInterstitialProceeds(true);
+  EXPECT_TRUE(passkey_tab_helper()->ShowCreationInterstitialIfNecessary(
+      std::move(callback)));
+
+  EXPECT_TRUE(client_->DidShowInterstitial());
+  EXPECT_TRUE(callback_executed);
+  EXPECT_TRUE(callback_result);
+  histogram_tester_.ExpectUniqueSample(
+      kWebAuthenticationIOSContentAreaEventHistogram,
+      static_cast<int>(kIncognitoInterstitialShown),
+      /*count=*/1);
+}
+
+TEST_F(PasskeyTabHelperTest, ShowCreationInterstitialAndCancel) {
+  fake_browser_state_.SetOffTheRecord(true);
+
+  bool callback_executed = false;
+  bool callback_result = true;
+  auto callback = base::BindOnce(
+      [](bool* executed, bool* result, bool proceed) {
+        *executed = true;
+        *result = proceed;
+      },
+      &callback_executed, &callback_result);
+
+  client_->SetInterstitialProceeds(false);
+  EXPECT_TRUE(passkey_tab_helper()->ShowCreationInterstitialIfNecessary(
+      std::move(callback)));
+
+  EXPECT_TRUE(client_->DidShowInterstitial());
+  EXPECT_TRUE(callback_executed);
+  EXPECT_FALSE(callback_result);
+  histogram_tester_.ExpectUniqueSample(
+      kWebAuthenticationIOSContentAreaEventHistogram,
+      static_cast<int>(kIncognitoInterstitialShown),
+      /*count=*/1);
+}
+
+TEST_F(PasskeyTabHelperTest, NoCreationInterstitial) {
+  fake_browser_state_.SetOffTheRecord(false);
+
+  bool callback_executed = false;
+  auto callback =
+      base::BindOnce([](bool* executed, bool proceed) { *executed = true; },
+                     &callback_executed);
+
+  EXPECT_FALSE(passkey_tab_helper()->ShowCreationInterstitialIfNecessary(
+      std::move(callback)));
+
+  EXPECT_FALSE(client_->DidShowInterstitial());
+  EXPECT_FALSE(callback_executed);
+  histogram_tester_.ExpectTotalCount(
+      kWebAuthenticationIOSContentAreaEventHistogram, 0);
 }
 
 }  // namespace webauthn

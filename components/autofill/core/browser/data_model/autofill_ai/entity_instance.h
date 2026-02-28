@@ -28,6 +28,10 @@
 #include "components/autofill/core/common/dense_set.h"
 #include "components/autofill/core/common/is_required.h"
 
+namespace sync_pb {
+class AutofillValuableSpecifics;
+}
+
 namespace autofill {
 
 // Entity and attribute types are blueprints for entity and attribute instances.
@@ -45,6 +49,7 @@ struct AutofillFormatString;
 class EntityInstance;
 class EntityInstanceTestApi;
 class EntityTable;
+class WalletPassAccessManagerImpl;
 
 // An attribute instance is a typed string value with additional metadata.
 // It is associated with an EntityInstance. Attributes are used in order to fill
@@ -151,6 +156,24 @@ class AttributeInstance final {
   // Returns whether the stored value is a mask of the full value, e.g., it
   // contains the last four digits of the full value.
   bool masked() const { return masked_; }
+
+  // Marks the attribute as masked.
+  //
+  // Since this does not perform any validation on the attribute value itself,
+  // it must only be called by code that is certain that the attribute value
+  // is indeed masked. The reason for not having a validation step is that
+  // masking happens purely on the server and the masking algorithm is not
+  // exposed to the client.
+  class MarkAsMaskedPasskey {
+   private:
+    MarkAsMaskedPasskey() = default;
+    friend class EntityTable;
+    friend class WalletPassAccessManagerImpl;
+    friend class FakeWalletPassAccessManager;
+    friend std::optional<EntityInstance> CreateEntityInstanceFromSpecifics(
+        const sync_pb::AutofillValuableSpecifics&);
+  };
+  void mark_as_masked(MarkAsMaskedPasskey) { masked_ = true; }
 
   friend bool operator==(const AttributeInstance& lhs,
                          const AttributeInstance& rhs) = default;
@@ -383,6 +406,8 @@ class EntityInstance final {
 
   // Returns true if all attributes of `this` are present in `other` with the
   // same values or if `this` is a proper subset of `other`.
+  // When a masked attribute is compared to an unmasked one, only their suffixes
+  // are compared.
   bool IsSubsetOf(const EntityInstance& other) const;
 
   // Returns whether any of the attributes are masked. This can only happen
@@ -400,6 +425,18 @@ class EntityInstance final {
   // server; it is strictly transient and must never be persisted to disk.
   bool IsUnmaskedServerEntity() const;
 
+  // Returns a copy of `this` with a new `id`.
+  EntityInstance CopyWithNewEntityId(EntityId id) const;
+
+  // Returns a copy of `this` with the given `record_type`.
+  EntityInstance CopyWithNewRecordType(RecordType record_type) const;
+
+  // Returns a copy of `this` where the attribute for `attribute.type()` is
+  // replaced by `attribute`.
+  EntityInstance CopyWithUpdatedAttribute(AttributeInstance attribute) const;
+
+  // Note that since operator== is defaulted, contrary to `IsSubsetOf()`,
+  // masked and unmasked attributes are considered distinct.
   friend bool operator==(const EntityInstance&,
                          const EntityInstance&) = default;
 
@@ -418,6 +455,7 @@ class EntityInstance final {
 };
 
 std::ostream& operator<<(std::ostream& os, const AttributeInstance& a);
+std::ostream& operator<<(std::ostream& os, const EntityInstance::RecordType& t);
 std::ostream& operator<<(std::ostream& os, const EntityInstance& e);
 
 struct EntityInstance::CompareByGuid {
@@ -435,6 +473,19 @@ struct EntityInstance::CompareByGuid {
     return lhs.guid() < rhs.guid();
   }
 };
+
+// Returns whether this (entity type, record type) combination supports
+// restricting local storage of obfuscated attributes to "masks" (e.g., the last
+// x digits/characters).
+//
+// If this is `true`, the full entity information can be stored on a server and
+// can be retrieved by the client only on demand. It is not persisted locally on
+// disk. However, note that even if this is `true` users may not be eligible for
+// creating masked server entities depending on their sync settings or their
+// locale. See `MayPerformAutofillAiAction`
+//   for the relevant permission checks.
+bool IsMaskedStorageSupported(EntityType type,
+                              EntityInstance::RecordType record_type);
 
 }  // namespace autofill
 

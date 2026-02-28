@@ -5,6 +5,7 @@
 #include "components/optimization_guide/core/model_execution/model_broker_state.h"
 
 #include <cstddef>
+#include <memory>
 
 #include "components/optimization_guide/core/delivery/optimization_guide_model_provider.h"
 #include "components/optimization_guide/core/model_execution/on_device_asset_manager.h"
@@ -18,21 +19,27 @@ namespace optimization_guide {
 ModelBrokerState::ModelBrokerState(
     PrefService& local_state,
     OptimizationGuideModelProvider& model_provider,
-    std::unique_ptr<OnDeviceModelComponentStateManager::Delegate> delegate,
-    on_device_model::ServiceClient::LaunchFn launch_fn)
+    std::unique_ptr<OnDeviceModelComponentStateManager::Delegate> base_delegate,
+    std::unique_ptr<OnDeviceModelComponentStateManager::Delegate>
+        classifier_delegate,
+    on_device_model::ServiceClient::LaunchFn launch_fn,
+    component_updater::ComponentUpdateService* component_update_service)
     : service_client_(std::move(launch_fn)),
       usage_tracker_(&local_state),
       performance_classifier_(&local_state, service_client_.GetSafeRef()),
+      download_progress_manager_(component_update_service,
+                                 {base_delegate->GetComponentId()}),
       component_state_manager_(&local_state,
                                performance_classifier_.GetSafeRef(),
                                usage_tracker_,
-                               std::move(delegate)),
+                               std::move(base_delegate)),
       service_controller_(
           std::make_unique<OnDeviceModelAccessController>(local_state),
           performance_classifier_.GetSafeRef(),
           component_state_manager_.GetWeakPtr(),
           usage_tracker_,
-          service_client_.GetSafeRef()),
+          service_client_.GetSafeRef(),
+          download_progress_manager_.GetAddObserverCallback()),
       asset_manager_(local_state,
                      usage_tracker_,
                      component_state_manager_,
@@ -82,22 +89,30 @@ void ModelBrokerState::GetOnDeviceModelEligibilityAsync(
 
 std::optional<optimization_guide::SamplingParamsConfig>
 ModelBrokerState::GetSamplingParamsConfig(mojom::OnDeviceFeature feature) {
-  MaybeAdaptationMetadata metadata =
-      service_controller_.GetFeatureMetadata(feature);
-  if (!features::IsOnDeviceExecutionEnabled() || !metadata.has_value()) {
+  if (!features::IsOnDeviceExecutionEnabled()) {
     return std::nullopt;
   }
-  return metadata->adapter()->GetSamplingParamsConfig();
+
+  const auto* adapter = service_controller_.GetAdapter(feature);
+  if (!adapter) {
+    return std::nullopt;
+  }
+
+  return adapter->GetSamplingParamsConfig();
 }
 
 std::optional<const proto::Any> ModelBrokerState::GetFeatureMetadata(
     mojom::OnDeviceFeature feature) {
-  MaybeAdaptationMetadata metadata =
-      service_controller_.GetFeatureMetadata(feature);
-  if (!features::IsOnDeviceExecutionEnabled() || !metadata.has_value()) {
+  if (!features::IsOnDeviceExecutionEnabled()) {
     return std::nullopt;
   }
-  return metadata->adapter()->GetFeatureMetadata();
+
+  const auto* adapter = service_controller_.GetAdapter(feature);
+  if (!adapter) {
+    return std::nullopt;
+  }
+
+  return adapter->GetFeatureMetadata();
 }
 
 void ModelBrokerState::FinishGetOnDeviceModelEligibility(

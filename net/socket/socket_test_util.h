@@ -127,6 +127,9 @@ class MockConnectCompleter {
   // Convenience function that combines WaitForConnect() and Complete().
   void WaitForConnectAndComplete(int result);
 
+  // Returns true if the completer has a waiting connection attempt.
+  bool is_connecting() const { return !callback_.is_null(); }
+
  private:
   friend class MockTCPClientSocket;
   friend class MockSSLClientSocket;
@@ -631,8 +634,8 @@ struct SSLSocketDataProvider {
   // Result for GetECHRetryConfigs().
   std::vector<uint8_t> ech_retry_configs;
 
-  // Result for GetServerTrustAnchorIDsForRetry().
-  std::vector<std::vector<uint8_t>> server_trust_anchor_ids_for_retry;
+  // Result for GetServerTrustAnchorIDs().
+  std::vector<std::vector<uint8_t>> server_trust_anchor_ids;
 
   std::optional<NextProtoVector> next_protos_expected_in_ssl_config;
   std::optional<SSLConfig::ApplicationSettings> expected_application_settings;
@@ -771,8 +774,9 @@ class SocketDataProviderArray {
   // having no remaining elements is expected in some cases and is handled
   // safely.
   T* GetNextWithoutAsserting() {
-    if (next_index_ == data_providers_.size())
+    if (no_more_data_providers()) {
       return nullptr;
+    }
     return data_providers_[next_index_++];
   }
 
@@ -784,6 +788,10 @@ class SocketDataProviderArray {
   size_t next_index() { return next_index_; }
 
   void ResetNextIndex() { next_index_ = 0; }
+
+  bool no_more_data_providers() const {
+    return next_index_ == data_providers_.size();
+  }
 
  private:
   // Index of the next |data_providers_| element to use. Not an iterator
@@ -833,6 +841,11 @@ class MockClientSocketFactory : public ClientSocketFactory {
   void set_enable_read_if_ready(bool enable_read_if_ready) {
     enable_read_if_ready_ = enable_read_if_ready;
   }
+
+  // Returns true if all top-level data providers have been used. Does not check
+  // if all individual reads/writes have been used. ResetNextMockIndexes() will
+  // reset the value this returns.
+  bool AllDataProvidersUsed() const;
 
   // ClientSocketFactory
   std::unique_ptr<DatagramClientSocket> CreateDatagramClientSocket(
@@ -1065,7 +1078,7 @@ class MockSSLClientSocket : public AsyncSocket, public SSLClientSocket {
 
   // SSLClientSocket implementation.
   std::vector<uint8_t> GetECHRetryConfigs() override;
-  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDsForRetry() override;
+  std::vector<std::vector<uint8_t>> GetServerTrustAnchorIDs() override;
 
   // This MockSocket does not implement the manual async IO feature.
   void OnReadComplete(const MockRead& data) override;
@@ -1547,10 +1560,6 @@ bool CanGetTaggedBytes();
 // |expected_tag| for our UID.  Return the count of received bytes.
 uint64_t GetTaggedBytes(int32_t expected_tag);
 #endif
-
-// This should be kept in sync with the field trial config's default pool.
-const SocketPoolAdditionalCapacity kFieldTrialPool =
-    SocketPoolAdditionalCapacity::CreateForTest(0.000001, 256, 0.01, 0.2);
 
 // The goal of this test is to walk a pool back and forth between being
 // capped and uncapped, tracking at what point the transition occurs

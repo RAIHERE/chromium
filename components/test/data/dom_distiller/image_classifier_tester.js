@@ -6,7 +6,7 @@ const SVG_NS = 'http://www.w3.org/2000/svg';
 
 /**
  * @fileoverview Test suite for the ImageClassifier class in
- * dom_distiller_viewer.js.
+ * image_classifier.js.
  */
 
 suite('ImageClassifier', function() {
@@ -59,6 +59,12 @@ suite('ImageClassifier', function() {
         const svg = `<svg width="${naturalWidth}" height="${naturalHeight}"` +
             ` xmlns="${SVG_NS}"></svg>`;
         img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+      }
+
+      // For synchronously loaded images (e.g., data URIs), resolve immediately
+      // if complete to prevent missed load events and test timeouts.
+      if (img.complete) {
+        resolve(img);
       }
     });
   }

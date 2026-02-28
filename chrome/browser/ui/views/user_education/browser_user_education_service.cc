@@ -12,10 +12,12 @@
 #include "base/metrics/user_metrics.h"
 #include "base/notreached.h"
 #include "base/time/time.h"
+#include "build/branding_buildflags.h"
 #include "build/build_config.h"
+#include "chrome/browser/background/glic/glic_launcher_configuration.h"
+#include "chrome/browser/browser_process.h"
 #include "chrome/browser/devtools/features.h"
 #include "chrome/browser/feature_engagement/tracker_factory.h"
-#include "chrome/browser/glic/widget/local_hotkey_manager.h"
 #include "chrome/browser/performance_manager/public/user_tuning/user_performance_tuning_manager.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_queue_manager.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
@@ -34,6 +36,7 @@
 #include "chrome/browser/ui/page_action/page_action_icon_type.h"
 #include "chrome/browser/ui/performance_controls/performance_controls_metrics.h"
 #include "chrome/browser/ui/singleton_tabs.h"
+#include "chrome/browser/ui/tabs/features.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/most_recent_shared_tab_update_store.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
 #include "chrome/browser/ui/tabs/split_tab_menu_model.h"
@@ -51,16 +54,13 @@
 #include "chrome/browser/ui/views/frame/contents_web_view.h"
 #include "chrome/browser/ui/views/location_bar/cookie_controls/cookie_controls_icon_view.h"
 #include "chrome/browser/ui/views/page_action/page_action_view.h"
-#include "chrome/browser/ui/views/tabs/glic/glic_button.h"
-#include "chrome/browser/ui/views/tabs/tab_icon.h"
+#include "chrome/browser/ui/views/tabs/tab/tab_icon.h"
 #include "chrome/browser/ui/views/toolbar/pinned_action_toolbar_button.h"
 #include "chrome/browser/ui/views/user_education/autofill_help_bubble_factory.h"
 #include "chrome/browser/ui/views/user_education/browser_help_bubble.h"
 #include "chrome/browser/ui/views/user_education/browser_ntp_promos.h"
 #include "chrome/browser/ui/views/user_education/custom_webui_help_bubble.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller.h"
-#include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller_20.h"
-#include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_controller_25.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_preconditions.h"
 #include "chrome/browser/ui/views/user_education/impl/browser_user_education_context.h"
 #include "chrome/browser/ui/views/user_education/ios_promo_bubble_view.h"
@@ -98,6 +98,7 @@
 #include "components/strings/grit/components_strings.h"
 #include "components/strings/grit/privacy_sandbox_strings.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
+#include "components/sync/base/features.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/user_education/common/feature_promo/feature_promo_handle.h"
 #include "components/user_education/common/feature_promo/feature_promo_precondition.h"
@@ -743,8 +744,7 @@ void MaybeRegisterChromeFeaturePromos(
           kGlicButtonElementId, IDS_GLIC_SHORTCUT_IPH_TEXT_TEMPLATE,
           IDS_GLIC_SHORTCUT_IPH_SCREENREADER,
           FeaturePromoSpecification::AcceleratorInfo(
-              glic::LocalHotkeyManager::GetConfigurableAccelerator(
-                  glic::LocalHotkeyManager::Hotkey::kFocusToggle)))
+              glic::GlicLauncherConfiguration::GetGlobalHotkey()))
           .SetAdditionalConditions(std::move(
               AdditionalConditions().AddAdditionalCondition(AdditionalCondition{
                   feature_engagement::events::kGlicOnboardingCompleted,
@@ -1042,6 +1042,20 @@ void MaybeRegisterChromeFeaturePromos(
                        "Triggered to encourage users to try out the reading "
                        "mode feature.")));
 
+  // kIPHResumptionRailFeature:
+  registry.RegisterFeature(std::move(
+      FeaturePromoSpecification::CreateForToastPromo(
+          feature_engagement::kIPHResumptionRailFeature,
+          kVerticalTabStripProjectsButtonElementId,
+          IDS_RESUMPTION_RAIL_IPH_BODY, IDS_RESUMPTION_RAIL_IPH_TITLE,
+          FeaturePromoSpecification::AcceleratorInfo(0))
+          .SetBubbleTitleText(IDS_RESUMPTION_RAIL_IPH_TITLE)
+          .SetBubbleArrow(HelpBubbleArrow::kLeftCenter)
+          .SetBubbleIcon(&vector_icons::kLightbulbOutlineIcon)
+          .SetMetadata(146, "gqueen@chromium.org",
+                       "Triggered to educate users about the Resumption Rail "
+                       "feature entrypoint.")));
+
   // kIPHSideBySidePinnableFeature:
   registry.RegisterFeature(std::move(
       FeaturePromoSpecification::CreateForCustomAction(
@@ -1287,7 +1301,11 @@ void MaybeRegisterChromeFeaturePromos(
   registry.RegisterFeature(std::move(
       FeaturePromoSpecification::CreateForCustomAction(
           feature_engagement::kIPHSignInBenefitsFeature,
-          kToolbarAvatarButtonElementId, IDS_SIGN_IN_BENEFITS_IPH_TEXT,
+          kToolbarAvatarButtonElementId,
+          (syncer::kExplicitSigninForBookmarks.Get() ||
+           syncer::kExplicitSigninForExtensions.Get())
+              ? IDS_SIGN_IN_BENEFITS_WITHOUT_BOOKMARKS_AND_EXTENSIONS_IPH_TEXT
+              : IDS_SIGN_IN_BENEFITS_IPH_TEXT,
           IDS_PROMO_MANAGE_BUTTON,
           base::BindRepeating(
               [](ContextPtr ctx,
@@ -1315,16 +1333,6 @@ void MaybeRegisterChromeFeaturePromos(
           .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
           .SetMetadata(121, "dpenning@chromium.org",
                        "Triggered when tab organization is accepted.")));
-
-  // kIPHTabSearchFeature:
-  registry.RegisterFeature(
-      std::move(FeaturePromoSpecification::CreateForLegacyPromo(
-                    &feature_engagement::kIPHTabSearchFeature,
-                    kTabSearchButtonElementId, IDS_TAB_SEARCH_PROMO)
-                    .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
-                    .SetMetadata(92, "tluk@chromium.org",
-                                 "Triggered once when there are more than 8 "
-                                 "tabs in the tab strip.")));
 
   // kIPHTabSearchToolbarButtonFeature:
   registry.RegisterFeature(std::move(
@@ -1630,7 +1638,8 @@ void MaybeRegisterChromeFeaturePromos(
                               &IOSPromoBubbleView::Create,
                               desktop_to_mobile_promos::PromoType::kLens)))
                       .SetMetadata(144, "scottyoder@google.com",
-                                   "Triggered when Lens Overlay is used.")));
+                                   "Triggered when Lens Overlay is used.")
+                      .SetBubbleArrow(HelpBubbleArrow::kNone)));
   }
 
   // kIPHiOSEnhancedBrowsingDesktopFeature
@@ -1647,7 +1656,8 @@ void MaybeRegisterChromeFeaturePromos(
             .SetPromoSubtype(
                 FeaturePromoSpecification::PromoSubtype::kActionableAlert)
             .SetMetadata(144, "scottyoder@google.com",
-                         "Triggered when ESB is first enabled.")));
+                         "Triggered when ESB is first enabled.")
+            .SetBubbleArrow(HelpBubbleArrow::kNone)));
   }
 
   // kIPHiOSPasswordPromoDesktopFeature
@@ -1662,7 +1672,39 @@ void MaybeRegisterChromeFeaturePromos(
                               &IOSPromoBubbleView::Create,
                               desktop_to_mobile_promos::PromoType::kPassword)))
                       .SetMetadata(144, "scottyoder@google.com",
-                                   "Triggered when a password is saved.")));
+                                   "Triggered when a password is saved.")
+                      .SetBubbleArrow(HelpBubbleArrow::kNone)));
+  }
+
+  // kIPHiOSTabGroupsDesktopFeature
+  if (MobilePromoOnDesktopTypeEnabled(
+          MobilePromoOnDesktopPromoType::kTabGroups)) {
+    registry.RegisterFeature(std::move(
+        FeaturePromoSpecification::CreateForCustomUi(
+            feature_engagement::kIPHiOSTabGroupsDesktopFeature,
+            kToolbarAvatarButtonElementId,
+            user_education::CreateCustomHelpBubbleViewFactoryCallback(
+                base::BindRepeating(
+                    &IOSPromoBubbleView::Create,
+                    desktop_to_mobile_promos::PromoType::kTabGroups)))
+            .SetMetadata(146, "bmcclure@google.com",
+                         "Triggered when Tab Groups are interacted with.")
+            .SetBubbleArrow(HelpBubbleArrow::kNone)));
+  }
+
+  // kIPHiOSPriceTrackingDesktopFeature
+  if (MobilePromoOnDesktopTypeEnabled(
+          MobilePromoOnDesktopPromoType::kPriceTracking)) {
+    registry.RegisterFeature(std::move(
+        FeaturePromoSpecification::CreateForCustomUi(
+            feature_engagement::kIPHiOSPriceTrackingDesktopFeature,
+            kToolbarAvatarButtonElementId,
+            user_education::CreateCustomHelpBubbleViewFactoryCallback(
+                base::BindRepeating(
+                    &IOSPromoBubbleView::Create,
+                    desktop_to_mobile_promos::PromoType::kPriceTracking)))
+            .SetMetadata(146, "bmcclure@google.com",
+                         "Triggered when Price Tracking alerts are enabled.")));
   }
 
 #endif  // BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_WIN)
@@ -1940,14 +1982,18 @@ void MaybeRegisterChromeTutorials(
             // Bubble step - inactive tab to right click.
             BubbleStep(kLastInactiveTabElementName)
                 .SetBubbleBodyText(IDS_SPLIT_VIEW_TAB_SWITCH_STEP_IPH_BODY)
-                .SetBubbleArrow(HelpBubbleArrow::kTopLeft),
+                .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
+                .SetBubbleFocusOnShow(
+                    true),  // This bubble can be safely focused.
 
             HiddenStep::WaitForShown(kToolbarSplitTabsToolbarButtonElementId),
 
             // Bubble step - highlight the toolbar button.
             BubbleStep(kToolbarSplitTabsToolbarButtonElementId)
                 .SetBubbleBodyText(IDS_SPLIT_VIEW_TOOLBAR_BUTTON_STEP_IPH_BODY)
-                .SetBubbleArrow(HelpBubbleArrow::kTopLeft),
+                .SetBubbleArrow(HelpBubbleArrow::kTopLeft)
+                .SetBubbleFocusOnShow(
+                    true),  // This bubble can be safely focused.
 
             HiddenStep::WaitForShown(
                 SplitTabMenuModel::kReversePositionMenuItem),
@@ -2071,9 +2117,23 @@ void MaybeRegisterChromeNewBadges(user_education::NewBadgeRegistry& registry) {
       user_education::Metadata(141, "emshack@chromium.org",
                                "Shown in the link context menu to open the "
                                "link in a new split tab.")));
+
+  registry.RegisterFeature(user_education::NewBadgeSpecification(
+      tabs::kVerticalTabsPreviewBadge,
+      user_education::Metadata(146, "stluong@chromium.org",
+                               "Show the preview badge in the system context "
+                               "menu to toggle the horizontal tab strip "
+                               "to be a vertical tab strip")));
+
+  registry.RegisterFeature(user_education::NewBadgeSpecification(
+      tabs::kVerticalTabsNewBadge,
+      user_education::Metadata(147, "stluong@chromium.org",
+                               "Show the new badge in the system context menu "
+                               "to toggle the horizontal tab strip "
+                               "to be a vertical tab strip")));
 }
 
-std::unique_ptr<user_education::FeaturePromoControllerCommon>
+std::unique_ptr<user_education::FeaturePromoControllerImpl>
 CreateUserEducationResources(UserEducationService& user_education_service) {
   Profile* const profile = &user_education_service.profile();
   CHECK(UserEducationServiceFactory::ProfileAllowsUserEducation(profile));
@@ -2094,27 +2154,16 @@ CreateUserEducationResources(UserEducationService& user_education_service) {
     MaybeRegisterNtpPromos(*user_education_service.ntp_promo_registry());
   }
 
-  if (user_education::features::IsUserEducationV25()) {
-    auto result = std::make_unique<BrowserFeaturePromoController25>(
-        feature_engagement::TrackerFactory::GetForBrowserContext(profile),
-        &user_education_service.feature_promo_registry(),
-        &user_education_service.help_bubble_factory_registry(),
-        &user_education_service.user_education_storage_service(),
-        &user_education_service.feature_promo_session_policy(),
-        &user_education_service.tutorial_service(),
-        &user_education_service.product_messaging_controller());
-    result->Init();
-    return result;
-  } else {
-    return std::make_unique<BrowserFeaturePromoController20>(
-        feature_engagement::TrackerFactory::GetForBrowserContext(profile),
-        &user_education_service.feature_promo_registry(),
-        &user_education_service.help_bubble_factory_registry(),
-        &user_education_service.user_education_storage_service(),
-        &user_education_service.feature_promo_session_policy(),
-        &user_education_service.tutorial_service(),
-        &user_education_service.product_messaging_controller());
-  }
+  auto result = std::make_unique<BrowserFeaturePromoController>(
+      feature_engagement::TrackerFactory::GetForBrowserContext(profile),
+      &user_education_service.feature_promo_registry(),
+      &user_education_service.help_bubble_factory_registry(),
+      &user_education_service.user_education_storage_service(),
+      &user_education_service.feature_promo_session_policy(),
+      &user_education_service.tutorial_service(),
+      &user_education_service.product_messaging_controller());
+  result->Init();
+  return result;
 }
 
 void QueueLegalAndPrivacyNotices(Profile* profile) {
@@ -2124,4 +2173,12 @@ void QueueLegalAndPrivacyNotices(Profile* profile) {
     privacy_sandbox_service->GetPrivacySandboxNoticeQueueManager()
         .MaybeQueueNotice();
   }
+}
+
+bool DoesEnterprisePolicyBlockPromotions() {
+  PrefService* local_state = g_browser_process->local_state();
+  if (local_state && !local_state->GetBoolean(prefs::kPromotionsEnabled)) {
+    return true;
+  }
+  return false;
 }

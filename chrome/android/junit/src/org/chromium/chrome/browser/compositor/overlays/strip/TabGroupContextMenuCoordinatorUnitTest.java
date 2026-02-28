@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import static org.chromium.chrome.browser.flags.ChromeFeatureList.SUBMENUS_TAB_CONTEXT_MENU_LFF_TAB_STRIP;
 import static org.chromium.chrome.browser.multiwindow.InstanceInfo.Type.CURRENT;
 import static org.chromium.chrome.browser.multiwindow.MultiInstanceManager.PersistedInstanceType.ACTIVE;
+import static org.chromium.chrome.browser.tabmodel.TabGroupTitleUtils.UNSET_TAB_GROUP_TITLE;
 import static org.chromium.ui.listmenu.ListMenuItemProperties.TITLE;
 import static org.chromium.ui.listmenu.ListMenuSubmenuItemProperties.SUBMENU_ITEMS;
 
@@ -68,8 +69,8 @@ import org.chromium.chrome.browser.tabmodel.TabGroupModelFilter;
 import org.chromium.chrome.browser.tabmodel.TabList;
 import org.chromium.chrome.browser.tabmodel.TabRemover;
 import org.chromium.chrome.browser.tabmodel.TabUngrouper;
-import org.chromium.chrome.browser.tasks.tab_management.ColorPickerCoordinator;
 import org.chromium.chrome.browser.tasks.tab_management.TabOverflowMenuCoordinator.OnItemClickedCallback;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerCoordinator;
 import org.chromium.chrome.test.util.browser.tabmodel.MockTabModel;
 import org.chromium.components.browser_ui.util.motion.MotionEventTestUtils;
 import org.chromium.components.browser_ui.widget.list_view.FakeListViewTouchTracker;
@@ -151,7 +152,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                     NUM_INCOGNITO_TABS,
                     /* isIncognitoSelected= */ false,
                     LAST_ACCESSED_TIME,
-                    /* markedForDeletion= */ false);
+                    /* closureTime= */ 0);
 
     private static final InstanceInfo INSTANCE_INFO_2 =
             new InstanceInfo(
@@ -165,7 +166,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                     NUM_INCOGNITO_TABS,
                     /* isIncognitoSelected= */ false,
                     LAST_ACCESSED_TIME,
-                    /* markedForDeletion= */ false);
+                    /* closureTime= */ 0);
 
     // Other dependencies
     @Mock private Profile mProfile;
@@ -596,10 +597,12 @@ public class TabGroupContextMenuCoordinatorUnitTest {
                 List.of(),
                 mActivity);
 
-        StripLayoutContextMenuCoordinatorTestUtils.clickMoveToNewWindow(modelList, 4, mMenuView);
+        StripLayoutContextMenuCoordinatorTestUtils.clickMoveToNewWindow(
+                modelList, 4, mOnItemClickedCallback, TAB_GROUP_ID, COLLABORATION_ID);
 
         verify(mMultiInstanceManager, times(1))
-                .moveTabGroupToNewWindow(any(TabGroupMetadata.class), eq(NewWindowAppSource.MENU));
+                .moveTabGroupToOtherWindow(
+                        any(TabGroupMetadata.class), eq(NewWindowAppSource.MENU));
     }
 
     @Test
@@ -616,12 +619,11 @@ public class TabGroupContextMenuCoordinatorUnitTest {
         StripLayoutContextMenuCoordinatorTestUtils.clickMoveToWindowRow(
                 modelList, 4, WINDOW_TITLE_2, mMenuView);
 
-        verify(mMultiInstanceManager, times(1))
-                .moveTabGroupToWindow(
-                        eq(INSTANCE_INFO_2),
+        verify(mMultiInstanceManager)
+                .moveTabGroupToWindowByIdChecked(
+                        eq(INSTANCE_ID_2),
                         any(TabGroupMetadata.class),
-                        eq(TabList.INVALID_TAB_INDEX),
-                        eq(NewWindowAppSource.MENU));
+                        eq(TabList.INVALID_TAB_INDEX));
     }
 
     private List<Tab> setUpTabGroupModelFilter() {
@@ -631,6 +633,7 @@ public class TabGroupContextMenuCoordinatorUnitTest {
         when(mTabGroupModelFilter.getTabUngrouper()).thenReturn(mTabUngrouper);
         when(mTabGroupModelFilter.isTabInTabGroup(tab)).thenReturn(true);
         when(mTabGroupModelFilter.tabGroupExists(TAB_GROUP_ID)).thenReturn(true);
+        when(mTabGroupModelFilter.getTabGroupTitle(TAB_GROUP_ID)).thenReturn(UNSET_TAB_GROUP_TITLE);
         when(mTabGroupModelFilter.getGroupLastShownTabId(TAB_GROUP_ID)).thenReturn(TAB_ID);
         when(mTabGroupModelFilter.getTabCountForGroup(eq(TAB_GROUP_ID))).thenReturn(1);
         List<Tab> tabsInGroup = Arrays.asList(tab);
@@ -966,20 +969,20 @@ public class TabGroupContextMenuCoordinatorUnitTest {
     @Test
     @Feature("Tab Strip Group Context Menu")
     @EnableFeatures(ChromeFeatureList.SUBMENUS_TAB_CONTEXT_MENU_LFF_TAB_STRIP)
-    public void testMoveToWindow_EmptyWindowTitle() {
+    public void testMoveToWindow_NonEmptyCustomWindowTitle() {
         final InstanceInfo emptyTitleInstance =
                 new InstanceInfo(
                         INSTANCE_ID_2,
                         TASK_ID,
                         CURRENT,
                         EXAMPLE_URL.toString(),
-                        "",
-                        /* customTitle= */ null,
+                        /* title= */ "Example",
+                        /* customTitle= */ "My window",
                         NUM_TABS,
                         NUM_INCOGNITO_TABS,
                         /* isIncognitoSelected= */ false,
                         LAST_ACCESSED_TIME,
-                        /* markedForDeletion= */ false);
+                        /* closureTime= */ 0);
 
         setUpTabGroupModelFilter();
         MultiWindowUtils.setInstanceCountForTesting(2);
@@ -996,8 +999,46 @@ public class TabGroupContextMenuCoordinatorUnitTest {
 
         ListItem otherWindowItem = subMenu.get(1);
         assertEquals(
-                "The title for the other window should be the incognito window title string.",
-                mActivity.getString(R.string.instance_switcher_entry_empty_window),
+                "The title for the other window is incorrect.",
+                "My window",
+                otherWindowItem.model.get(TITLE));
+    }
+
+    @Test
+    @Feature("Tab Strip Group Context Menu")
+    @EnableFeatures(ChromeFeatureList.SUBMENUS_TAB_CONTEXT_MENU_LFF_TAB_STRIP)
+    public void testMoveToWindow_EmptyCustomWindowTitle() {
+        final InstanceInfo emptyTitleInstance =
+                new InstanceInfo(
+                        INSTANCE_ID_2,
+                        TASK_ID,
+                        CURRENT,
+                        EXAMPLE_URL.toString(),
+                        /* title= */ "Example",
+                        /* customTitle= */ null,
+                        NUM_TABS,
+                        NUM_INCOGNITO_TABS,
+                        /* isIncognitoSelected= */ false,
+                        LAST_ACCESSED_TIME,
+                        /* closureTime= */ 0);
+
+        setUpTabGroupModelFilter();
+        MultiWindowUtils.setInstanceCountForTesting(2);
+        when(mMultiInstanceManager.getInstanceInfo(ACTIVE))
+                .thenReturn(List.of(INSTANCE_INFO_1, emptyTitleInstance));
+        var modelList = new ModelList();
+        mTabGroupContextMenuCoordinator.configureMenuItemsForTesting(modelList, TAB_GROUP_ID);
+
+        ListItem moveToWindowItem = modelList.get(4);
+        assertNotNull(moveToWindowItem);
+
+        var subMenu = moveToWindowItem.model.get(SUBMENU_ITEMS);
+        assertEquals("Submenu should have 2 items", 2, subMenu.size());
+
+        ListItem otherWindowItem = subMenu.get(1);
+        assertEquals(
+                "The title for the other window is incorrect.",
+                "Example",
                 otherWindowItem.model.get(TITLE));
     }
 }

@@ -18,7 +18,7 @@ import androidx.annotation.VisibleForTesting;
 import org.chromium.base.metrics.RecordUserAction;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
+import org.chromium.chrome.browser.incognito.IncognitoUtils;
 import org.chromium.chrome.browser.tabmodel.IncognitoStateProvider;
 import org.chromium.chrome.browser.tabmodel.IncognitoTabHostUtils;
 import org.chromium.chrome.browser.theme.ThemeColorProvider;
@@ -108,7 +108,7 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
         // for now and wait until a subsequent call after initialization has finished.
         if (mParentToolbar == null) return;
         if (mIsIncognitoBranded == null) return;
-        if (!ChromeFeatureList.sTabStripIncognitoMigration.isEnabled()) return;
+        if (!IncognitoUtils.shouldOpenIncognitoAsWindow()) return;
 
         if (mIncognitoIndicator == null && mIsIncognitoBranded) {
             ViewStub stub = mParentToolbar.findViewById(R.id.incognito_indicator_stub);
@@ -144,9 +144,9 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
     private int updateVisibilityInternal(
             int availableWidth, int widthMeasureSpec, int heightMeasureSpec) {
         assert ToolbarUtils.isToolbarTabletResizeRefactorEnabled();
-        // Hide and consume no width if the incognito indicator feature is not enabled, or if the
-        // device is not in incognito mode. Do not cache the width of the indicator.
-        if (!ChromeFeatureList.sTabStripIncognitoMigration.isEnabled()
+        // Hide and consume no width if the desktop-like incognito window feature is not enabled,
+        // or if the device is not in incognito mode. Do not cache the width of the indicator.
+        if (!IncognitoUtils.shouldOpenIncognitoAsWindow()
                 || Boolean.FALSE.equals(mIsIncognitoBranded)) {
             setVisibility(false);
             return 0;
@@ -243,6 +243,12 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
                                 new ColorDrawable(Color.TRANSPARENT),
                                 menu::getContentView,
                                 new ViewRectProvider(mIncognitoIndicator))
+                        .addOnDismissListener(
+                                () -> {
+                                    if (mIncognitoIndicator != null) {
+                                        mIncognitoIndicator.setSelected(false);
+                                    }
+                                })
                         .setAnimateFromAnchor(true)
                         .setDismissOnScreenSizeChange(true)
                         .setDismissOnTouchInteraction(true)
@@ -288,6 +294,7 @@ public class IncognitoIndicatorCoordinator extends ToolbarChild
         }
         RecordUserAction.record("MobileIncognitoIndicatorClicked");
         Context context = mIncognitoIndicator.getContext();
+        mIncognitoIndicator.setSelected(true);
         createAndShowMenu(context, buildMenuItems(context));
     }
 

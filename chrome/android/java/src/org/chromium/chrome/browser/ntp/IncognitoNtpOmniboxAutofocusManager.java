@@ -4,6 +4,7 @@
 
 package org.chromium.chrome.browser.ntp;
 
+import android.annotation.SuppressLint;
 import android.content.Context;
 import android.view.GestureDetector;
 import android.view.MotionEvent;
@@ -18,7 +19,6 @@ import org.chromium.chrome.browser.compositor.layouts.LayoutManagerImpl;
 import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider.LayoutStateObserver;
 import org.chromium.chrome.browser.layouts.LayoutType;
-import org.chromium.chrome.browser.omnibox.OmniboxFocusReason;
 import org.chromium.chrome.browser.omnibox.OmniboxStub;
 import org.chromium.chrome.browser.omnibox.UrlFocusChangeListener;
 import org.chromium.chrome.browser.tab.EmptyTabObserver;
@@ -30,7 +30,7 @@ import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelObserver;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.components.embedder_support.util.UrlUtilities;
-import org.chromium.components.omnibox.AutocompleteRequestType;
+import org.chromium.components.omnibox.AutocompleteInput;
 import org.chromium.ui.UiUtils;
 import org.chromium.ui.accessibility.AccessibilityState;
 import org.chromium.url.GURL;
@@ -65,6 +65,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
     private final LayoutManagerImpl mLayoutManager;
     private @Nullable LayoutStateObserver mLayoutStateObserver;
     private final Function<Tab, @Nullable View> mNtpViewProvider;
+    private final Function<Tab, @Nullable NewTabPageScrollView> mNtpScrollViewProvider;
     private final Function<View, IncognitoNtpUtils.IncognitoNtpContentMetrics>
             mNtpContentMetricsProvider;
     private @Nullable UrlFocusChangeListener mUrlFocusChangeListener;
@@ -89,7 +90,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
     private int mNtpOpenedCount;
     private final @NonNull GestureDetector mNtpSingleTapDetector;
     private boolean mIsAutofocusing;
-    private double mTabHeightBeforeFocus;
+    private int mTabHeightBeforeFocus;
 
     /**
      * Overrides the result of {@link #checkAutofocusAllowedWithPrediction(Tab)} for testing
@@ -125,6 +126,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
             @NonNull LayoutManagerImpl layoutManager,
             @NonNull TabModelSelector tabModelSelector,
             @NonNull Function<Tab, @Nullable View> ntpViewProvider,
+            @NonNull Function<Tab, @Nullable NewTabPageScrollView> ntpScrollViewProvider,
             @NonNull
                     Function<View, IncognitoNtpUtils.IncognitoNtpContentMetrics>
                             ntpContentMetricsProvider) {
@@ -135,6 +137,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
                     layoutManager,
                     tabModelSelector,
                     ntpViewProvider,
+                    ntpScrollViewProvider,
                     ntpContentMetricsProvider);
         }
         return null;
@@ -146,6 +149,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
             @NonNull LayoutManagerImpl layoutManager,
             @NonNull TabModelSelector tabModelSelector,
             @NonNull Function<Tab, @Nullable View> ntpViewProvider,
+            @NonNull Function<Tab, @Nullable NewTabPageScrollView> ntpScrollViewProvider,
             @NonNull
                     Function<View, IncognitoNtpUtils.IncognitoNtpContentMetrics>
                             ntpContentMetricsProvider) {
@@ -154,6 +158,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
         mTabModelSelector = tabModelSelector;
         mLayoutManager = layoutManager;
         mNtpViewProvider = ntpViewProvider;
+        mNtpScrollViewProvider = ntpScrollViewProvider;
         mNtpContentMetricsProvider = ntpContentMetricsProvider;
         mNtpOpenedCount = 0;
         mNtpSingleTapDetector =
@@ -162,12 +167,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
                         new GestureDetector.SimpleOnGestureListener() {
                             @Override
                             public boolean onSingleTapConfirmed(MotionEvent e) {
-                                mOmniboxStub.setUrlBarFocus(
-                                        /* shouldBeFocused= */ false,
-                                        null,
-                                        /* selectText= */ false,
-                                        OmniboxFocusReason.UNFOCUS,
-                                        AutocompleteRequestType.SEARCH);
+                                mOmniboxStub.endInput();
                                 return false;
                             }
                         });
@@ -205,6 +205,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
         mUrlFocusChangeListener =
                 new UrlFocusChangeListener() {
                     @Override
+                    @SuppressLint("ClickableViewAccessibility")
                     public void onUrlFocusChange(boolean hasFocus) {
                         final Tab tab = mTabModelSelector.getCurrentTab();
 
@@ -216,7 +217,8 @@ public class IncognitoNtpOmniboxAutofocusManager {
                         }
 
                         View ntpView = mNtpViewProvider.apply(tab);
-                        if (ntpView == null) {
+                        NewTabPageScrollView ntpScrollView = mNtpScrollViewProvider.apply(tab);
+                        if (ntpView == null || ntpScrollView == null) {
                             return;
                         }
 
@@ -234,18 +236,16 @@ public class IncognitoNtpOmniboxAutofocusManager {
                                             wasTriggeredByAutofocus);
                             mTabHeightBeforeFocus = 0;
 
-                            ntpView.setOnTouchListener(
+                            ntpScrollView.setOnTouchListener(
                                     (v, event) -> {
-                                        boolean consumed =
-                                                mNtpSingleTapDetector.onTouchEvent(event);
-                                        if (event.getAction() == MotionEvent.ACTION_UP
-                                                && !consumed) {
+                                        mNtpSingleTapDetector.onTouchEvent(event);
+                                        if (event.getActionMasked() == MotionEvent.ACTION_UP) {
                                             v.performClick();
                                         }
-                                        return true;
+                                        return false;
                                     });
                         } else {
-                            ntpView.setOnTouchListener(null);
+                            ntpScrollView.setOnTouchListener(null);
                         }
                     }
 
@@ -464,12 +464,7 @@ public class IncognitoNtpOmniboxAutofocusManager {
     /** Performs the actual focus action and updates the state. */
     private void autofocus(Tab tab) {
         mIsAutofocusing = true;
-        mOmniboxStub.setUrlBarFocus(
-                /* shouldBeFocused= */ true,
-                null,
-                /* selectText= */ false,
-                OmniboxFocusReason.OMNIBOX_TAP,
-                AutocompleteRequestType.SEARCH);
+        mOmniboxStub.beginInput(new AutocompleteInput());
 
         // Mark the tab as processed to prevent future autofocus attempts.
         markTabAsProcessed(tab);

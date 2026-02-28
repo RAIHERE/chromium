@@ -23,12 +23,23 @@ class ContextualTasksBrowserTest : public WebUIMochaBrowserTest {
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, App) {
+// TODO(crbug.com/487802136): Flaky on Linux.
+#if BUILDFLAG(IS_LINUX)
+#define MAYBE_App DISABLED_App
+#else
+#define MAYBE_App App
+#endif
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, MAYBE_App) {
   RunTest("contextual_tasks/app_test.js", "mocha.run();");
 }
 
-IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, Composebox) {
+// TODO(crbug.com/480689282): Test disabled because it is flaky.
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, DISABLED_Composebox) {
   RunTest("contextual_tasks/composebox_test.js", "mocha.run();");
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, Composebox_MiscInputs) {
+  RunTest("contextual_tasks/composebox_misc_inputs_test.js", "mocha.run();");
 }
 
 IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, PostMessageHandler) {
@@ -39,15 +50,11 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, TopToolbarTest) {
   RunTest("contextual_tasks/top_toolbar_test.js", "mocha.run();");
 }
 
-#if BUILDFLAG(USE_JAVASCRIPT_COVERAGE)
-// TODO(crbug.com/40284073): Test fails with JS coverage turned on. Since the
-// webview needs to make a request to test the request headers, disabling this
-// test on JS coverage for now. Re-enable once bug is fixed.
-#define MAYBE_WebView DISABLED_WebView
-#else
-#define MAYBE_WebView WebView
-#endif
-IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, MAYBE_WebView) {
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, WebView) {
   RunTest("contextual_tasks/contextual_tasks_webview_browsertest.js",
           "mocha.run();");
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksBrowserTest, ClipPath) {
+  RunTest("contextual_tasks/utils/clip_path_test.js", "mocha.run();");
 }

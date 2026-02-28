@@ -569,6 +569,15 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
                 .getChildIdsForTesting(mNativeObj, virtualViewId);
     }
 
+    public int getParentIdForTesting(int virtualViewId) {
+        if (!isNativeInitialized()) return View.NO_ID;
+        assert isRootManagerConnected()
+                : "Accessibility root manager should be connected when the native object is"
+                        + " initialized.";
+        return WebContentsAccessibilityImplJni.get()
+                .getParentIdForTesting(mNativeObj, virtualViewId); // IN-TEST
+    }
+
     public int @Nullable [] getLabeledByNodeIdsForTesting(int virtualViewId) {
         if (!isNativeInitialized()) return null;
         assert isRootManagerConnected()
@@ -832,12 +841,17 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
         mNodeInfoCache.clear();
         mEventDispatcher.clearQueue();
         mAutoDisableAccessibilityHandler.cancelDisableTimer();
-        if (mDelegate.getWebContents() == null) {
+        WebContents webContents = mDelegate.getWebContents();
+        if (webContents == null) {
             deleteEarly();
         } else {
             if (mWebContentsObserver != null) mWebContentsObserver.observe(null);
-            WindowEventObserverManager.from(mDelegate.getWebContents()).removeObserver(this);
-            mDelegate.getWebContents().removeUserData(WebContentsAccessibilityImpl.class);
+            // If the WebContents is destroyed user data will already be cleared so don't worry
+            // about clearing it from either of these locations.
+            if (!webContents.isDestroyed()) {
+                WindowEventObserverManager.from(webContents).removeObserver(this);
+                webContents.removeUserData(WebContentsAccessibilityImpl.class);
+            }
         }
         TraceEvent.end("WebContentsAccessibilityImpl.destroy");
     }
@@ -975,7 +989,7 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
         mAccessibilityEnabledOverride = true;
         String returnString =
                 AccessibilityNodeInfoUtils.toString(
-                        createAccessibilityNodeInfo(virtualViewId), true);
+                        this, createAccessibilityNodeInfo(virtualViewId), true);
         mAccessibilityEnabledOverride = false;
         return returnString;
     }
@@ -1474,11 +1488,12 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
                             virtualViewId,
                             arguments.getFloat(ACTION_ARGUMENT_PROGRESS_VALUE));
         } else if (action == ACTION_IME_ENTER.getId()) {
-            if (mDelegate.getWebContents() != null) {
-                if (ImeAdapterImpl.fromWebContents(mDelegate.getWebContents()) != null) {
+            WebContents webContents = mDelegate.getWebContents();
+            if (webContents != null) {
+                ImeAdapterImpl adapter = ImeAdapterImpl.fromWebContents(webContents);
+                if (adapter != null) {
                     // We send an unspecified action to ensure Enter key is hit
-                    return ImeAdapterImpl.fromWebContents(mDelegate.getWebContents())
-                            .performEditorAction(EditorInfo.IME_ACTION_UNSPECIFIED);
+                    return adapter.performEditorAction(EditorInfo.IME_ACTION_UNSPECIFIED);
                 }
             }
             return false;
@@ -1694,6 +1709,14 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
                 mCursorIndex =
                         WebContentsAccessibilityImplJni.get()
                                 .getEditableTextSelectionEnd(mNativeObj, mAccessibilityFocusId);
+            }
+        } else {
+            // `mSelectionStart gets "unassigned" when focus changes and should be initialized for
+            // the first user swipe. For a non-editable node, put selection start on the beginning
+            // of the node. Note that `mCursorIndex` is already set to the end of the node text
+            // when accessibility focus is updated.
+            if (mSelectionStart == -1) {
+                mSelectionStart = 0;
             }
         }
     }
@@ -2663,6 +2686,9 @@ public class WebContentsAccessibilityImpl extends AccessibilityNodeProviderCompa
         int[] getChildIdsForTesting(long nativeWebContentsAccessibilityAndroid, int virtualViewId);
 
         int[] getLabeledByNodeIdsForTesting( // IN-TEST
+                long nativeWebContentsAccessibilityAndroid, int virtualViewId);
+
+        int getParentIdForTesting( // IN-TEST
                 long nativeWebContentsAccessibilityAndroid, int virtualViewId);
 
         int getTextLength(long nativeWebContentsAccessibilityAndroid, int id);

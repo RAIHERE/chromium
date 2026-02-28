@@ -27,7 +27,7 @@
 #import "ios/chrome/browser/intelligence/bwg/metrics/gemini_metrics.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_service.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_service_factory.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_availability.h"
 #import "ios/chrome/browser/lens/ui_bundled/lens_entrypoint.h"
@@ -312,7 +312,7 @@ NSString* const kAlertAccessibilityIdentifier = @"AlertAccessibilityIdentifier";
 #pragma mark - Properties
 
 - (web::WebState*)webState {
-  if (base::FeatureList::IsEnabled(kEnableLensOverlay) && _baseWebState) {
+  if (_baseWebState) {
     return _baseWebState.get();
   }
   web::WebState* activeWebState =
@@ -531,29 +531,6 @@ NSString* const kAlertAccessibilityIdentifier = @"AlertAccessibilityIdentifier";
 
   __weak __typeof(self) weakSelf = self;
 
-  // Launch the Gemini experience with an image attached.
-  raw_ptr<BwgService> BWGService =
-      BwgServiceFactory::GetForProfile(self.browser->GetProfile());
-  BOOL canShowGeminiElement = IsGeminiImageRemixToolEnabled() && BWGService &&
-                              BWGService->IsBwgAvailableForWebState(webState);
-  if (canShowGeminiElement) {
-    RecordImageRemixContextMenuEntryPointShown();
-
-    ProceduralBlock geminiElementCallback = ^{
-      [weakSelf openGeminiWithImageURL:imageURL referrer:referrer];
-    };
-    UIMenuElement* geminiElement = [actionFactory
-        actionToOpenImageInGeminiWithBlock:geminiElementCallback];
-
-    // Wrap the Gemini element in an inline menu to create a distinct section.
-    UIMenu* geminiSection = [UIMenu menuWithTitle:@""
-                                            image:nil
-                                       identifier:nil
-                                          options:UIMenuOptionsDisplayInline
-                                         children:@[ geminiElement ]];
-    [imageMenuElements addObject:geminiSection];
-  }
-
   // Image saving.
   NSArray<UIMenuElement*>* imageSavingElements =
       [self imageSavingElementsWithURL:imageURL
@@ -583,7 +560,38 @@ NSString* const kAlertAccessibilityIdentifier = @"AlertAccessibilityIdentifier";
       [self imageSearchingElementsWithURL:imageURL
                                  scenario:scenario
                                  referrer:referrer];
+
+  // Launch the Gemini experience with an image attached.
+  UIMenuElement* geminiElement = nil;
+  raw_ptr<BwgService> BWGService =
+      BwgServiceFactory::GetForProfile(self.browser->GetProfile());
+  BOOL canShowGeminiElement = IsGeminiImageRemixToolEnabled() && BWGService &&
+                              BWGService->IsBwgAvailableForWebState(webState);
+  BOOL geminiAboveSearch = IsGeminiImageRemixToolShowAboveSearchImageEnabled();
+  BOOL geminiBelowSearch = IsGeminiImageRemixToolShowBelowSearchImageEnabled();
+
+  if (canShowGeminiElement && (geminiAboveSearch || geminiBelowSearch)) {
+    RecordImageRemixContextMenuEntryPointShown();
+
+    ProceduralBlock geminiElementCallback = ^{
+      [weakSelf openGeminiWithImageURL:imageURL referrer:referrer];
+    };
+    geminiElement = [actionFactory
+        actionToOpenImageInGeminiWithBlock:geminiElementCallback];
+  }
+
+  // Display the gemini element either above or below the search image
+  // element based on the flags.
+  if (geminiElement && geminiAboveSearch) {
+    [imageMenuElements addObject:geminiElement];
+  }
+
   [imageMenuElements addObjectsFromArray:imageSearchingElements];
+
+  // Ensure we don't show gemini twice if both flags are enabled.
+  if (geminiElement && geminiBelowSearch && !geminiAboveSearch) {
+    [imageMenuElements addObject:geminiElement];
+  }
 
   // Share Image.
   // Shares the URL of the image and not the image itself.
@@ -1077,8 +1085,7 @@ NSString* const kAlertAccessibilityIdentifier = @"AlertAccessibilityIdentifier";
   }
 
   auto* data_controls_tab_helper =
-      data_controls::DataControlsTabHelper::GetOrCreateForWebState(
-          self.webState);
+      data_controls::DataControlsTabHelper::FromWebState(self.webState);
   return data_controls_tab_helper->ShouldAllowShare();
 }
 
@@ -1116,9 +1123,10 @@ NSString* const kAlertAccessibilityIdentifier = @"AlertAccessibilityIdentifier";
 
   id<BWGCommands> handler =
       HandlerForProtocol(_browser->GetCommandDispatcher(), BWGCommands);
-  [handler
-      startGeminiFlowWithImageAttachment:image
-                              entryPoint:gemini::EntryPoint::ImageContextMenu];
+  GeminiStartupState* state = [[GeminiStartupState alloc]
+      initWithEntryPoint:gemini::EntryPoint::ImageContextMenu];
+  state.imageAttachment = image;
+  [handler startGeminiFlowWithStartupState:state];
 }
 
 @end

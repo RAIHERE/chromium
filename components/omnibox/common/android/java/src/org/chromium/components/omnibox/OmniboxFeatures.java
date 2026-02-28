@@ -117,6 +117,11 @@ public class OmniboxFeatures {
     public static final CachedFlag sUseFusedLocationProvider =
             newFlag(OmniboxFeatureList.USE_FUSED_LOCATION_PROVIDER, FeatureState.ENABLED_IN_PROD);
 
+    public static final CachedFlag sOmniboxXGeoPermissionGranularity =
+            newFlag(
+                    OmniboxFeatureList.OMNIBOX_X_GEO_PERMISSION_GRANULARITY,
+                    FeatureState.ENABLED_IN_PROD);
+
     public static final CachedFlag sAsyncViewInflation =
             newFlag(OmniboxFeatureList.OMNIBOX_ASYNC_VIEW_INFLATION, FeatureState.ENABLED_IN_TEST);
 
@@ -125,11 +130,6 @@ public class OmniboxFeatures {
 
     public static final CachedFlag sPostDelayedTaskFocusTab =
             newFlag(OmniboxFeatureList.POST_DELAYED_TASK_FOCUS_TAB, FeatureState.ENABLED_IN_PROD);
-
-    public static final CachedFlag sOmniboxMobileParityUpdateV2 =
-            newFlag(
-                    OmniboxFeatureList.OMNIBOX_MOBILE_PARITY_UPDATE_V2,
-                    FeatureState.ENABLED_IN_TEST);
 
     public static final CachedFlag sOmniboxSiteSearch =
             newFlag(OmniboxFeatureList.OMNIBOX_SITE_SEARCH, FeatureState.ENABLED_IN_TEST);
@@ -152,6 +152,13 @@ public class OmniboxFeatures {
     public static final BooleanCachedFeatureParam sMultiattachmentFusebox =
             newBooleanParam(sOmniboxMultimodalInput, "multi_context", false);
 
+    public static final BooleanCachedFeatureParam sRedirectComposeplateButton =
+            newBooleanParam(sOmniboxMultimodalInput, "redirect_composeplate_button", true);
+
+    /** A necessary but not sufficient condition to show the current tab button. */
+    public static final BooleanCachedFeatureParam sAllowCurrentTab =
+            newBooleanParam(sOmniboxMultimodalInput, "allow_current_tab", true);
+
     /**
      * If the expanded set of inputs (model picker as well as canvas tool) should be options. These
      * new types, as well as all existing types, should be driven through PEC instead of hard coded
@@ -167,21 +174,22 @@ public class OmniboxFeatures {
             newBooleanParam(sOmniboxMultimodalInput, "wrap_autocomplete_text", false);
 
     public static final CachedFlag sAndroidHubSearchTabGroups =
-            newFlag(OmniboxFeatureList.ANDROID_HUB_SEARCH_TAB_GROUPS, FeatureState.ENABLED_IN_TEST);
+            newFlag(OmniboxFeatureList.ANDROID_HUB_SEARCH_TAB_GROUPS, FeatureState.ENABLED_IN_PROD);
 
     public static final CachedFlag sOmniboxImprovementForLFF =
             newFlag(OmniboxFeatureList.OMNIBOX_IMPROVEMENT_FOR_LFF, FeatureState.DISABLED);
 
     public static final CachedFlag sRemoveSearchReadyOmnibox =
-            newFlag(OmniboxFeatureList.REMOVE_SEARCH_READY_OMNIBOX, FeatureState.ENABLED_IN_TEST);
+            newFlag(OmniboxFeatureList.REMOVE_SEARCH_READY_OMNIBOX, FeatureState.DISABLED);
+
+    public static final CachedFlag sServeJavaCachedZeroSuggest =
+            newFlag(
+                    OmniboxFeatureList.SERVE_JAVA_CACHED_ZERO_SUGGEST,
+                    FeatureState.ENABLED_IN_PROD);
 
     public static final BooleanCachedFeatureParam sRemoveSroIncludingVerbatimMatch =
             newBooleanParam(
                     sRemoveSearchReadyOmnibox, "remove_sro_including_verbatim_match", false);
-
-    public static final BooleanCachedFeatureParam sOmniboxParityRetrieveBuiltInEngineIcon =
-            newBooleanParam(sOmniboxMobileParityUpdateV2, "retrieve_builtin_favicon", true);
-
     public static final IntCachedFeatureParam sGeolocationRequestTimeoutMinutes =
             newIntParam(
                     sUseFusedLocationProvider,

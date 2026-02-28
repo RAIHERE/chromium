@@ -35,6 +35,8 @@
 #include "chrome/browser/web_applications/isolated_web_apps/commands/isolated_web_app_apply_update_command.h"
 #include "chrome/browser/web_applications/isolated_web_apps/commands/isolated_web_app_install_command_helper.h"
 #include "chrome/browser/web_applications/isolated_web_apps/install/isolated_web_app_install_source.h"
+#include "chrome/browser/web_applications/isolated_web_apps/install/non_installed_bundle_inspection_context.h"
+#include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_trust_checker.h"
 #include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_url_info.h"
 #include "chrome/browser/web_applications/isolated_web_apps/policy/isolated_web_app_external_install_options.h"
 #include "chrome/browser/web_applications/isolated_web_apps/policy/isolated_web_app_policy_manager.h"
@@ -45,9 +47,9 @@
 #include "chrome/browser/web_applications/web_app_command_scheduler.h"
 #include "chrome/browser/web_applications/web_app_filter.h"
 #include "chrome/browser/web_applications/web_app_install_manager.h"
+#include "chrome/browser/web_applications/web_app_management_type.h"
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/pref_names.h"
 #include "components/keep_alive_registry/keep_alive_types.h"
 #include "components/keep_alive_registry/scoped_keep_alive.h"
@@ -237,7 +239,7 @@ IwaBundleIdToUpdateOptionsMap GetBundleIdToIsolatedWebAppsUpdateOptionsMap(
   return result;
 }
 
-bool ShouldProceedWithVersionChange(
+bool ShouldProceedWithAppUpdate(
     const IwaVersion& pinned_version,
     bool allow_downgrades,
     const web_package::SignedWebBundleId& web_bundle_id,
@@ -248,24 +250,14 @@ bool ShouldProceedWithVersionChange(
   }
 
   if (pinned_version == isolation_data.version()) {
-    switch (LookupRotatedKey(web_bundle_id)) {
-      case KeyRotationLookupResult::kNoKeyRotation:
-        return false;
-      case KeyRotationLookupResult::kKeyFound: {
-        KeyRotationData data =
-            GetKeyRotationData(web_bundle_id, isolation_data);
-        if (!data.current_installation_has_rk) {
-          return true;
-        }
-      } break;
-      case KeyRotationLookupResult::kKeyBlocked:
-        return false;
+    if (auto kr_data = GetKeyRotationData(web_bundle_id, isolation_data)) {
+      return !kr_data->current_installation_has_rk;
     }
   }
   return false;
 }
 
-std::vector<webapps::AppId> GetIwasAffectedByKeyRotation(
+std::vector<webapps::AppId> GetIwasAffectedByRecentKeyRotation(
     WebAppProvider& provider) {
   std::vector<webapps::AppId> iwa_ids;
 
@@ -273,18 +265,12 @@ std::vector<webapps::AppId> GetIwasAffectedByKeyRotation(
   for (const auto& iwa :
        provider.registrar_unsafe().GetApps(WebAppFilter::IsIsolatedApp())) {
     auto web_bundle_id = IwaOrigin::Create(iwa.scope())->web_bundle_id();
-    auto result = LookupRotatedKey(web_bundle_id);
-    // If the rotated key is null, there's no point in updating the
-    // app (as the update won't succeed anyway).
-    if (result != KeyRotationLookupResult::kKeyFound) {
-      continue;
-    }
-
-    KeyRotationData data =
+    std::optional<KeyRotationData> data =
         GetKeyRotationData(web_bundle_id, *iwa.isolation_data());
-    // If either the bundle or the pending update already includes the rotated
-    // key, there's no need to rush with updates.
-    if (data.current_installation_has_rk || data.pending_update_has_rk) {
+    // If there's no KR data or either the bundle or the pending update already
+    // includes the rotated key, there's no need to rush with updates.
+    if (!data ||
+        (data->current_installation_has_rk || data->pending_update_has_rk)) {
       continue;
     }
 
@@ -533,7 +519,7 @@ void IsolatedWebAppUpdateManager::OnRuntimeDataChanged() {
 
 void IsolatedWebAppUpdateManager::QueueUpdatesForIwasAffectedByKeyRotation() {
   std::vector<webapps::AppId> iwa_ids =
-      GetIwasAffectedByKeyRotation(*provider_);
+      GetIwasAffectedByRecentKeyRotation(*provider_);
   if (iwa_ids.empty()) {
     key_rotation_backoff_retry_entry_.Reset();
     return;
@@ -606,15 +592,17 @@ bool IsolatedWebAppUpdateManager::MaybeQueueUpdateDiscoveryTask(
     return false;
   }
 
-  if (!ChromeIwaRuntimeDataProvider::GetInstance().IsManagedUpdatePermitted(
-          url_info.web_bundle_id().id())) {
-    LOG(WARNING) << "The app " << url_info.app_id()
-                 << " cannot be updated because it's not allowlisted.";
-    return false;
-  }
+  RETURN_IF_ERROR(IsolatedWebAppTrustChecker::IsOperationAllowed(
+                      *profile_, url_info.web_bundle_id(), /*dev_mode=*/false,
+                      IwaUpdateOperation{}),
+                  [&](const std::string& error) {
+                    LOG(WARNING) << "The app " << url_info.web_bundle_id()
+                                 << " cannot be updated: " << error;
+                    return false;
+                  });
 
   if (update_options->pinned_version.has_value() &&
-      !ShouldProceedWithVersionChange(
+      !ShouldProceedWithAppUpdate(
           *update_options->pinned_version, update_options->allow_downgrades,
           url_info.web_bundle_id(), isolation_data.value())) {
     // By default, pinning an app to a lower version than the current one is

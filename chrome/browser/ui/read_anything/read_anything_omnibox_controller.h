@@ -34,10 +34,18 @@ class ReadAnythingOmniboxController : public content::WebContentsObserver,
   void Activate(bool active,
                 std::optional<ReadAnythingOpenTrigger> open_trigger) override;
   void OnDestroyed() override;
+  void OnReadingModePresenterChanged() override;
 
   void SetDwellTimeForTesting(base::TimeTicks test_time) {
     candidate_check_triggered_time_ms_ = test_time;
   }
+
+ protected:
+  // Runs a heuristic to check if the current tab's contents are a good
+  // candidate for distillation in Reading mode. The result is returned in the
+  // OnReadabilityResult call below, and is used to determine whether or not to
+  // show the omnibox entrypoint for RM.
+  virtual void CheckIfShouldSuggestReadingMode();
 
  private:
   // The amount of time the user must spend on the previous page before it seems
@@ -47,17 +55,18 @@ class ReadAnythingOmniboxController : public content::WebContentsObserver,
   // the omnibox entrypoint. If they don't open RM within this time, log that
   // they didn't open it, as it's unlikely the IPH convinced them to open RM.
   static const int kIPHResponseTimeoutSecs = 20;
+  // Delay before checking again if to suggest reading mode. Running the check
+  // can be CPU-intensive, so don't overload it.
+  static const int kDebounceDelaySecs = 1;
 
   void TabWillDetach(tabs::TabInterface* tab,
                      tabs::TabInterface::DetachReason reason);
   void OnTabBackgrounded(tabs::TabInterface* tab);
   void OnTabForegrounded(tabs::TabInterface* tab);
 
-  // Runs a heuristic to check if the current tab's contents are a good
-  // candidate for distillation in Reading mode. The result is returned in the
-  // OnReadabilityResult call below, and is used to determine whether or not to
-  // show the omnibox entrypoint for RM.
-  void CheckIfShouldSuggestReadingMode();
+  // Runs CheckIfShouldSuggestReadingMode after a delay to debounce multiple
+  // calls to it during page or tab load.
+  void DebounceCheckSuggestion();
 
   // Called with the results of CheckIfShouldSuggestReadingMode.
   void OnShouldSuggestReadingModeResult(bool should_show);
@@ -75,6 +84,9 @@ class ReadAnythingOmniboxController : public content::WebContentsObserver,
   // Log whether the user opened RM after seeing the omnibox IPH.
   void RecordOpenedAfterPromo();
 
+  // Stops any running timers.
+  void StopTimers();
+
   // The time when CheckIfShouldSuggestReadingMode was triggered.
   base::TimeTicks candidate_check_triggered_time_ms_;
 
@@ -83,6 +95,7 @@ class ReadAnythingOmniboxController : public content::WebContentsObserver,
 
   // A timer for logging whether the user opened RM after seeing the IPH.
   std::unique_ptr<base::OneShotTimer> iph_response_timer_;
+  std::unique_ptr<base::OneShotTimer> check_suggestion_debouncer_;
 
   raw_ptr<tabs::TabInterface> tab_ = nullptr;
   std::vector<base::CallbackListSubscription> tab_subscriptions_;

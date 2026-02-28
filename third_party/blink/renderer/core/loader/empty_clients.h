@@ -116,10 +116,6 @@ class CORE_EXPORT EmptyChromeClient : public ChromeClient {
   void TakeFocus(mojom::blink::FocusType) override {}
   bool SupportsDraggableRegions() override { return false; }
   void DraggableRegionsChanged() override {}
-  void Show(LocalFrame& frame,
-            LocalFrame& opener_frame,
-            NavigationPolicy navigation_policy,
-            bool consumed_user_gesture) override {}
   void SetOverscrollBehavior(LocalFrame& frame,
                              const cc::OverscrollBehavior&) override {}
   void BeginLifecycleUpdates(LocalFrame& main_frame) override {}
@@ -260,7 +256,6 @@ class CORE_EXPORT EmptyChromeClient : public ChromeClient {
       LocalFrame*,
       HTMLElement*,
       WebFormRelatedChangeType) override {}
-  String AcceptLanguages() override;
   void RegisterPopupOpeningObserver(PopupOpeningObserver*) override {}
   void UnregisterPopupOpeningObserver(PopupOpeningObserver*) override {}
   void NotifyPopupOpeningObservers() const override {}
@@ -370,7 +365,9 @@ class CORE_EXPORT EmptyLocalFrameClient : public LocalFrameClient {
       SourceLocation*,
       mojo::PendingRemote<mojom::blink::NavigationStateKeepAliveHandle>,
       bool is_container_initiated,
-      bool has_rel_opener) override;
+      bool has_rel_opener,
+      mojo::PendingReceiver<
+          mojom::blink::NavigationResumeDeferredCommitListener>) override;
 
   void DispatchWillSendSubmitEvent(HTMLFormElement*) override;
 

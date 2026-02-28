@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/memory/raw_ptr.h"
+#include "base/memory/weak_ptr.h"
 #include "ui/views/animation/scroll_animator.h"
 #include "ui/views/controls/menu/menu_delegate.h"
 #include "ui/views/controls/menu/menu_host.h"
@@ -198,6 +199,8 @@ class VIEWS_EXPORT SubmenuView : public View,
   void OnBoundsChanged(const gfx::Rect& previous_bounds) override;
 
   void ChildPreferredSizeChanged(View* child) override;
+  void ViewHierarchyChanged(
+      const ViewHierarchyChangedDetails& details) override;
 
  private:
   friend class MenuControllerTest;
@@ -272,6 +275,8 @@ class VIEWS_EXPORT SubmenuView : public View,
   PrefixSelector prefix_selector_{this, this};
 
   std::optional<ui::ColorId> border_color_id_;
+
+  base::WeakPtrFactory<SubmenuView> weak_ptr_factory_{this};
 };
 
 }  // namespace views

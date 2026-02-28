@@ -19,7 +19,6 @@
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_detector.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_record.h"
 #include "third_party/blink/renderer/core/paint/timing/text_paint_timing_detector.h"
-#include "third_party/blink/renderer/core/timing/navigation_id_generator.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/trace_event.h"
 #include "third_party/blink/renderer/platform/instrumentation/tracing/traced_value.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
@@ -92,7 +91,15 @@ void LargestContentfulPaintCalculator::MaybeFlushCandidates() {
 
 void LargestContentfulPaintCalculator::
     UpdateWebExposedLargestContentfulPaintIfNeeded() {
-  ImageRecord* largest_image = LargestPaintedOrPendingImage();
+  // If UseLargestPaintedImageForLCPCandidate is enabled, use
+  // `largest_painted_image_` rather than `LargestPaintedOrPendingImage()` for
+  // the web-exposed entry, which matches the spec and ensures the entry is
+  // emitted if the `largest_pending_image_` gets removed.
+  ImageRecord* largest_image =
+      RuntimeEnabledFeatures::UseLargestPaintedImageForLCPCandidateEnabled()
+          ? largest_painted_image_.Get()
+          : LargestPaintedOrPendingImage();
+
   uint64_t text_size = largest_text_ ? largest_text_->RecordedSize() : 0u;
   uint64_t image_size = largest_image ? largest_image->RecordedSize() : 0u;
   if (image_size > text_size) {

@@ -1684,7 +1684,7 @@ IN_PROC_BROWSER_TEST_F(AdsPageLoadMetricsObserverBrowserTest,
       static_cast<int>(page_load_metrics::MediaStatus::kNotPlayed));
 }
 
-// Flaky on all platforms, http://crbug.com/972822.
+// Flaky on all platforms, http://crbug.com/40631523.
 IN_PROC_BROWSER_TEST_F(AdsPageLoadMetricsObserverBrowserTest,
                        DISABLED_AdFrameRecordMediaStatusPlayed) {
   base::HistogramTester histogram_tester;
@@ -3275,8 +3275,7 @@ constexpr SurfaceTestCase kSurfaceTestCases[] = {
       window.onmessage = $1;
       window.postMessage("", "*");
     )SCRIPT"},
-    // TODO(crbug.com/473760917): Reenable once the issue is addressed.
-    // {"eval", "eval('$1();');"},
+    {"eval", "eval('$1();');"},
     {"promise_constructor", "new Promise($1);"},
     {"promise_resolve", "Promise.resolve().then($1);"},
     {"promise_reject", "Promise.reject().catch($1);"},

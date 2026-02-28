@@ -13,6 +13,7 @@
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/paint/timing/paint_timing_record.h"
 #include "third_party/blink/renderer/core/paint/timing/text_element_timing.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_deque.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/garbage_collected.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
@@ -111,6 +112,7 @@ class CORE_EXPORT TextPaintTimingDetector final
   void Trace(Visitor*) const;
 
  private:
+  void SendRectsToHud();
   friend class LargestContentfulPaintCalculatorTest;
 
   // The state of `LayoutObject`s being tracked in the `recorded_set_`.
@@ -128,10 +130,9 @@ class CORE_EXPORT TextPaintTimingDetector final
       SoftNavigationContext* context,
       bool is_repaint);
 
-  inline void QueueToMeasurePaintTime(const LayoutObject& object,
-                                      TextRecord* record) {
+  inline void QueueToMeasurePaintTime(TextRecord* record) {
     record->SetFrameIndex(frame_index_);
-    texts_queued_for_paint_time_.insert(&object, record);
+    texts_queued_for_paint_time_.push_back(record);
     added_entry_in_latest_frame_ = true;
   }
 
@@ -139,13 +140,11 @@ class CORE_EXPORT TextPaintTimingDetector final
   HeapHashMap<WeakMember<const LayoutObject>, TextPaintStatus> recorded_set_;
   HeapHashSet<WeakMember<const LayoutObject>> rewalkable_set_;
 
-  // Text records queued for paint time. Indexed by LayoutObject to make removal
-  // easy.
-  HeapHashMap<Member<const LayoutObject>, Member<TextRecord>>
-      texts_queued_for_paint_time_;
+  // Text records queued for paint time.
+  HeapDeque<Member<TextRecord>> texts_queued_for_paint_time_;
 
   Member<PaintTimingCallbackManager> callback_manager_;
-  Member<const LocalFrameView> frame_view_;
+  Member<LocalFrameView> frame_view_;
   Member<PaintTimingDetector> paint_timing_detector_;
   // Set lazily because we may not have the correct Window when first
   // initializing this class.

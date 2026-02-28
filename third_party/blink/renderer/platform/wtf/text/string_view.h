@@ -49,6 +49,11 @@ enum class Utf8ConversionMode : uint8_t {
 //
 // Unlike `std::string_view`, pass-by-value is not recommended because a
 // `blink::StringView` instance consists of three words.
+//
+// When a method of this class is compatible with an equivalent method in
+// `std::string_view`, we use the same method name as `std::string_view` (i.e.,
+// `snake_case()`) rather than following the Google/Blink C++ style guide's
+// naming rules. This improves consistency in string manipulation.
 class WTF_EXPORT StringView {
   DISALLOW_NEW();
 
@@ -197,6 +202,9 @@ class WTF_EXPORT StringView {
 
   void Clear();
 
+  // Returns a code unit at the specified index.
+  // This operator performs an out-of-bounds access if the specified
+  // index is out of range.
   UChar operator[](unsigned i) const {
     SECURITY_DCHECK(i < length());
     // SAFETY: safe when i < length().
@@ -285,14 +293,42 @@ class WTF_EXPORT StringView {
   // Find characters. Returns the index of the match, or `kNotFound`.
   wtf_size_t Find(CharacterMatchFunctionPtr match_function,
                   wtf_size_t start = 0) const;
+  // Find a substring. Returns the index of the match, or `kNotFound`.
+  wtf_size_t find(const StringView& value, wtf_size_t start = 0) const;
+
+  // Find the last occurrence of a character. Returns the index of the match, or
+  // `kNotFound`.
+  wtf_size_t rfind(UChar ch, wtf_size_t start = kNotFound) const;
+  // Searches for the last occurrence of a substring within this string.
+  //
+  // This method performs a backward search starting from the 'start' index.
+  // If 'start' is npos, the search begins from the end of the string.
+  //
+  // Returns the index of the start of the found substring, or npos if
+  // no match is found.
+  //
+  // Special Cases:
+  // - If 'value' is empty, the search always succeeds and returns
+  //   the minimum of 'start' and length().
+  // - Null strings and zero-length strings are treated as equivalent
+  //   for both `this` string and the 'value' parameter.
+  size_type rfind(const StringView& value, size_type start = npos) const;
 
   // Returns `true` if this StringView contains the specified character.
   bool contains(UChar ch) const;
+  // Returns `true` if this StringView contains the specified string.
+  bool contains(const StringView& other) const;
 
   // Returns `true` if `this` string starts with `other`.
   bool starts_with(const StringView& other) const;
+  // Returns `true` if `this` string starts with `c`.
+  bool starts_with(UChar c) const { return !empty() && (*this)[0] == c; }
   // Returns `true` if `this` string ends with `other`.
   bool ends_with(const StringView& other) const;
+  // Returns `true` if `this` string ends with `c`.
+  bool ends_with(UChar c) const {
+    return !empty() && (*this)[length() - 1] == c;
+  }
 
   template <bool isSpecialCharacter(UChar)>
   bool IsAllSpecialCharacters() const;
@@ -352,8 +388,8 @@ class WTF_EXPORT StringView {
   // Returns a list of substrings of `this`, separated by `separator`.
   // This doesn't produce empty substrings.
   //
-  // `StringView(" a  b").Split(' ')` produces ["a", "b"], and
-  // `StringView("").Split(',')` produces an empty list.
+  // `StringView(" a  b").SplitSkippingEmpty(' ')` produces ["a", "b"], and
+  // `StringView("").SplitSkippingEmpty(',')` produces an empty list.
   Vector<StringView> SplitSkippingEmpty(UChar separator) const;
 
  private:
@@ -443,23 +479,35 @@ inline void StringView::Set(const StringImpl& impl,
 // Unicode aware case insensitive string matching. Non-ASCII characters might
 // match to ASCII characters. These functions are rarely used to implement web
 // platform features.
-// These functions are deprecated. Use EqualIgnoringASCIICase(), or introduce
+// These functions are deprecated. Use EqualIgnoringAsciiCase(), or introduce
 // EqualIgnoringUnicodeCase(). See crbug.com/627682
 WTF_EXPORT bool DeprecatedEqualIgnoringCase(const StringView&,
                                             const StringView&);
 WTF_EXPORT bool DeprecatedEqualIgnoringCaseAndNullity(const StringView&,
                                                       const StringView&);
 
-WTF_EXPORT bool EqualIgnoringASCIICase(const StringView&, const StringView&);
+WTF_EXPORT bool EqualIgnoringAsciiCase(const StringView&, const StringView&);
 
 template <size_t N>
-inline bool EqualIgnoringASCIICase(const StringView& a,
+inline bool EqualIgnoringAsciiCase(const StringView& a,
                                    const char (&literal)[N]) {
   if (a.length() != N - 1 || (N == 1 && a.IsNull()))
     return false;
   base::span<const char> span = base::span(literal).template first<N - 1>();
-  return a.Is8Bit() ? EqualIgnoringASCIICase(a.Span8(), span)
-                    : EqualIgnoringASCIICase(a.Span16(), span);
+  return a.Is8Bit() ? EqualIgnoringAsciiCase(a.Span8(), span)
+                    : EqualIgnoringAsciiCase(a.Span16(), span);
+}
+
+// Use EqualIgnoringAsciiCase() instead.
+inline bool EqualIgnoringASCIICase(const StringView& a, const StringView& b) {
+  return EqualIgnoringAsciiCase(a, b);
+}
+
+// Use EqualIgnoringAsciiCase() instead.
+template <size_t N>
+inline bool EqualIgnoringASCIICase(const StringView& a,
+                                   const char (&literal)[N]) {
+  return EqualIgnoringAsciiCase<N>(a, literal);
 }
 
 WTF_EXPORT int CodeUnitCompareIgnoringAsciiCase(StringView a, StringView b);

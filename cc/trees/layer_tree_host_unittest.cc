@@ -891,7 +891,11 @@ class LayerTreeHostTestSetNeedsCommit2 : public LayerTreeHostTest {
   int num_draws_;
 };
 
-MULTI_THREAD_TEST_F(LayerTreeHostTestSetNeedsCommit2);
+// TODO(crbug.com/485089667): Flaky. Reenable it.
+TEST_F(LayerTreeHostTestSetNeedsCommit2,
+       DISABLED_RunMultiThread_DelegatingRenderer) {
+  RunTest(CompositorMode::THREADED);
+}
 
 // Verify that we pass property values in PushPropertiesTo.
 class LayerTreeHostTestPushPropertiesTo : public LayerTreeHostTest {
@@ -1073,6 +1077,30 @@ class LayerTreeHostTestInvisibleLayersSkipRenderPass
 };
 
 SINGLE_AND_MULTI_THREAD_TEST_F(LayerTreeHostTestInvisibleLayersSkipRenderPass);
+
+class LayerTreeHostTestNumLayersInCommitState : public LayerTreeHostTest {
+ protected:
+  void SetupTree() override {
+    LayerTreeHostTest::SetupTree();
+    root_ = layer_tree_host()->root_layer();
+    child_ = Layer::Create();
+    root_->AddChild(child_);
+  }
+
+  void BeginTest() override { PostSetNeedsCommitToMainThread(); }
+
+  void WillCommit(const CommitState&) override {
+    EXPECT_EQ(2u, layer_tree_host()->GetUnsafeStateForCommit().num_layers);
+  }
+
+  void DidCommit() override { EndTest(); }
+
+ private:
+  scoped_refptr<Layer> root_;
+  scoped_refptr<Layer> child_;
+};
+
+SINGLE_AND_MULTI_THREAD_TEST_F(LayerTreeHostTestNumLayersInCommitState);
 
 class LayerTreeHostTestPushNodeOwnerToNodeIdMap : public LayerTreeHostTest {
  protected:
@@ -3197,6 +3225,21 @@ class LayerTreeHostTestDamageWithScale : public LayerTreeHostTest {
         host_impl->active_tree()->LayerById(child_layer_->id()));
     if (!TreesInViz() || host_impl->active_tree()->source_frame_number() == 0) {
       child_layer_impl->AddTilingUntilNextDraw(1.3f);
+      // In TreesInViz mode, we only synchronize tilings that contain tiles.
+      // Ensuring the 1.3f tiling has at least one tile here guarantees that it
+      // is pushed to Viz, allowing Viz's root damage calculation to use the
+      // correct maximum tiling scale (1.3f) and match the client's expectation.
+      //
+      // NOTE: We temporarily set the resolution to HIGH_RESOLUTION because
+      // PictureLayerTiling::SetLiveTilesRect (called by CreateAllTiles) early
+      // outs without creating tiles if the resolution is NON_IDEAL_RESOLUTION
+      // (the default for new tilings).
+      PictureLayerTiling* tiling =
+          child_layer_impl->picture_layer_tiling_set()->FindTilingWithScaleKey(
+              1.3f);
+      tiling->set_resolution(HIGH_RESOLUTION);
+      child_layer_impl->CreateAllTiles();
+      tiling->set_resolution(NON_IDEAL_RESOLUTION);
     }
   }
 

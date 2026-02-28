@@ -80,7 +80,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Content.SharedWorker.Host.DestructionSource"
-    enum="SharedWorkerHostDestructionSource" expires_after="2026-06-07">
+    enum="SharedWorkerHostDestructionSource" expires_after="2026-08-09">
   <owner>yyanagisawa@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -91,7 +91,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="Content.SharedWorker.Service.LastClientCheckTime" units="ms"
-    expires_after="2026-05-31">
+    expires_after="2026-08-02">
   <owner>annasato@chromium.org</owner>
   <owner>chrome-worker@google.com</owner>
   <summary>
@@ -391,7 +391,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContentSettings.Popups.StrongBlockerActions"
-    enum="StrongPopupBlockerAction" expires_after="2026-06-14">
+    enum="StrongPopupBlockerAction" expires_after="2026-08-16">
   <owner>csharrison@chromium.org</owner>
   <summary>
     Counts of various events related to the strong popup blocker (aka abusive
@@ -441,6 +441,17 @@ chromium-metrics-reviews@google.com.
     The default JavaScript optimization setting at profile open. Records the
     setting explicitly set by the user and ignores whether the permission is
     disabled by an operating system permission or enterprise policy.
+
+    This histogram is only recorded for regular profiles.
+  </summary>
+</histogram>
+
+<histogram name="ContentSettings.RegularProfile.DefaultSensorsSetting"
+    enum="ContentSetting" expires_after="2027-02-19">
+  <owner>engedy@chromium.org</owner>
+  <owner>src/components/permissions/PERMISSIONS_OWNERS</owner>
+  <summary>
+    The default sensors setting at profile open.
 
     This histogram is only recorded for regular profiles.
   </summary>
@@ -1052,7 +1063,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContentSuggestions.Feed.DisplayStatusOnOpen"
-    enum="ContentSuggestionsDisplayStatus" expires_after="2026-06-07">
+    enum="ContentSuggestionsDisplayStatus" expires_after="2026-08-09">
   <owner>jianli@chromium.org</owner>
   <owner>feed@chromium.org</owner>
   <summary>
@@ -1300,7 +1311,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContentSuggestions.Feed.RefreshTrigger"
-    enum="FeedRefreshTrigger" expires_after="2026-06-21">
+    enum="FeedRefreshTrigger" expires_after="2026-08-23">
   <owner>adamta@google.com</owner>
   <owner>feed@chromium.org</owner>
   <summary>
@@ -1427,7 +1438,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="ContentSuggestions.Feed.UserActions" enum="FeedUserActionType"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>jianli@chromium.org</owner>
   <owner>feed@chromium.org</owner>
   <summary>

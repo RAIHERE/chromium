@@ -13,7 +13,7 @@ import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoor
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.SINGLE_THEME_COLLECTION;
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.THEME;
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationCoordinator.BottomSheetType.THEME_COLLECTIONS;
-import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundImageType.THEME_COLLECTION;
+import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType.THEME_COLLECTION;
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationViewProperties.LAYOUT_TO_DISPLAY;
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationViewProperties.LIST_CONTAINER_VIEW_DELEGATE;
 import static org.chromium.chrome.browser.ntp_customization.NtpCustomizationViewProperties.MAIN_BOTTOM_SHEET_FEED_SECTION_SUBTITLE;
@@ -35,11 +35,14 @@ import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.ntp_customization.theme.NtpThemeStateProvider;
 import org.chromium.chrome.browser.preferences.Pref;
 import org.chromium.chrome.browser.profiles.Profile;
+import org.chromium.chrome.browser.search_engines.TemplateUrlServiceFactory;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetContent;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetController;
 import org.chromium.components.browser_ui.bottomsheet.BottomSheetObserver;
 import org.chromium.components.browser_ui.bottomsheet.EmptyBottomSheetObserver;
 import org.chromium.components.prefs.PrefService;
+import org.chromium.components.search_engines.TemplateUrlService;
+import org.chromium.components.search_engines.TemplateUrlService.TemplateUrlServiceObserver;
 import org.chromium.components.user_prefs.UserPrefs;
 import org.chromium.ui.base.DeviceFormFactor;
 import org.chromium.ui.base.WindowAndroid;
@@ -56,7 +59,7 @@ import java.util.function.Supplier;
  * customization bottom sheets.
  */
 @NullMarked
-public class NtpCustomizationMediator {
+public class NtpCustomizationMediator implements TemplateUrlServiceObserver {
     // Defines the back navigation hierarchy for theme-related bottom sheets. <Child, Parent>
     private final Map<Integer, Integer> mThemeBackNavigationMap =
             Map.ofEntries(
@@ -80,10 +83,13 @@ public class NtpCustomizationMediator {
     private final @Nullable PropertyModel mContainerPropertyModel;
     private final boolean mNtpCustomizationForMvtFeatureEnabled;
     private final WindowAndroid mWindowAndroid;
+    private final Context mContext;
     private @Nullable Profile mProfile;
     private @Nullable Integer mCurrentBottomSheet;
     private boolean mShouldRecreate;
     private @Nullable Bitmap mNewThemeCollectionImage;
+    private @Nullable TemplateUrlService mTemplateUrlService;
+    private boolean mIsDefaultSearchEngineGoogle;
     private static @Nullable PrefService sPrefServiceForTest;
 
     public NtpCustomizationMediator(
@@ -102,6 +108,7 @@ public class NtpCustomizationMediator {
         mWindowAndroid = windowAndroid;
         mViewFlipperMap = new HashMap<>();
         mTypeToListenersMap = new HashMap<>();
+        mContext = context;
         mListContent = buildListContent(context);
         mNtpCustomizationForMvtFeatureEnabled =
                 ChromeFeatureList.sNewTabPageCustomizationForMvt.isEnabled();
@@ -117,7 +124,7 @@ public class NtpCustomizationMediator {
                     public void onSheetClosed(@BottomSheetController.StateChangeReason int reason) {
                         // Pick and save the primary color if a new theme collection image is
                         // selected.
-                        if (NtpCustomizationConfigManager.getInstance().getBackgroundImageType()
+                        if (NtpCustomizationConfigManager.getInstance().getBackgroundType()
                                         == THEME_COLLECTION
                                 && mNewThemeCollectionImage != null) {
                             NtpCustomizationUtils.pickAndSavePrimaryColor(mNewThemeCollectionImage);
@@ -308,6 +315,8 @@ public class NtpCustomizationMediator {
         }
 
         mProfile = profile.getOriginalProfile();
+        maybeRegisterTemplateUrlServiceObserver(mProfile);
+
         List<Integer> content = new ArrayList<>();
         if (ChromeFeatureList.sNewTabPageCustomizationForMvt.isEnabled()) {
             content.add(MVT);
@@ -317,17 +326,22 @@ public class NtpCustomizationMediator {
             content.add(FEED);
         }
 
-        if (NtpCustomizationUtils.isNtpThemeCustomizationEnabled()
-                && NtpCustomizationUtils.canEnableEdgeToEdgeForCustomizedTheme(
-                        mWindowAndroid,
-                        DeviceFormFactor.isNonMultiDisplayContextOnTablet(context))) {
-            content.add(THEME);
+        if (NtpCustomizationUtils.isNtpThemeCustomizationEnabled()) {
+            boolean isTablet = DeviceFormFactor.isNonMultiDisplayContextOnTablet(context);
+            if (isTablet
+                    || NtpCustomizationUtils.canEnableEdgeToEdgeForCustomizedTheme(
+                            mWindowAndroid, isTablet)) {
+                content.add(THEME);
+            }
         }
         return content;
     }
 
     /** Clears maps */
     void destroy() {
+        if (mTemplateUrlService != null) {
+            mTemplateUrlService.removeObserver(this);
+        }
         if (mContainerPropertyModel != null) {
             mContainerPropertyModel.set(LIST_CONTAINER_VIEW_DELEGATE, null);
         }
@@ -408,5 +422,38 @@ public class NtpCustomizationMediator {
 
     Map<Integer, View.OnClickListener> getTypeToListenersForTesting() {
         return mTypeToListenersMap;
+    }
+
+    @Override
+    public void onTemplateURLServiceChanged() {
+        assumeNonNull(mTemplateUrlService);
+        boolean isDefaultSearchEngineGoogle = mTemplateUrlService.isDefaultSearchEngineGoogle();
+        if (mIsDefaultSearchEngineGoogle == isDefaultSearchEngineGoogle) return;
+
+        mIsDefaultSearchEngineGoogle = isDefaultSearchEngineGoogle;
+        // When changing the search engine from Google to non-Google, dismiss the feed settings
+        // bottom sheet if it is open.
+        if (!mIsDefaultSearchEngineGoogle
+                && mCurrentBottomSheet != null
+                && mCurrentBottomSheet == FEED) {
+            dismissBottomSheet(/* animate= */ true);
+            return;
+        }
+
+        List<Integer> newListContent = buildListContent(mContext);
+
+        if (!newListContent.equals(mListContent)) {
+            mListContent.clear();
+            mListContent.addAll(newListContent);
+            renderListContent();
+        }
+    }
+
+    private void maybeRegisterTemplateUrlServiceObserver(Profile profile) {
+        if (mTemplateUrlService != null) return;
+
+        mTemplateUrlService = TemplateUrlServiceFactory.getForProfile(profile);
+        mTemplateUrlService.addObserver(this);
+        mIsDefaultSearchEngineGoogle = mTemplateUrlService.isDefaultSearchEngineGoogle();
     }
 }

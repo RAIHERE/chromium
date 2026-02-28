@@ -834,6 +834,7 @@ Readability.prototype = {
     this._cleanConditionally(articleContent, "table");
     this._cleanConditionally(articleContent, "ul");
     this._cleanConditionally(articleContent, "div");
+    this._cleanConditionally(articleContent, "label");
 
     // replace H1 with H2 as H1 should be only title that is displayed separately
     this._replaceNodeTags(
@@ -1740,20 +1741,24 @@ Readability.prototype = {
             typeof parsed.headline === "string" &&
             parsed.name !== parsed.headline
           ) {
-            // we have both name and headline element in the JSON-LD. They should both be the same but some websites like aktualne.cz
-            // put their own name into "name" and the article title to "headline" which confuses Readability. So we try to check if either
-            // "name" or "headline" closely matches the html title, and if so, use that one. If not, then we use "name" by default.
+            // Both "name" and "headline" element exist in the JSON-LD. Usually
+            // they're the same, but sometimes a website (e.g., aktualne.cz)
+            // would assign something else (e.g., website name) to "name", and
+            // this confuses Readability. Therefore we compare both against the
+            // HTML title. If a clear winner exists, use the winner. Otherwise
+            // take the longer of the two.
 
-            var title = this._getArticleTitle();
-            var nameMatches = this._textSimilarity(parsed.name, title) > 0.75;
-            var headlineMatches =
-              this._textSimilarity(parsed.headline, title) > 0.75;
-
-            if (headlineMatches && !nameMatches) {
-              metadata.title = parsed.headline;
-            } else {
-              metadata.title = parsed.name;
-            }
+            const TITLE_SIMILARITY_THRESHOLD = 0.75;
+            const title = this._getArticleTitle();
+            const nameMatches =
+                this._textSimilarity(parsed.name, title) >
+                    TITLE_SIMILARITY_THRESHOLD;
+            const headlineMatches =
+                this._textSimilarity(parsed.headline, title) >
+                    TITLE_SIMILARITY_THRESHOLD;
+            const useName = (nameMatches !== headlineMatches) ? nameMatches :
+                (parsed.name.length >= parsed.headline.length);
+            metadata.title = useName ? parsed.name : parsed.headline;
           } else if (typeof parsed.name === "string") {
             metadata.title = parsed.name.trim();
           } else if (typeof parsed.headline === "string") {
@@ -2704,6 +2709,14 @@ Readability.prototype = {
       // Handle <img> buried inside nested <div> layers in <figure>.
       if (tag === "div" && this._hasAncestorTag(node, "figure") && this._isSingleImage(node)) {
         return false;
+      }
+
+      // Handle <label for="id-of-removed-input">.
+      if (tag === 'label') {
+        const forId = node.getAttribute('for');
+        if (forId && !e.querySelector('#' + CSS.escape(forId))) {
+          return true;
+        }
       }
 
       var weight = this._getClassWeight(node);

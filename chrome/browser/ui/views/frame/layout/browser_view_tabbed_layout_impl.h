@@ -45,6 +45,9 @@ class BrowserViewTabbedLayoutImpl : public BrowserViewLayoutImpl {
       const BrowserLayoutParams& params) override;
 
  private:
+  // Gets the amount of padding to place between
+  int GetMinimumGrabHandlePadding() const;
+
   // Returns the minimum size of all toolbar-height content except the toolbar-
   // height side panel.
   gfx::Size GetMinimumMainAreaSize(const BrowserLayoutParams& params) const;
@@ -96,7 +99,7 @@ class BrowserViewTabbedLayoutImpl : public BrowserViewLayoutImpl {
     // The y-value of the top of the tab strip.
     int top_offset = 0;
     // The relative size of the top outside corner.
-    double top_outside_corner_percent = 1.0;
+    double top_outside_corner_percent = 0.0;
     // The relative size of the top inside corner.
     double top_inside_corner_percent = 0.0;
   };
@@ -130,6 +133,10 @@ class BrowserViewTabbedLayoutImpl : public BrowserViewLayoutImpl {
     kMultiContents
   };
   TopSeparatorType GetTopSeparatorType() const;
+
+  // Returns the leading margin for the horizontal tab strip region.
+  int GetHorizontalTabStripLeadingMargin(
+      const BrowserLayoutParams& params) const;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_LAYOUT_BROWSER_VIEW_TABBED_LAYOUT_IMPL_H_

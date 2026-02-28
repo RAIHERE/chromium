@@ -78,6 +78,23 @@ const base::FeatureParam<bool> kCSDClipboardCopyApiProcessPayload{
     &kClientSideDetectionClipboardCopyApi, "ProcessPayload",
     /*default_value=*/false};
 
+const base::FeatureParam<bool> kCSDClipboardCopyApiIncludeFullPayload{
+    &kClientSideDetectionClipboardCopyApi, "IncludeFullPayload",
+    /*default_value=*/false};
+const base::FeatureParam<std::string> kCsdClipboardCopyApiLoaders{
+    &kClientSideDetectionClipboardCopyApi, "Loaders",
+    /*default_value=*/"curl,wget,invoke-webrequest,iwr"};
+const base::FeatureParam<std::string> kCsdClipboardCopyApiRunners{
+    &kClientSideDetectionClipboardCopyApi, "Runners",
+    /*default_value=*/
+    "bash,cmd,conhost,iex,invoke-expression,zsh"};
+const base::FeatureParam<std::string> kCsdClipboardCopyApiRemoteRunners{
+    &kClientSideDetectionClipboardCopyApi, "RemoteRunners",
+    /*default_value=*/"mshta"};
+const base::FeatureParam<std::string> kCsdClipboardCopyApiDecoders{
+    &kClientSideDetectionClipboardCopyApi, "Decoders",
+    /*default_value=*/"base32,base64"};
+
 BASE_FEATURE(kClientSideDetectionCreditCardForm,
              base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<double> kCsdCreditCardFormHCAcceptanceRate{
@@ -116,6 +133,11 @@ BASE_FEATURE(kClientSideDetectionKillswitch, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kClientSideDetectionLlamaForcedTriggerInfoForScamDetection,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_ANDROID)
+BASE_FEATURE(kClientSideDetectionOnDeviceModelLazyDownloadAndroid,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
 BASE_FEATURE(kClientSideDetectionRedirectChainKillswitch,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -153,9 +175,6 @@ BASE_FEATURE(kClientSideDetectionShowScamVerdictWarningAndroid,
 
 BASE_FEATURE(kClientSideDetectionSkipErrorPage,
              base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kClientSideDetectionVibrationApi,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kConditionalImageResize, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -211,7 +230,6 @@ BASE_FEATURE(kEnterpriseRealTimeUrlCheckNewUrl,
 BASE_FEATURE(kEsbAsASyncedSetting, base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kExtendedReportingRemovePrefDependency,
-             "ExtendedReportingRemovePrefDependency",
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kExtensionTelemetryConfiguration,
@@ -233,7 +251,13 @@ BASE_FEATURE(kExternalAppRedirectTelemetry,
              "SafeBrowsingExternalAppRedirectTelemetry",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
-BASE_FEATURE(kGeminiAntiscamProtectionForMetricsCollection, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kGeminiAntiscamProtectionForMetricsCollection,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+constexpr base::FeatureParam<double>
+    kGeminiAntiscamProtectionMinScamScoreLogPageContent{
+        &kGeminiAntiscamProtectionForMetricsCollection,
+        "GeminiAntiscamProtectionMinScamScoreLogPageContent",
+        /*default_value=*/0.5};
 
 BASE_FEATURE(kGlobalCacheListForGatingNotificationProtections,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -368,7 +392,7 @@ constexpr base::FeatureParam<int>
     kShowWarningsForSuspiciousNotificationsScoreThreshold{
         &kShowWarningsForSuspiciousNotifications,
         "ShowWarningsForSuspiciousNotificationsScoreThreshold",
-        /*default_value=*/70};
+        /*default_value=*/90};
 constexpr base::FeatureParam<bool>
     kShowWarningsForSuspiciousNotificationsShouldSwapButtons{
         &kShowWarningsForSuspiciousNotifications,

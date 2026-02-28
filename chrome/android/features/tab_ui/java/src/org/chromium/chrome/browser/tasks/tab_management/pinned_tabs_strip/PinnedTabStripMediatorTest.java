@@ -31,12 +31,12 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
 import org.chromium.chrome.browser.bookmarks.BookmarkModel;
 import org.chromium.chrome.browser.bookmarks.TabBookmarker;
 import org.chromium.chrome.browser.collaboration.CollaborationServiceFactory;
@@ -90,7 +90,6 @@ public class PinnedTabStripMediatorTest {
     @Mock private TabGroupSyncService mTabGroupSyncService;
     @Mock private CollaborationService mCollaborationService;
     @Mock private BookmarkModel mBookmarkModel;
-    @Mock private MonotonicObservableSupplier<TabBookmarker> mTabBookmarkerSupplier;
     @Mock private BottomSheetController mBottomSheetController;
     @Mock private ModalDialogManager mModalDialogManager;
     @Mock private Runnable mOnTabGroupCreation;
@@ -98,6 +97,8 @@ public class PinnedTabStripMediatorTest {
 
     @Captor private ArgumentCaptor<TabModelObserver> mTabModelObserverCaptor;
 
+    private final MonotonicObservableSupplier<TabBookmarker> mTabBookmarkerSupplier =
+            ObservableSuppliers.alwaysNull();
     private TabListModel mTabListModel;
     private TabListModel mPinnedTabsModelList;
     private PropertyModel mStripPropertyModel;
@@ -118,6 +119,7 @@ public class PinnedTabStripMediatorTest {
     }
 
     void onActivity(TestActivity activity) {
+        mTabGroupModelFilterSupplier.set(mTabGroupModelFilter);
         mActivity = activity;
         mTabListModel = new TabListModel();
         mPinnedTabsModelList = new TabListModel();
@@ -147,7 +149,6 @@ public class PinnedTabStripMediatorTest {
         mTabListItemSizeChangedObserver = observerCaptor.getValue();
         when(mLayoutManager.getSpanCount()).thenReturn(2);
 
-        mTabGroupModelFilterSupplier.set(mTabGroupModelFilter);
         mMediator.setContextMenuCoordinatorForTesting(mMenuCoordinator);
         verify(mTabGroupModelFilter).addObserver(mTabModelObserverCaptor.capture());
     }
@@ -547,7 +548,7 @@ public class PinnedTabStripMediatorTest {
         mTabModelObserverCaptor.getValue().tabClosureUndone(mTab1);
         // The updatePinnedTabsBar() call is now posted to the UI thread.
         // We need to advance the looper to ensure the posted task is executed.
-        ShadowLooper.runUiThreadTasksIncludingDelayedTasks();
+        RobolectricUtil.runAllBackgroundAndUiIncludingDelayed();
         verify(mLayoutManager, times(2)).findFirstVisibleItemPosition();
     }
 

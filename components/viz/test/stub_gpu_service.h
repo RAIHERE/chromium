@@ -63,7 +63,9 @@ class StubGpuService : public mojom::GpuService {
           receiver) override;
   void BindWebNNContextProvider(
       mojo::PendingReceiver<webnn::mojom::WebNNContextProvider> receiver,
-      int32_t client_id) override;
+      int32_t client_id,
+      uint64_t client_tracing_id,
+      bool is_incognito) override;
   void GetVideoMemoryUsageStats(
       GetVideoMemoryUsageStatsCallback callback) override;
 #if BUILDFLAG(IS_WIN)

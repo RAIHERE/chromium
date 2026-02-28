@@ -325,6 +325,8 @@ DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(SigninViewController,
 DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(SigninViewController,
                                       kHistorySyncOptinViewId);
 
+DEFINE_CLASS_ELEMENT_IDENTIFIER_VALUE(SigninViewController, kSigninErrorViewId);
+
 SigninViewController::SigninViewController(BrowserWindowInterface* browser,
                                            Profile* profile,
                                            TabStripModel* tab_strip_model)
@@ -396,14 +398,13 @@ void SigninViewController::SignoutOrReauthWithPrompt(
           profile_signout_source, token_signout_source);
   // Fetch the unsynced datatypes, as this is required to decide whether the
   // confirmation prompt is needed.
-  if (sync_service &&
-      profile_->GetPrefs()->GetBoolean(prefs::kExplicitBrowserSignin)) {
+  if (sync_service) {
     sync_service->GetTypesWithUnsyncedData(
         syncer::TypesRequiringUnsyncedDataCheckOnSignout(),
         std::move(signout_prompt_with_datatypes));
     return;
   }
-  // Dice users don't see the prompt, pass empty datatypes.
+  // No sync service pass empty datatypes.
   std::move(signout_prompt_with_datatypes)
       .Run(absl::flat_hash_map<syncer::DataType, size_t>());
 }
@@ -788,11 +789,6 @@ void SigninViewController::SignoutOrReauthWithPromptWithUnsyncedDataTypes(
                         return current_sum + pair.second;
                       });
 
-  // Do not show the dialog to users with implicit signin.
-  if (!profile_->GetPrefs()->GetBoolean(prefs::kExplicitBrowserSignin)) {
-    sign_out_immediately = true;
-  }
-
   if (ShowAccountExtensionsOnSignout(GetProfile())) {
     sign_out_immediately = false;
   }
@@ -881,12 +877,11 @@ void SigninViewController::ShowChromeSigninDialogForExtensions(
                 extension_name_for_display);
 
   std::u16string continue_as_text =
-      base::UTF8ToUTF16(!account_info_for_promos.given_name.empty()
-                            ? account_info_for_promos.given_name
-                            : account_info_for_promos.email);
+      base::UTF8ToUTF16(account_info_for_promos.GetGivenName().value_or(
+          account_info_for_promos.GetEmail()));
   std::u16string body = l10n_util::GetStringFUTF16(
       IDS_EXTENSION_ASKS_IDENTITY_WHILE_SIGNED_IN_WEB_ONLY_BODY_PART_1,
-      base::UTF8ToUTF16(account_info_for_promos.email));
+      base::UTF8ToUTF16(account_info_for_promos.GetEmail()));
 
   ui::DialogModel::Builder dialog_builder;
   dialog_builder.SetInternalName("ChromeSigninChoiceForExtensionsPrompt")

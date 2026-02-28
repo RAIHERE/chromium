@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/barrier_closure.h"
+#include "base/byte_size.h"
 #include "base/compiler_specific.h"
 #include "base/containers/span.h"
 #include "base/memory/raw_ref.h"
@@ -106,7 +107,6 @@ class FakeNavigationClient : public mojom::NavigationClient {
       const blink::DocumentToken& document_token,
       const base::UnguessableToken& devtools_navigation_token,
       const base::Uuid& base_auction_nonce,
-      const std::optional<network::ParsedPermissionsPolicy>& permissions_policy,
       blink::mojom::PolicyContainerPtr policy_container,
       mojo::PendingRemote<blink::mojom::CodeCacheHost> code_cache_host,
       mojo::PendingRemote<blink::mojom::CodeCacheHost>
@@ -210,7 +210,8 @@ class ResourceWriter {
   void DidWriteMetadata(int result) {
     DCHECK_EQ(result, static_cast<int>(meta_data_.size()));
     std::move(callback_).Run(storage::mojom::ServiceWorkerResourceRecord::New(
-        resource_id_, script_url_, body_.size(), /*sha256_checksum=*/""));
+        resource_id_, script_url_, base::ByteSize(body_.size()),
+        /*sha256_checksum=*/""));
   }
 
   const raw_ref<const mojo::Remote<storage::mojom::ServiceWorkerStorageControl>>
@@ -296,7 +297,6 @@ CommittedServiceWorkerClient::CommittedServiceWorkerClient(
       /*document_token=*/blink::DocumentToken(),
       /*devtools_navigation_token=*/base::UnguessableToken::Create(),
       /*base_auction_nonce=*/base::Uuid::GenerateRandomV4(),
-      std::vector<network::ParsedPermissionsPolicyDeclaration>(),
       CreateStubPolicyContainer(), /*code_cache_host=*/mojo::NullRemote(),
       /*code_cache_host_for_background=*/mojo::NullRemote(),
       /*cookie_manager_info=*/nullptr,
@@ -521,7 +521,7 @@ CreateServiceWorkerRegistrationAndVersion(ServiceWorkerContextCore* context,
   std::vector<storage::mojom::ServiceWorkerResourceRecordPtr> records;
   records.push_back(storage::mojom::ServiceWorkerResourceRecord::New(
       resource_id, script,
-      /*size_bytes=*/100, /*sha256_checksum=*/""));
+      /*size_bytes=*/base::ByteSize(100), /*sha256_checksum=*/""));
   version->script_cache_map()->SetResources(records);
   version->set_fetch_handler_type(
       ServiceWorkerVersion::FetchHandlerType::kNotSkippable);
@@ -778,10 +778,10 @@ ServiceWorkerUpdateCheckTestUtils::~ServiceWorkerUpdateCheckTestUtils() =
 std::unique_ptr<ServiceWorkerCacheWriter>
 ServiceWorkerUpdateCheckTestUtils::CreatePausedCacheWriter(
     EmbeddedWorkerTestHelper* worker_test_helper,
-    size_t bytes_compared,
+    base::ByteSize bytes_compared,
     const std::string& new_headers,
     scoped_refptr<network::MojoToNetPendingBuffer> pending_network_buffer,
-    uint32_t consumed_size,
+    base::ByteSize consumed_size,
     int64_t old_resource_id,
     int64_t new_resource_id) {
   mojo::Remote<storage::mojom::ServiceWorkerResourceReader> compare_reader;
@@ -821,7 +821,7 @@ ServiceWorkerUpdateCheckTestUtils::CreatePausedCacheWriter(
           pending_network_buffer ? pending_network_buffer->buffer() : nullptr,
           pending_network_buffer ? pending_network_buffer->size() : 0)));
   cache_writer->len_to_write_ = consumed_size;
-  cache_writer->bytes_written_ = 0;
+  cache_writer->bytes_written_ = base::ByteSize(0);
   cache_writer->io_pending_ = true;
   cache_writer->state_ = ServiceWorkerCacheWriter::State::STATE_PAUSING;
   return cache_writer;
@@ -833,7 +833,7 @@ ServiceWorkerUpdateCheckTestUtils::CreateUpdateCheckerPausedState(
     ServiceWorkerUpdatedScriptLoader::LoaderState network_loader_state,
     ServiceWorkerUpdatedScriptLoader::WriterState body_writer_state,
     scoped_refptr<network::MojoToNetPendingBuffer> pending_network_buffer,
-    uint32_t consumed_size) {
+    base::ByteSize consumed_size) {
   mojo::Remote<network::mojom::URLLoaderClient> network_loader_client;
   mojo::PendingReceiver<network::mojom::URLLoaderClient>
       network_loader_client_receiver =
@@ -870,7 +870,7 @@ void ServiceWorkerUpdateCheckTestUtils::SetComparedScriptInfoForVersion(
 void ServiceWorkerUpdateCheckTestUtils::
     CreateAndSetComparedScriptInfoForVersion(
         const GURL& script_url,
-        size_t bytes_compared,
+        base::ByteSize bytes_compared,
         const std::string& new_headers,
         const std::string& diff_data_block,
         int64_t old_resource_id,
@@ -882,7 +882,7 @@ void ServiceWorkerUpdateCheckTestUtils::
         ServiceWorkerVersion* version,
         mojo::ScopedDataPipeProducerHandle* out_body_handle) {
   scoped_refptr<network::MojoToNetPendingBuffer> pending_buffer;
-  uint32_t bytes_available = 0;
+  base::ByteSize bytes_available;
   if (!diff_data_block.empty()) {
     mojo::ScopedDataPipeConsumerHandle network_consumer;
     // Create a data pipe which has the new block sent from the network.
@@ -896,8 +896,8 @@ void ServiceWorkerUpdateCheckTestUtils::
     // Read the data to make a pending buffer.
     ASSERT_EQ(MOJO_RESULT_OK, network::MojoToNetPendingBuffer::BeginRead(
                                   &network_consumer, &pending_buffer));
-    bytes_available = pending_buffer->size();
-    ASSERT_EQ(diff_data_block.size(), bytes_available);
+    bytes_available = base::ByteSize(pending_buffer->size());
+    ASSERT_EQ(diff_data_block.size(), bytes_available.InBytes());
   }
 
   auto cache_writer = CreatePausedCacheWriter(

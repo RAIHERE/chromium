@@ -22,7 +22,7 @@ using content::WebContents;
 TabStripModelChange::RemovedTab::RemovedTab(
     tabs::TabInterface* tab,
     int index,
-    RemoveReason remove_reason,
+    TabRemovedReason remove_reason,
     tabs::TabInterface::DetachReason tab_detach_reason,
     std::optional<SessionID> session_id)
     : tab(tab),
@@ -362,9 +362,6 @@ void TabStripModelObserver::OnTabChangedAt(tabs::TabInterface* tab,
 
 void TabStripModelObserver::OnTabPinnedStateChanged(tabs::TabInterface* tab,
                                                     int index) {}
-
-void TabStripModelObserver::OnTabBlockedStateChanged(tabs::TabInterface* tab,
-                                                     int index) {}
 
 void TabStripModelObserver::TabGroupedStateChanged(
     TabStripModel* tab_strip_model,

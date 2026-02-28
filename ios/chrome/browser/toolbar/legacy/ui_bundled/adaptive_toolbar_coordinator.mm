@@ -151,10 +151,6 @@ using tab_groups::VersioningMessageController;
   [self.viewController showPrerenderingAnimation];
 }
 
-- (void)setLocationBarHeight:(CGFloat)height {
-  [self.viewController setLocationBarHeight:height];
-}
-
 #pragma mark - AdaptiveToolbarViewControllerDelegate
 
 - (void)exitFullscreen:(FullscreenExitReason)FullscreenExitReason {
@@ -194,10 +190,6 @@ using tab_groups::VersioningMessageController;
 }
 
 #pragma mark - ToolbarCommands
-
-- (void)triggerToolbarSlideInAnimation {
-  // Implemented in primary and secondary toolbars directly.
-}
 
 - (void)indicateLensOverlayVisible:(BOOL)lensOverlayVisible {
   // NO-OP

@@ -29,6 +29,7 @@
 #include "third_party/blink/renderer/platform/graphics/paint/scrollbar_display_item.h"
 #include "third_party/blink/renderer/platform/wtf/allocator/allocator.h"
 #include "ui/gfx/geometry/point_conversions.h"
+#include "ui/gfx/geometry/rect.h"
 #include "ui/gfx/geometry/rect_conversions.h"
 
 namespace blink {
@@ -277,8 +278,13 @@ class ConversionContext {
   void ApplyTransform(const TransformPaintPropertyNode& target_transform) {
     if (&target_transform == current_transform_)
       return;
-    gfx::Transform projection = TargetToCurrentProjection(target_transform);
-    if (projection.IsIdentityOr2dTranslation()) {
+    gfx::Transform projection;
+    bool valid_projection =
+        TargetToCurrentProjection(target_transform, projection);
+    if (!valid_projection) [[unlikely]] {
+      push<cc::ClipRectOp>(SkRect::MakeEmpty(), SkClipOp::kIntersect,
+                           /*antialias=*/false);
+    } else if (projection.IsIdentityOr2dTranslation()) {
       gfx::Vector2dF translation = projection.To2dTranslation();
       if (!translation.IsZero())
         push<cc::TranslateOp>(translation.x(), translation.y());
@@ -287,10 +293,11 @@ class ConversionContext {
     }
   }
 
-  gfx::Transform TargetToCurrentProjection(
-      const TransformPaintPropertyNode& target_transform) const {
-    return GeometryMapper::SourceToDestinationProjection(target_transform,
-                                                         *current_transform_);
+  bool TargetToCurrentProjection(
+      const TransformPaintPropertyNode& target_transform,
+      gfx::Transform& projection) const {
+    return GeometryMapper::SourceToDestinationProjection(
+        target_transform, *current_transform_, projection);
   }
 
   void AppendRestore() {
@@ -857,14 +864,19 @@ ScrollTranslationAction ConversionContext<Result>::SwitchToTransform(
     return action;
   }
 
-  gfx::Transform projection = TargetToCurrentProjection(target_transform);
-  if (projection.IsIdentity()) {
+  gfx::Transform projection;
+  bool valid_projection =
+      TargetToCurrentProjection(target_transform, projection);
+  if (valid_projection && projection.IsIdentity()) {
     return {};
   }
 
   result_.StartPaint();
   push<cc::SaveOp>();
-  if (projection.IsIdentityOr2dTranslation()) {
+  if (!valid_projection) [[unlikely]] {
+    push<cc::ClipRectOp>(SkRect::MakeEmpty(), SkClipOp::kIntersect,
+                         /*antialias=*/false);
+  } else if (projection.IsIdentityOr2dTranslation()) {
     gfx::Vector2dF translation = projection.To2dTranslation();
     push<cc::TranslateOp>(translation.x(), translation.y());
   } else {
@@ -1166,13 +1178,11 @@ class LayerPropertiesUpdater {
                          const PropertyTreeState& layer_state,
                          const PaintChunkSubset& chunks,
                          cc::LayerSelection& layer_selection,
-                         bool selection_only,
-                         CompositorElementId canvas_subtree_id)
+                         bool selection_only)
       : chunk_to_layer_mapper_(layer_state, layer.offset_to_transform_parent()),
         layer_(layer),
         chunks_(chunks),
         layer_selection_(layer_selection),
-        canvas_subtree_id_(canvas_subtree_id),
         selection_only_(selection_only),
         layer_scroll_translation_(
             layer_state.Transform().NearestScrollTranslationNode()) {}
@@ -1205,7 +1215,6 @@ class LayerPropertiesUpdater {
   cc::Layer& layer_;
   const PaintChunkSubset& chunks_;
   cc::LayerSelection& layer_selection_;
-  CompositorElementId canvas_subtree_id_;
   const bool selection_only_;
   const TransformPaintPropertyNode& layer_scroll_translation_;
 
@@ -1307,10 +1316,14 @@ void LayerPropertiesUpdater::UpdateScrollHitTestData(const PaintChunk& chunk) {
   // - the scroll node is not composited.
   if (const auto scroll_translation = hit_test_data.scroll_translation) {
     const auto* scroll_node = scroll_translation->ScrollNode();
-    DCHECK(scroll_node);
-    // TODO(crbug.com/1230615): Remove this when we fix the root cause.
-    if (!scroll_node) {
-      return;
+    if (RuntimeEnabledFeatures::RemoveScrollNodeWorkaroundEnabled()) {
+      CHECK(scroll_node);
+    } else {
+      DCHECK(scroll_node);
+      // TODO(crbug.com/40779139): Remove this when we fix the root cause.
+      if (!scroll_node) {
+        return;
+      }
     }
 
     auto scroll_element_id = scroll_node->GetCompositorElementId();
@@ -1549,11 +1562,19 @@ LayerPropertiesUpdater::PaintedSelectionBoundToLayerSelectionBound(
   cc::LayerSelectionBound layer_bound;
   layer_bound.type = bound.type;
 
-  // This is similar to ComputeViewportSelectionBound(). Use the end point
-  // moved 1 pixel towards the start point and expanded by 1 as the sample
-  // rect to check visibility.
-  gfx::Rect sample(bound.edge_end, gfx::Size());
-  if (RuntimeEnabledFeatures::SelectionHandleWithBottomClippedEnabled()) {
+  gfx::Rect sample;
+  if (RuntimeEnabledFeatures::SelectionEdgeVisibilityUsesFullEdgeEnabled()) {
+    // Similar to ComputeViewportSelectionBound()
+    // (cc/trees/layer_tree_impl.cc), this is a conservative pre-check: if the
+    // mapped sample is empty, the bound must stay hidden. Use the full
+    // selection edge so the handle is shown when any part of the edge is
+    // visible (not fully clipped). This handles cases where edge_end
+    // overflows the clip by more than 1px, e.g. when line-height > height on
+    // input elements (crbug.com/451833352).
+    sample = gfx::BoundingRect(bound.edge_start, bound.edge_end);
+  } else {
+    // Legacy behavior kept as a runtime fallback.
+    sample = gfx::Rect(bound.edge_end, gfx::Size());
     auto offset = [](int start, int end) {
       return start < end ? -1 : start > end ? 1 : 0;
     };
@@ -1651,7 +1672,6 @@ void LayerPropertiesUpdater::Update() {
         std::move(main_thread_scroll_hit_test_region_));
     layer_.SetNonCompositedScrollHitTestRects(
         std::move(non_composited_scroll_hit_test_rects));
-    layer_.SetCanvasSubtreeId(canvas_subtree_id_);
   }
 
   if (any_selection_was_painted) {
@@ -1677,10 +1697,9 @@ void PaintChunksToCcLayer::UpdateLayerProperties(
     const PropertyTreeState& layer_state,
     const PaintChunkSubset& chunks,
     cc::LayerSelection& layer_selection,
-    bool selection_only,
-    CompositorElementId canvas_subtree_id) {
+    bool selection_only) {
   LayerPropertiesUpdater(layer, layer_state, chunks, layer_selection,
-                         selection_only, canvas_subtree_id)
+                         selection_only)
       .Update();
 }
 

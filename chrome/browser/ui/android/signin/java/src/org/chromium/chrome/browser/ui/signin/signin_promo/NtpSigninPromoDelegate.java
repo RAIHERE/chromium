@@ -9,9 +9,11 @@ import static org.chromium.build.NullUtil.assumeNonNull;
 import android.content.Context;
 import android.text.format.DateUtils;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.IntDef;
 import androidx.annotation.VisibleForTesting;
 
+import org.chromium.base.TimeUtils;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
 import org.chromium.chrome.browser.preferences.ChromePreferenceKeys;
@@ -23,6 +25,7 @@ import org.chromium.chrome.browser.signin.services.SigninPreferencesManager;
 import org.chromium.chrome.browser.ui.signin.R;
 import org.chromium.chrome.browser.ui.signin.SigninAndHistorySyncActivityLauncher;
 import org.chromium.chrome.browser.ui.signin.SigninSurveyController;
+import org.chromium.components.browser_ui.styles.SemanticColorUtils;
 import org.chromium.components.signin.SigninFeatureMap;
 import org.chromium.components.signin.SigninFeatures;
 import org.chromium.components.signin.base.CoreAccountInfo;
@@ -32,6 +35,7 @@ import org.chromium.components.signin.metrics.SigninAccessPoint;
 
 import java.lang.annotation.Retention;
 import java.lang.annotation.RetentionPolicy;
+import java.util.function.BooleanSupplier;
 
 /** {@link SigninPromoDelegate} for ntp signin promo. */
 @NullMarked
@@ -48,10 +52,16 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
         int SIGNIN = 1;
     }
 
-    @VisibleForTesting static final int MAX_IMPRESSIONS_NTP = 5;
+    private final BooleanSupplier mIsSetupListActiveSupplier;
+
+    static final int MAX_IMPRESSIONS_NTP = 5;
+
     // 14 days in hours.
-    @VisibleForTesting static final int NTP_SYNC_PROMO_NTP_SINCE_FIRST_TIME_SHOWN_LIMIT_HOURS = 336;
-    @VisibleForTesting static final int NTP_SYNC_PROMO_RESET_AFTER_DAYS = 30;
+    @VisibleForTesting(otherwise = VisibleForTesting.PACKAGE_PRIVATE)
+    public static final int NTP_SYNC_PROMO_NTP_SINCE_FIRST_TIME_SHOWN_LIMIT_HOURS = 336;
+
+    @VisibleForTesting(otherwise = VisibleForTesting.PACKAGE_PRIVATE)
+    public static final int NTP_SYNC_PROMO_RESET_AFTER_DAYS = 30;
 
     /** Period for which promos are suppressed if signin is refused in FRE. */
     @VisibleForTesting static final long SUPPRESSION_PERIOD_MS = DateUtils.DAY_IN_MILLIS;
@@ -65,8 +75,10 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
      * ChromePreferenceKeys#SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME} and {@link
      * ChromePreferenceKeys#SIGNIN_PROMO_NTP_LAST_SHOWN_TIME} to allow the promo card to show again.
      */
+    // TODO(crbug.com/469775981): make this private once Seamless sign-in is launched and the class
+    // SignInPromo has been removed.
     public static void resetNtpSyncPromoLimitsIfHiddenForTooLong() {
-        final long currentTime = System.currentTimeMillis();
+        final long currentTime = TimeUtils.currentTimeMillis();
         final long resetAfterMs = NTP_SYNC_PROMO_RESET_AFTER_DAYS * DateUtils.DAY_IN_MILLIS;
         final long lastShownTime =
                 ChromeSharedPreferences.getInstance()
@@ -86,8 +98,11 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
             Context context,
             Profile profile,
             SigninAndHistorySyncActivityLauncher launcher,
-            Runnable onPromoStateChange) {
+            Runnable onPromoStateChange,
+            BooleanSupplier isSetupListActiveSupplier) {
         super(context, profile, launcher, onPromoStateChange);
+        mIsSetupListActiveSupplier = isSetupListActiveSupplier;
+        resetNtpSyncPromoLimitsIfHiddenForTooLong();
     }
 
     @Override
@@ -174,7 +189,7 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
 
     @Override
     void recordImpression() {
-        final long currentTime = System.currentTimeMillis();
+        final long currentTime = TimeUtils.currentTimeMillis();
         final long lastShownTime =
                 ChromeSharedPreferences.getInstance()
                         .readLong(ChromePreferenceKeys.SIGNIN_PROMO_NTP_LAST_SHOWN_TIME, 0L);
@@ -210,10 +225,16 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
         return SigninSurveyController.SigninSurveyType.NTP_PROMO;
     }
 
+    @Override
+    @ColorInt
+    int getAccountPickerBackgroundColor() {
+        return SemanticColorUtils.getColorSurfaceContainer(mContext);
+    }
+
     private static boolean timeElapsedSinceFirstShownExceedsLimit() {
         final long timeSinceFirstShownLimitMs =
                 NTP_SYNC_PROMO_NTP_SINCE_FIRST_TIME_SHOWN_LIMIT_HOURS * DateUtils.HOUR_IN_MILLIS;
-        final long currentTime = System.currentTimeMillis();
+        final long currentTime = TimeUtils.currentTimeMillis();
         final long firstShownTime =
                 ChromeSharedPreferences.getInstance()
                         .readLong(ChromePreferenceKeys.SIGNIN_PROMO_NTP_FIRST_SHOWN_TIME, 0L);
@@ -226,6 +247,9 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
     }
 
     private @PromoState int computePromoState(@Nullable CoreAccountInfo visibleAccount) {
+        if (mIsSetupListActiveSupplier.getAsBoolean()) {
+            return PromoState.NONE;
+        }
         if (SigninFeatureMap.isEnabled(SigninFeatures.ENABLE_SEAMLESS_SIGNIN)
                 && isPromoSuppressed()) {
             return PromoState.NONE;
@@ -269,7 +293,7 @@ public class NtpSigninPromoDelegate extends SigninPromoDelegate {
                 SigninPreferencesManager.getInstance()
                         .getNewTabPageSigninPromoSuppressionPeriodStart();
         if (suppressedFrom == 0) return false;
-        long currentTime = System.currentTimeMillis();
+        long currentTime = TimeUtils.currentTimeMillis();
         long suppressedTo = suppressedFrom + SUPPRESSION_PERIOD_MS;
         if (suppressedFrom <= currentTime && currentTime < suppressedTo) {
             return true;

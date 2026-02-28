@@ -9,31 +9,15 @@
 
 #include "base/check.h"
 #include "base/functional/bind.h"
-#include "base/memory/weak_ptr.h"
 #include "base/metrics/histogram_functions.h"
 #include "base/time/time.h"
-#include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/command_updater.h"
-#include "chrome/browser/ui/browser_command_controller.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
-#include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
-#include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter.h"
-#include "chrome/browser/ui/webui/metrics_reporter/metrics_reporter_service.h"
-#include "chrome/browser/ui/webui/webui_embedding_context.h"
 #include "components/browser_apis/browser_controls/browser_controls_api.mojom.h"
-#include "content/public/browser/context_menu_params.h"
-#include "content/public/browser/web_contents.h"
-#include "content/public/browser/web_contents_delegate.h"
 #include "ui/base/window_open_disposition_utils.h"
 #include "ui/events/event_constants.h"
 
 namespace {
 // Measurement marks.
-constexpr char kChangeVisibleModeToLoadingStartMark[] =
-    "BrowserControls.ChangeVisibleModeToLoading.Start";
-constexpr char kChangeVisibleModeToNotLoadingStartMark[] =
-    "BrowserControls.ChangeVisibleModeToNotLoading.Start";
 constexpr char kInputMouseReleaseStartMark[] =
     "ReloadButton.Input.MouseRelease.Start";
 
@@ -71,49 +55,44 @@ int ToUIEventFlags(
 
 }  // namespace
 
+namespace browser_controls_api {
+
 BrowserControlsService::BrowserControlsService(
-    mojo::PendingReceiver<browser_controls_api::mojom::BrowserControlsService>
-        service,
-    mojo::PendingRemote<browser_controls_api::mojom::BrowserControlsObserver>
-        observer,
-    content::WebContents* web_contents,
-    CommandUpdater* command_updater,
+    mojo::PendingReceiver<mojom::BrowserControlsService> service,
+    std::unique_ptr<BrowserControlsAdapter> browser_adapter,
+    MetricsReporter* metrics_reporter,
     BrowserControlsServiceDelegate* delegate)
     : service_(this, std::move(service)),
-      observer_(std::move(observer)),
-      web_contents_(web_contents),
-      command_updater_(command_updater),
+      browser_adapter_(std::move(browser_adapter)),
+      metrics_reporter_(metrics_reporter),
       delegate_(delegate) {
-  CHECK(web_contents_);
-  CHECK(command_updater_);
+  CHECK(browser_adapter_);
 }
 
 BrowserControlsService::~BrowserControlsService() = default;
-
-MetricsReporter* BrowserControlsService::GetMetricsReporter() {
-  MetricsReporterService* service =
-      MetricsReporterService::GetFromWebContents(web_contents_);
-  return service ? service->metrics_reporter() : nullptr;
-}
 
 void BrowserControlsService::ReloadFromClick(
     bool bypass_cache,
     const std::vector<browser_controls_api::mojom::ClickDispositionFlag>&
         click_flags) {
-  command_updater_->ExecuteCommandWithDisposition(
-      bypass_cache ? IDC_RELOAD_BYPASSING_CACHE : IDC_RELOAD,
-      ui::DispositionFromEventFlags(ToUIEventFlags(click_flags)));
+  // This is called in order to signal that external protocol dialogs are
+  // allowed to show due to a user action, which are likely to happen on the
+  // next page load after the reload button is clicked.
+  // Ideally, the browser UI's event system would notify ExternalProtocolHandler
+  // that a user action occurred and we are OK to open the dialog, but for some
+  // reason that isn't happening every time the reload button is clicked. See
+  // http://crbug.com/1206456
+  if (delegate_) {
+    delegate_->PermitLaunchUrl();
+  }
+
+  browser_adapter_->Reload(
+      bypass_cache, ui::DispositionFromEventFlags(ToUIEventFlags(click_flags)));
 
   // Gets the current time immediately after executing the command.
   const base::TimeTicks now = base::TimeTicks::Now();
-
-  auto* metrics_reporter = GetMetricsReporter();
-  if (!metrics_reporter) {
-    return;
-  }
-
   // MouseRelease
-  metrics_reporter->Measure(
+  metrics_reporter_->Measure(
       kInputMouseReleaseStartMark, now,
       base::BindOnce(&BrowserControlsService::OnMeasureResultAndClearMark,
                      weak_ptr_factory_.GetWeakPtr(),
@@ -123,18 +102,12 @@ void BrowserControlsService::ReloadFromClick(
 }
 
 void BrowserControlsService::StopLoad() {
-  command_updater_->ExecuteCommandWithDisposition(
-      IDC_STOP, WindowOpenDisposition::CURRENT_TAB);
+  browser_adapter_->Stop();
+
   // Gets the current time immediately after executing the command.
   const base::TimeTicks now = base::TimeTicks::Now();
-
-  auto* metrics_reporter = GetMetricsReporter();
-  if (!metrics_reporter) {
-    return;
-  }
-
   // MouseRelease
-  metrics_reporter->Measure(
+  metrics_reporter_->Measure(
       kInputMouseReleaseStartMark, now,
       base::BindOnce(&BrowserControlsService::OnMeasureResultAndClearMark,
                      weak_ptr_factory_.GetWeakPtr(),
@@ -143,41 +116,15 @@ void BrowserControlsService::StopLoad() {
   // TODO(crbug.com/448794588): Handle KeyPress events.
 }
 
-void BrowserControlsService::ShowContextMenu(
-    browser_controls_api::mojom::ContextMenuType menu_type,
-    const gfx::Point& viewport_coordinate_css_pixels,
-    ui::mojom::MenuSourceType source) {
-  if (delegate_) {
-    delegate_->HandleContextMenu(menu_type, viewport_coordinate_css_pixels,
-                                 source);
-  }
+void BrowserControlsService::SplitActiveTab() {
+  // We only reach here if the frontend decided we need to CREATE a split.
+  // We don't need to check IsActiveTabInSplit() or handle the menu here.
+  browser_adapter_->CreateNewSplitTab();
 }
 
-void BrowserControlsService::OnPageInitialized() {
-  if (delegate_) {
-    delegate_->OnPageInitialized();
-  }
-}
-
-void BrowserControlsService::OnDevToolsStatusChanged(
-    browser_controls_api::mojom::DevToolsState state) {
-  if (observer_) {
-    observer_->OnDevToolsStatusChanged(state);
-  }
-}
-
-void BrowserControlsService::OnNavigationStatusChanged(
-    browser_controls_api::mojom::NavigationState state) {
-  if (auto* metrics_reporter = GetMetricsReporter()) {
-    auto* mark = state == browser_controls_api::mojom::NavigationState::kLoading
-                     ? kChangeVisibleModeToLoadingStartMark
-                     : kChangeVisibleModeToNotLoadingStartMark;
-    metrics_reporter->Mark(mark);
-  }
-
-  if (observer_) {
-    observer_->OnNavigationStatusChanged(state);
-  }
+void BrowserControlsService::SetDelegate(
+    BrowserControlsServiceDelegate* delegate) {
+  delegate_ = delegate;
 }
 
 void BrowserControlsService::OnMeasureResultAndClearMark(
@@ -186,7 +133,7 @@ void BrowserControlsService::OnMeasureResultAndClearMark(
     base::TimeDelta duration) {
   base::UmaHistogramCustomTimes(histogram_name, duration, base::Milliseconds(1),
                                 base::Minutes(3), 100);
-  if (auto* metrics_reporter = GetMetricsReporter()) {
-    metrics_reporter->ClearMark(start_mark);
-  }
+  metrics_reporter_->ClearMark(start_mark);
 }
+
+}  // namespace browser_controls_api

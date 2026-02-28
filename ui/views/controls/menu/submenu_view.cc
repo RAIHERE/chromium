@@ -191,6 +191,14 @@ void SubmenuView::ChildPreferredSizeChanged(View* child) {
   }
 }
 
+void SubmenuView::ViewHierarchyChanged(
+    const ViewHierarchyChangedDetails& details) {
+  if (!details.is_add && details.child == drop_item_) {
+    drop_item_ = nullptr;
+    drop_position_ = MenuDelegate::DropPosition::kNone;
+  }
+}
+
 void SubmenuView::Layout(PassKey) {
   // We're in a ScrollView, and need to set our width/height ourselves.
   if (!parent()) {
@@ -478,9 +486,10 @@ void SubmenuView::SetSelectedRow(std::optional<size_t> row) {
 }
 
 std::u16string SubmenuView::GetTextForRow(size_t row) {
+  MenuItemView* const menu_item_view = GetMenuItemAt(row);
   return MenuItemView::GetAccessibleNameForMenuItem(
-      GetMenuItemAt(row)->title(), std::u16string(),
-      GetMenuItemAt(row)->ShouldShowNewBadge());
+      menu_item_view->title(), std::u16string(),
+      menu_item_view->new_badge_type());
 }
 
 bool SubmenuView::IsShowing() const {
@@ -501,7 +510,11 @@ void SubmenuView::ShowAt(const MenuHost::InitParams& init_params) {
 
     MenuHost::InitParams new_init_params = init_params;
     new_init_params.contents_view = scroll_view_container_.get();
+    base::WeakPtr<SubmenuView> weak_ptr = weak_ptr_factory_.GetWeakPtr();
     host_->InitMenuHost(new_init_params);
+    if (!weak_ptr) {
+      return;
+    }
   }
 
   // Only fire kMenuStart when a top level menu is being shown to notify that

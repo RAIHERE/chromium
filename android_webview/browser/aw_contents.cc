@@ -129,7 +129,7 @@
 // Must come after all headers that specialize FromJniType() / ToJniType().
 #include "android_webview/browser_jni_headers/AwContents_jni.h"
 #include "android_webview/browser_jni_headers/AwSiteVisitLogger_jni.h"
-#include "android_webview/browser_jni_headers/StartupJavascriptInfo_jni.h"
+#include "android_webview/browser_jni_headers/PersistentJavascriptInfo_jni.h"
 
 struct AwDrawSWFunctionTable;
 
@@ -1097,8 +1097,7 @@ bool AwContents::RestoreFromOpaqueState(JNIEnv* env,
   std::vector<uint8_t> state_vector;
   base::android::JavaByteArrayToByteVector(env, state, &state_vector);
 
-  base::Pickle pickle = base::Pickle::WithUnownedBuffer(state_vector);
-  base::PickleIterator iterator(pickle);
+  base::PickleIterator iterator = base::PickleIterator::WithData(state_vector);
 
   return RestoreFromPickle(&iterator, web_contents_.get());
 }
@@ -1436,8 +1435,8 @@ std::vector<ScopedJavaLocalRef<jobject>> AwContents::GetWebMessageListenerInfos(
   return {};
 }
 
-std::vector<ScopedJavaLocalRef<jobject>>
-AwContents::GetDocumentStartupJavascripts(JNIEnv* env) {
+std::vector<ScopedJavaLocalRef<jobject>> AwContents::GetPersistentJavascripts(
+    JNIEnv* env) {
   if (!js_communication_host_.get()) {
     return {};
   }
@@ -1449,12 +1448,9 @@ AwContents::GetDocumentStartupJavascripts(JNIEnv* env) {
   for (const auto& script : scripts) {
     const std::vector<std::string> rules =
         script.allowed_origin_rules_.Serialize();
-    if (script.event_type_ ==
-        js_injection::mojom::DocumentInjectionTime::kDocumentStart) {
-      script_objects.push_back(Java_StartupJavascriptInfo_create(
-          env, base::android::ConvertUTF16ToJavaString(env, script.script_),
-          base::android::ToJavaArrayOfStrings(env, rules)));
-    }
+    script_objects.push_back(Java_PersistentJavascriptInfo_create(
+        env, script.script_, rules, script.world_identifier_,
+        script.event_type_));
   }
 
   return script_objects;
@@ -1469,18 +1465,9 @@ int32_t AwContents::StartPrerendering(
     JNIEnv* env,
     const std::string& prerendering_url,
     const base::android::JavaRef<jobject>& j_prefetch_params,
-    const base::android::JavaRef<jobject>& j_activation_callback,
-    const base::android::JavaRef<jobject>& j_error_callback) {
+    base::OnceClosure&& activation_callback,
+    base::OnceClosure&& error_callback) {
   DCHECK_CURRENTLY_ON(BrowserThread::UI);
-  CHECK(j_activation_callback);
-  CHECK(j_error_callback);
-
-  base::OnceClosure activation_callback =
-      base::BindOnce(&base::android::RunRunnableAndroid,
-                     ScopedJavaGlobalRef<jobject>(env, j_activation_callback));
-  base::OnceClosure error_callback =
-      base::BindOnce(&base::android::RunRunnableAndroid,
-                     ScopedJavaGlobalRef<jobject>(env, j_error_callback));
 
   // Clean up the canceled handles.
   base::EraseIf(prerender_handles_,
@@ -1839,4 +1826,4 @@ void AwContents::OnSafeBrowsingAllowListSet() {
 
 DEFINE_JNI(AwContents)
 DEFINE_JNI(AwSiteVisitLogger)
-DEFINE_JNI(StartupJavascriptInfo)
+DEFINE_JNI(PersistentJavascriptInfo)

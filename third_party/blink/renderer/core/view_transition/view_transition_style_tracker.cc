@@ -13,6 +13,7 @@
 #include "components/viz/common/view_transition_element_resource_id.h"
 #include "third_party/blink/public/common/features.h"
 #include "third_party/blink/public/resources/grit/blink_resources.h"
+#include "third_party/blink/renderer/bindings/core/v8/frozen_array.h"
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/animation/property_handle.h"
 #include "third_party/blink/renderer/core/css/css_default_style_sheets.h"
@@ -71,6 +72,9 @@ namespace {
 
 const char* kDuplicateTagBaseError =
     "Unexpected duplicate view-transition-name: ";
+
+const char* kTagCollisionBaseError =
+    "Element cannot participate in multiple transitions: ";
 
 const CSSPropertyID kPropertiesToCapture[] = {
     CSSPropertyID::kBackdropFilter, CSSPropertyID::kColorScheme,
@@ -736,16 +740,6 @@ void ViewTransitionStyleTracker::AddTransitionElementsFromCSSRecursive(
   // (unless changed by something like z-index on the pseudo-elements).
   auto& root_object = root->GetLayoutObject();
   auto& root_style = root_object.StyleRef();
-  if (element_ && (root_object.GetNode() != *element_) &&
-      (root_style.ViewTransitionScope() == EViewTransitionScope::kAuto)) {
-    // Having "view-transition-scope: auto" on a descendant of the scoped
-    // element halts propagation of tag discovery into the descendant's subtree.
-    // If the scoped element itself has "view-transition-scope: auto", the tag
-    // discovery process proceeds normally.
-    // TODO(crbug.com/478214441): Handle "view-transition-scope: auto" on an
-    // element with "display: contents".
-    return;
-  }
 
   const auto& view_transition_name = root_style.ViewTransitionName();
   AtomicString current_name;
@@ -793,6 +787,13 @@ void ViewTransitionStyleTracker::AddTransitionElementsFromCSSRecursive(
   // children can have outer tree scope.
   PaintLayerPaintOrderIterator child_iterator(root, kAllChildren);
   while (auto* child = child_iterator.Next()) {
+    // View-transition-scope: auto is not confined to elements with directly
+    // corresponding paint layers. Scan the DOM elements for containment
+    // within the interval including checking elements with "display: contents".
+    if (HasContainmentBoundary(root, child)) {
+      continue;
+    }
+
     // Note that both 'contain' and 'nearest' contain descendant names, per
     // https://www.w3.org/TR/css-view-transitions-2/#nearest-containing-group-name
     AddTransitionElementsFromCSSRecursive(
@@ -876,10 +877,46 @@ bool ViewTransitionStyleTracker::FlattenAndVerifyElements(
       return false;
     }
 
+    // TransitionForParticipant will not return our own transition, because
+    // VTST::IsTransitionElement() excludes kIdle and kCaptured states. So if
+    // it returns a transition, it is some other transition that is already
+    // using this element as a participant.
+    if (ViewTransitionUtils::TransitionForParticipant(*element)) {
+      StringBuilder message;
+      message.Append(kTagCollisionBaseError);
+      message.Append(name);
+      AddConsoleError(message.ReleaseString(),
+                      Vector<DOMNodeId>(element->GetDomNodeId()));
+      return false;
+    }
+
     transition_names.push_back(name);
     elements.push_back(element);
   }
   return true;
+}
+
+bool ViewTransitionStyleTracker::HasContainmentBoundary(
+    PaintLayer* root,
+    PaintLayer* child) const {
+  auto& root_object = root->GetLayoutObject();
+  auto& child_object = child->GetLayoutObject();
+  Node* node = child_object.GetNode();
+  if (!node) {
+    return false;
+  }
+  Node* root_node = root_object.GetNode();
+  while (node != root_node) {
+    if (Element* element = DynamicTo<Element>(node)) {
+      if (element != element_ &&
+          element->GetComputedStyle()->ViewTransitionScope() ==
+              EViewTransitionScope::kAuto) {
+        return true;
+      }
+    }
+    node = FlatTreeTraversal::Parent(*node);
+  }
+  return false;
 }
 
 AtomicString ViewTransitionStyleTracker::ComputeContainingGroupName(
@@ -1253,9 +1290,15 @@ void ViewTransitionStyleTracker::PauseRendering() {
   DCHECK_EQ(state_, State::kCapturing);
 
   if (scope_snapshot_layer_) {
+    auto bounds = scope_snapshot_layer_->bounds();
+    auto paint_offset = scope_snapshot_layer_->paint_offset();
+
     auto resource_id = scope_snapshot_layer_->ViewTransitionResourceId();
     scope_snapshot_layer_ = cc::ViewTransitionContentLayer::Create(
         resource_id, /*is_live_content_layer=*/false);
+
+    scope_snapshot_layer_->SetBounds(bounds);
+    scope_snapshot_layer_->SetPaintOffset(paint_offset);
   }
 }
 

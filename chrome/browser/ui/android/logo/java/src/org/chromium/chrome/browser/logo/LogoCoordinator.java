@@ -17,11 +17,10 @@ import androidx.core.content.ContextCompat;
 import org.chromium.base.Callback;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
-import org.chromium.chrome.browser.flags.ChromeFeatureList;
 import org.chromium.chrome.browser.logo.LogoBridge.Logo;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationConfigManager;
 import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils;
-import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundImageType;
+import org.chromium.chrome.browser.ntp_customization.NtpCustomizationUtils.NtpBackgroundType;
 import org.chromium.chrome.browser.ntp_customization.theme.chrome_colors.NtpThemeColorInfo;
 import org.chromium.chrome.browser.ntp_customization.theme.chrome_colors.NtpThemeColorUtils;
 import org.chromium.chrome.browser.ntp_customization.theme.upload_image.BackgroundImageInfo;
@@ -37,10 +36,6 @@ public class LogoCoordinator {
     private LogoMediator mMediator;
     private LogoView mLogoView;
     private NtpCustomizationConfigManager.@Nullable HomepageStateListener mHomepageStateListener;
-
-    // The default google logo that is shared across all NTPs.
-    static final CachedTintedBitmap sDefaultGoogleLogo =
-            new CachedTintedBitmap(R.drawable.google_logo, R.color.google_logo_tint_color);
 
     /** Interface for the observers of the logo visibility change. */
     public interface VisibilityObserver {
@@ -73,12 +68,10 @@ public class LogoCoordinator {
 
         mMediator =
                 new LogoMediator(
-                        context,
                         logoClickedCallback,
                         mLogoModel,
                         onLogoAvailableCallback,
                         visibilityObserver,
-                        sDefaultGoogleLogo,
                         defaultGoogleLogoDrawable);
 
         // Should be called after mMediator is created.
@@ -86,8 +79,7 @@ public class LogoCoordinator {
     }
 
     private void maybeInitHomepageStateListener(Context context) {
-        if (!ChromeFeatureList.sAndroidLogoViewRefactor.isEnabled()
-                || !NtpCustomizationUtils.isNtpThemeCustomizationEnabled()) {
+        if (!NtpCustomizationUtils.isNtpThemeCustomizationEnabled()) {
             return;
         }
 
@@ -96,7 +88,7 @@ public class LogoCoordinator {
                     @Override
                     public void onBackgroundImageChanged(
                             Bitmap originalBitmap,
-                            @Nullable BackgroundImageInfo backgroundImageInfo,
+                            BackgroundImageInfo backgroundImageInfo,
                             boolean fromInitialization,
                             int oldType,
                             int newType) {
@@ -121,11 +113,11 @@ public class LogoCoordinator {
                     }
 
                     @Override
-                    public void onBackgroundReset(@NtpBackgroundImageType int oldType) {
-                        if (oldType == NtpBackgroundImageType.DEFAULT) return;
+                    public void onBackgroundReset(@NtpBackgroundType int oldType) {
+                        if (oldType == NtpBackgroundType.DEFAULT) return;
 
                         maybeUpdateTintForDefaultGoogleLogo(
-                                context, NtpBackgroundImageType.DEFAULT, /* primaryColor= */ null);
+                                context, NtpBackgroundType.DEFAULT, /* primaryColor= */ null);
                     }
                 };
         // Skips being notified from NtpCustomizationConfigManager since the drawable has been
@@ -232,7 +224,7 @@ public class LogoCoordinator {
      */
     private void maybeUpdateTintForDefaultGoogleLogo(
             Context context,
-            @NtpBackgroundImageType int backgroundType,
+            @NtpBackgroundType int backgroundType,
             @Nullable @ColorInt Integer primaryColor) {
         // If the default Google logo isn't shown, returns here.
         if (!mMediator.isDefaultGoogleLogoShown()) return;

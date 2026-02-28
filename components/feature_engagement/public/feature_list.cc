@@ -60,7 +60,9 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHDownloadInfoBarDownloadsAreFasterFeature,
     &kIPHEphemeralTabFeature,
     &kIPHFeedCardMenuFeature,
+    &kIPHFuseboxAttachmentFeature,
     &kIPHGenericAlwaysTriggerHelpUiFeature,
+    &kIPHGlicPromoAndroidFeature,
     &kIPHIdentityDiscFeature,
     &kIPHInstanceSwitcherFeature,
     &kIPHKeyboardAccessoryAddressFillingFeature,
@@ -134,6 +136,7 @@ const base::Feature* const kAllFeatures[] = {
 #endif  // BUILDFLAG(IS_IOS) || BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(IS_IOS)
+    &kIPHiOSActiveDaysTrackingFeature,
     &kIPHLongPressToolbarTipFeature,
     &kIPHBadgedReadingListFeature,
     &kIPHWhatsNewFeature,
@@ -171,6 +174,7 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHiOSReplaceSyncPromosWithSignInPromos,
     &kIPHiOSTabGridSwipeRightForIncognito,
     &kIPHiOSDockingPromoFeature,
+    &kIPHiOSDockingPromoEligibilityFeature,
     &kIPHiOSDockingPromoRemindMeLaterFeature,
     &kIPHiOSPromoAllTabsFeature,
     &kIPHiOSPromoMadeForIOSFeature,
@@ -271,12 +275,12 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHSidePanelLensOverlayPinnableFollowupFeature,
     &kIPHSideSearchAutoTriggeringFeature,
     &kIPHSideSearchPageActionLabelFeature,
+    &kIPHVerticalTabstripTutorialFeature,
     &kIPHTabGroupsSaveV2IntroFeature,
     &kIPHTabGroupsSaveV2CloseGroupFeature,
     &kIPHTabGroupsSharedTabChangedFeature,
     &kIPHTabGroupsSharedTabFeedbackFeature,
     &kIPHTabOrganizationSuccessFeature,
-    &kIPHTabSearchFeature,
     &kIPHTabSearchToolbarButtonFeature,
     &kIPHDesktopPwaInstallFeature,
     &kIPHProfileSwitchFeature,
@@ -327,8 +331,14 @@ const base::Feature* const kAllFeatures[] = {
     &kIPHiOSAddressPromoDesktopFeature,
     &kIPHiOSPaymentPromoDesktopFeature,
     &kIPHiOSLensPromoDesktopFeature,
-    &kIPHiOSEnhancedBrowsingDesktopFeature
+    &kIPHiOSEnhancedBrowsingDesktopFeature,
+    &kIPHiOSTabGroupsDesktopFeature,
+    &kIPHiOSPriceTrackingDesktopFeature,
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+#if !BUILDFLAG(IS_IOS)
+    &kIPHResumptionRailFeature,
+#endif  // !BUILDFLAG(IS_IOS)
 };
 }  // namespace
 

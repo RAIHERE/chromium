@@ -7,6 +7,7 @@
 #include <stddef.h>
 
 #include <algorithm>
+#include <cstdint>
 #include <string>
 #include <vector>
 
@@ -34,6 +35,7 @@
 #include "components/search_provider_logos/switches.h"
 #include "net/base/url_util.h"
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
+#include "third_party/omnibox_proto/model_mode.pb.h"
 #include "url/android/gurl_android.h"
 #include "url/gurl.h"
 
@@ -385,6 +387,17 @@ int TemplateUrlServiceAndroid::GetSearchEngineTypeFromTemplateUrl(
   return template_url->GetEngineType(search_terms_data);
 }
 
+std::u16string TemplateUrlServiceAndroid::GetFullNameFromTemplateUrl(
+    JNIEnv* env,
+    const std::u16string& keyword) {
+  TemplateURL* template_url =
+      template_url_service_->GetTemplateURLForKeyword(keyword);
+  if (!template_url) {
+    return u"";
+  }
+  return template_url->GetFullName();
+}
+
 bool TemplateUrlServiceAndroid::SetPlayAPISearchEngine(
     JNIEnv* env,
     const base::android::JavaRef<jstring>& jname,
@@ -430,6 +443,68 @@ bool TemplateUrlServiceAndroid::SetPlayAPISearchEngine(
 
   return template_url_service_->ResetPlayAPISearchEngine(
       new_play_api_turl_data);
+}
+
+bool TemplateUrlServiceAndroid::RemoveSearchEngine(
+    JNIEnv* env,
+    const std::u16string& keyword) {
+  TemplateURL* template_url =
+      template_url_service_->GetTemplateURLForKeyword(keyword);
+  if (!template_url) {
+    return false;
+  }
+
+  if (template_url_service_->GetDefaultSearchProvider() == template_url) {
+    return false;
+  }
+
+  template_url_service_->Remove(template_url);
+  return true;
+}
+
+bool TemplateUrlServiceAndroid::EditSearchEngine(
+    JNIEnv* env,
+    const std::u16string& keyword,
+    const std::u16string& short_name,
+    const std::u16string& new_keyword,
+    const std::string& search_url) {
+  TemplateURL* template_url =
+      template_url_service_->GetTemplateURLForKeyword(keyword);
+  if (!template_url) {
+    return false;
+  }
+
+  // If the template url is prepopulated, we are only allowed to edit the
+  // short name and keyword.
+  if (template_url->prepopulate_id() != 0) {
+    if (search_url != template_url->url()) {
+      return false;
+    }
+  }
+
+  template_url_service_->ResetTemplateURL(template_url, short_name, new_keyword,
+                                          search_url);
+  return true;
+}
+
+bool TemplateUrlServiceAndroid::AddSearchEngine(
+    JNIEnv* env,
+    const std::u16string& short_name,
+    const std::u16string& keyword,
+    const std::string& search_url) {
+  if (template_url_service_->GetTemplateURLForKeyword(keyword)) {
+    return false;
+  }
+
+  TemplateURLData data;
+  data.SetShortName(short_name);
+  data.SetKeyword(keyword);
+  data.SetURL(search_url);
+  data.safe_for_autoreplace = false;
+  if (!template_url_service_->Add(std::make_unique<TemplateURL>(data))) {
+    return false;
+  }
+  return true;
 }
 
 base::android::ScopedJavaLocalRef<jstring>
@@ -481,7 +556,8 @@ TemplateUrlServiceAndroid::FilterUserSelectableTemplateUrls(
 
     // Do not include starter pack engines (@aimode, @tabs, ...) as these are
     // not actual search engines.
-    if (template_url->starter_pack_id() != 0) {
+    if (template_url->starter_pack_id() !=
+        template_url_starter_pack_data::StarterPackId::kNone) {
       continue;
     }
 
@@ -502,6 +578,53 @@ void TemplateUrlServiceAndroid::GetTemplateUrls(
         env, template_url_list_obj,
         CreateTemplateUrlAndroid(env, template_url));
   }
+}
+
+std::vector<const TemplateURL*>
+TemplateUrlServiceAndroid::FilterTemplateUrlsByCategory(
+    const std::vector<raw_ptr<TemplateURL, VectorExperimental>>& template_urls,
+    TemplateUrlServiceAndroid::TemplateUrlCategory category) {
+  std::vector<const TemplateURL*> result;
+  for (TemplateURL* turl : template_urls) {
+    bool is_default = template_url_service_->ShowInDefaultList(turl);
+    bool is_extension = turl->type() == TemplateURL::OMNIBOX_API_EXTENSION;
+    bool is_active = template_url_service_->ShowInActivesList(turl);
+    bool is_hidden = template_url_service_->HiddenFromLists(turl);
+
+    switch (category) {
+      case TemplateUrlCategory::kDefault:
+        if (is_default) {
+          result.push_back(turl);
+        }
+        break;
+      case TemplateUrlCategory::kActiveSiteSearch:
+        if (!is_default && !is_hidden && !is_extension && is_active) {
+          result.push_back(turl);
+        }
+        break;
+      case TemplateUrlCategory::kInactiveSiteSearch:
+        if (!is_default && !is_hidden && !is_extension && !is_active) {
+          result.push_back(turl);
+        }
+        break;
+      case TemplateUrlCategory::kExtension:
+        if (!is_default && !is_hidden && is_extension) {
+          result.push_back(turl);
+        }
+        break;
+      default:
+        NOTREACHED();
+    }
+  }
+  return result;
+}
+
+std::vector<const TemplateURL*>
+TemplateUrlServiceAndroid::GetTemplateUrlsByCategory(
+    JNIEnv* env,
+    TemplateUrlCategory category) {
+  return FilterTemplateUrlsByCategory(template_url_service_->GetTemplateURLs(),
+                                      category);
 }
 
 base::android::ScopedJavaLocalRef<jobject>

@@ -41,15 +41,19 @@
 #include "content/browser/renderer_host/render_frame_host_impl.h"
 #include "content/browser/web_contents/web_contents_impl.h"
 #include "content/public/browser/browser_context.h"
+#include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/preloading_trigger_type.h"
 #include "content/public/browser/web_contents_delegate.h"
+#include "content/public/common/content_client.h"
 #include "content/public/common/referrer.h"
 #include "net/base/load_flags.h"
 #include "net/http/http_request_headers.h"
 #include "services/network/public/mojom/supports_loading_mode.mojom.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/blink/public/common/client_hints/enabled_client_hints.h"
 #include "third_party/blink/public/common/navigation/preloading_headers.h"
+#include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom.h"
 #include "url/origin.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -412,7 +416,7 @@ bool PrerenderHost::AreHttpRequestHeadersCompatible(
   // WebView.
   // TODO(crbug.com/40244149): Expand this to other platforms and non-x-headers.
   if (allow_x_header_mismatch) {
-    std::set<std::string> headers_to_be_removed;
+    absl::flat_hash_set<std::string> headers_to_be_removed;
     for (net::HttpRequestHeaders::Iterator it(prerender_headers);
          it.GetNext();) {
       if (it.name().starts_with("X-") || it.name().starts_with("x-")) {
@@ -496,11 +500,11 @@ PrerenderHost::PrerenderHost(
     // Use the same SessionStorageNamespace as the primary page for the
     // prerendering page.
     GetFrameTree()->controller().SetSessionStorageNamespace(
-        site_instance->GetStoragePartitionConfig(),
+        site_instance->GetSecurityPrincipal().GetStoragePartitionConfig(),
         web_contents_->GetPrimaryFrameTree()
             .controller()
-            .GetSessionStorageNamespace(
-                site_instance->GetStoragePartitionConfig()));
+            .GetSessionStorageNamespace(site_instance->GetSecurityPrincipal()
+                                            .GetStoragePartitionConfig()));
 
     // TODO(crbug.com/40177940): This should be moved to FrameTree::Init
     web_contents_->NotifySwappedFromRenderManager(
@@ -750,6 +754,9 @@ void PrerenderHost::ReadyToCommitNavigation(
             parsed_headers->supports_loading_mode,
             network::mojom::LoadingMode::kPrerenderCrossOriginFrames)) {
       allow_cross_origin_subframe_navigation_ = true;
+      GetContentClient()->browser()->LogWebFeatureForCurrentPage(
+          navigation_request->GetRenderFrameHost(),
+          blink::mojom::WebFeature::kPrerender2CrossOriginIframes);
     }
   }
   if (!has_no_vary_search_with_parse_error_header) {
@@ -782,17 +789,15 @@ void PrerenderHost::DidFinishNavigation(NavigationHandle* navigation_handle) {
     return;
   }
 
-  if (PreloadServingMetricsCapsule::IsFeatureEnabled()) {
-    // If `DidFinishNavigation()` is called multiple times, ignore
-    // `PreloadServingMetrics` of that navigation and keep the first one.
-    if (!prerender_initial_preload_serving_metrics_) {
-      // Take `PreloadServingMetrics` of prerender initial navigation.
-      auto& initial_preload_serving_metrics_holder =
-          *PreloadServingMetricsHolder::GetOrCreateForNavigationHandle(
-              *navigation_handle);
-      prerender_initial_preload_serving_metrics_ =
-          initial_preload_serving_metrics_holder.Take();
-    }
+  // If `DidFinishNavigation()` is called multiple times, ignore
+  // `PreloadServingMetrics` of that navigation and keep the first one.
+  if (!prerender_initial_preload_serving_metrics_) {
+    // Take `PreloadServingMetrics` of prerender initial navigation.
+    auto& initial_preload_serving_metrics_holder =
+        *PreloadServingMetricsHolder::GetOrCreateForNavigationHandle(
+            *navigation_handle);
+    prerender_initial_preload_serving_metrics_ =
+        initial_preload_serving_metrics_holder.Take();
   }
 
   const bool is_prerender_main_frame =
@@ -964,14 +969,12 @@ std::unique_ptr<StoredPage> PrerenderHost::Activate(
 
   // Associate `PreloadServingMetrics` of prerender initial navigation to ones
   // of activation.
-  if (PreloadServingMetricsCapsule::IsFeatureEnabled()) {
-    auto& activation_preload_serving_metrics_holder =
-        *PreloadServingMetricsHolder::GetOrCreateForNavigationHandle(
-            navigation_request);
-    activation_preload_serving_metrics_holder
-        .SetPrerenderInitialPreloadServingMetrics(
-            std::move(prerender_initial_preload_serving_metrics_));
-  }
+  auto& activation_preload_serving_metrics_holder =
+      *PreloadServingMetricsHolder::GetOrCreateForNavigationHandle(
+          navigation_request);
+  activation_preload_serving_metrics_holder
+      .SetPrerenderInitialPreloadServingMetrics(
+          std::move(prerender_initial_preload_serving_metrics_));
 
   RecordActivation(navigation_request);
 
@@ -1911,10 +1914,6 @@ void PrerenderHost::AddAdditionalRequestHeaders(
 
 void PrerenderHost::OnWillBeCancelled(
     const PrerenderCancellationReason& reason) {
-  if (!PreloadServingMetricsCapsule::IsFeatureEnabled()) {
-    return;
-  }
-
   [&]() {
     // There are two cases:
     //

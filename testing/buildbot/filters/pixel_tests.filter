@@ -10,10 +10,12 @@ AccessCodeCastDialogBrowserTest.*
 AccountSettingsPagePixelBrowserTest.*
 ActorUiDomNodeGeometryBrowserTest.*
 ActorUiHandoffButtonControllerPixelTest.*
+*AutofillAiLocalSaveNotificationViewBrowsertest.*
 AddNewAddressProfileTest.*
 AppInfoDialogBrowserTest.*
 AppMenuBrowserTest*.InvokeUi_*
 AskGoogleForSuggestionsDialogTest.*
+*AutofillAiImportDataBubbleViewBrowsertest.*
 BatchUploadDialogViewPixelTest.*
 BookmarkAccountStorageMoveDialogPixelTest*
 BookmarkBubbleViewBrowserTest.*
@@ -33,8 +35,6 @@ ContentAnalysysDialogUiTest.*
 ContentSettingBubbleDialogTest.*
 CookieClearOnExitMigrationNoticePixelTest.*
 CookieControlsBubbleViewPixelTest.*
-CookieControlsBubbleViewTrackingProtectionUiPixelTest.*
-OldCookieControlsBubbleViewTest.*
 *CreatePopupRowViewTest.*
 *CreatePopupRowViewWithNoUserEducationRateLimitTest.*
 CryptoModulePasswordDialogTest.*
@@ -78,6 +78,7 @@ InteractionTestUtilBrowserTest.CompareScreenshot_*
 InteractionTestUtilBrowserUiTest.CompareScreenshot_*
 *IOSPromoBubbleBrowserTest.*
 IsolatedWebAppInstallerViewUiPixelTest.*
+JavascriptOptimizerUiTest.*
 *ContextualTasks*PixelTest*
 *LensSidePanel*PixelTest*
 LHSIndicatorsUiBrowserTest.*
@@ -135,18 +136,18 @@ QuietPromptInteractiveUITest.*
 RecentActivityBubbleDialogViewInteractiveUiTest.*
 RelaunchRecommendedBubbleViewDialogTest.*
 RelaunchRequiredDialogViewDialogTest.*
-ReloadButtonWebViewPixelBrowserTest.*
 ReopenTabPromoControllerDialogBrowserTest.*
 SafetyTipPageInfoBubbleViewDialogTest.*
-*SaveOrUpdateAutofillAiDataBubbleViewBrowsertest*
 ScreenCaptureNotificationUiBrowserTest.*
 SearchEngineChoiceUIPixelTest.*
 SecurePaymentConfirmationDialogViewTest.InvokeUi_*
 *SendTabToSelfBubbleTest.*
 SessionCrashedBubbleViewTest.*
+SettingsOverriddenExplicitChoiceDialogInteractiveUiTest.*
 *SharedPasswordsNotificationBubbleInteractiveUiTest.*
 SharedTabGroupInteractiveUiTest.SharedTabGroupIn*
 SingleBookmarkUploadDialogPixelTest.InvokeUi
+*SkillsPageInteractiveUITest*
 SplitTabButtonInteractiveTest.ButtonUpdatesOnSplit
 SyncConfirmationUIDialogPixelTest.*
 SyncConfirmationUIWindowPixelTest.*
@@ -162,9 +163,11 @@ UpdateRecommendedDialogTest.*
 *WatermarkBrowserTest.*
 *WatermarkTestPageBrowserTest.*
 *WatermarkTestPageDynamicBrowserTest.*
+WebAppBlockedMigrationInfoBarDelegateUiTest.*
 WebAppConfirmViewBrowserTest.*
 WebAppMenuBrowserTest.*
 WebAppUpdateReviewDialog.*
+WebUIToolbarWebViewPixelBrowserTest.*
 ZoomBubbleDialogTest.*
 
 # To temporarily disable a test, add it here with a leading '-', like this:

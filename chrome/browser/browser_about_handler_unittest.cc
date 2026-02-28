@@ -32,7 +32,7 @@
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
-#include "chrome/browser/lifetime/application_lifetime_chromeos.h"
+#include "chromeos/ash/components/login/session/session_termination_manager.h"
 #endif  // BUILDFLAG(IS_CHROMEOS)
 
 namespace {
@@ -90,7 +90,7 @@ class BrowserAboutHandlerTest : public testing::Test {
   void ResetBrowserExitState() {
     browser_shutdown::SetTryingToQuit(false);
 #if BUILDFLAG(IS_CHROMEOS)
-    chrome::SetSendStopRequestToSessionManager(false);
+    ash::SessionTerminationManager::SetSendStopRequestToSessionManager(false);
 #endif  // BUILDFLAG(IS_CHROMEOS)
   }
 
@@ -149,7 +149,7 @@ TEST_F(BrowserAboutHandlerTest,
 
 // Ensure that minor BrowserAboutHandler fixup to a URL does not cause us to
 // keep a separate virtual URL, which would not be updated on redirects.
-// See https://crbug.com/449829.
+// See https://crbug.com/40081211.
 TEST_F(BrowserAboutHandlerTest, NoVirtualURLForFixup) {
   GURL url("view-source:http://.foo");
 
@@ -189,7 +189,8 @@ TEST_F(BrowserAboutHandlerTest,
 #if !BUILDFLAG(IS_CHROMEOS)
   EXPECT_FALSE(browser_shutdown::IsTryingToQuit());
 #else
-  EXPECT_FALSE(chrome::IsSendingStopRequestToSessionManager());
+  EXPECT_FALSE(
+      ash::SessionTerminationManager::IsSendingStopRequestToSessionManager());
 #endif  // !BUILDFLAG(IS_CHROMEOS)
 }
 
@@ -205,7 +206,8 @@ TEST_F(BrowserAboutHandlerTest,
 #if !BUILDFLAG(IS_CHROMEOS)
   EXPECT_TRUE(browser_shutdown::IsTryingToQuit());
 #else
-  EXPECT_TRUE(chrome::IsSendingStopRequestToSessionManager());
+  EXPECT_TRUE(
+      ash::SessionTerminationManager::IsSendingStopRequestToSessionManager());
 #endif  // !BUILDFLAG(IS_CHROMEOS)
   ResetBrowserExitState();
 }

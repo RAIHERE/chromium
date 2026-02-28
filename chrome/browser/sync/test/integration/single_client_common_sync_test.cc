@@ -30,6 +30,7 @@
 #include "chrome/browser/sync/test/integration/sync_test.h"
 #include "chrome/browser/sync/test/integration/themes_helper.h"
 #include "components/bookmarks/browser/bookmark_model.h"
+#include "components/browser_sync/browser_sync_switches.h"
 #include "components/policy/core/browser/browser_policy_connector.h"
 #include "components/policy/core/common/mock_configuration_policy_provider.h"
 #include "components/policy/core/common/policy_map.h"
@@ -135,6 +136,11 @@ class SingleClientCommonSyncTest
     if (GetSetupSyncMode() == SetupSyncMode::kSyncTransportOnly) {
       scoped_feature_list_.InitAndEnableFeature(
           syncer::kReplaceSyncPromosWithSignInPromos);
+    } else {
+      // Skip sync-to-signin migration for sync-the-feature tests. This is to
+      // avoid the sync state changing between the PRE_ tests.
+      scoped_feature_list_.InitAndDisableFeature(
+          switches::kMigrateSyncingUserToSignedIn);
     }
   }
   ~SingleClientCommonSyncTest() override = default;
@@ -337,7 +343,8 @@ IN_PROC_BROWSER_TEST_F(SingleClientGetUnsyncedTypesTest,
                    .contains(syncer::BOOKMARKS));
 
   ASSERT_TRUE(bookmarks_helper::BookmarkModelMatchesFakeServerChecker(
-                  GetBookmarkModel(0), GetSyncService(0), GetFakeServer())
+                  GetBookmarkModel(0), GetSyncService(0), GetFakeServer(),
+                  bookmarks_helper::StoreType::kAccountStore)
                   .Wait());
 
   // Force bookmark saved to the account to be unsynced.
@@ -742,6 +749,12 @@ class SingleClientOldProgressMarkerSyncTest : public SyncTest {
       const SingleClientOldProgressMarkerSyncTest&) = delete;
   SingleClientOldProgressMarkerSyncTest& operator=(
       const SingleClientOldProgressMarkerSyncTest&) = delete;
+
+  // The value doesn't matter, since the tests use SetupSyncWithMode(..) to
+  // explicitly pick Sync-the-feature or Sync-the-transport.
+  SyncTest::SetupSyncMode GetSetupSyncMode() const override {
+    return SyncTest::SetupSyncMode::kSyncTransportOnly;
+  }
 
  private:
   base::test::ScopedFeatureList features_;

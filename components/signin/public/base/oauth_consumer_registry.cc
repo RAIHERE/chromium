@@ -7,6 +7,7 @@
 #include "base/feature_list.h"
 #include "base/notreached.h"
 #include "components/contextual_tasks/public/features.h"
+#include "components/wallet/core/common/wallet_features.h"
 #include "google_apis/gaia/gaia_constants.h"
 
 namespace {
@@ -118,7 +119,9 @@ constexpr char kAshScannerKeyedServiceName[] = "ash_scanner_keyed_service";
 constexpr char kAshAutotestPrivateApiName[] = "ash_autotest_private_api";
 constexpr char kSyncDeviceStatisticsMetricsName[] =
     "sync_device_statistics_metrics";
-constexpr char kLegionServiceName[] = "legion_service";
+constexpr char kPrivateAiServiceName[] = "private_ai_service";
+constexpr char kWalletPassesName[] = "wallet_passes";
+constexpr char kAimEligibilityServiceName[] = "aim_eligibility_service";
 
 }  // namespace
 
@@ -497,7 +500,8 @@ OAuthConsumer OAuthConsumerRegistry::GetOAuthConsumerFromId(
           /*scopes=*/{contextual_tasks::ShouldUseSearchResultsScope()
                           ? GaiaConstants::kSearchResultsOAuth2Scope
                           : GaiaConstants::kChromeSyncOAuth2Scope,
-                      GaiaConstants::kClearCutOAuth2Scope});
+                      GaiaConstants::kClearCutOAuth2Scope,
+                      GaiaConstants::kLensOAuth2Scope});
     case OAuthConsumerId::kEnterprisePlusAddress:
       return GetOAuthConsumerForEnterprisePlusAddress();
     case OAuthConsumerId::kGlicUserStatus:
@@ -532,10 +536,21 @@ OAuthConsumer OAuthConsumerRegistry::GetOAuthConsumerFromId(
       return OAuthConsumer(
           /*name=*/kSyncDeviceStatisticsMetricsName,
           /*scopes=*/{GaiaConstants::kChromeSyncOAuth2Scope});
-    case OAuthConsumerId::kLegionService:
+    case OAuthConsumerId::kPrivateAiService:
       return OAuthConsumer(
-          /*name=*/kLegionServiceName,
-          /*scopes=*/{GaiaConstants::kLegionAuthScope});
+          /*name=*/kPrivateAiServiceName,
+          /*scopes=*/{GaiaConstants::kPrivateAiAuthScope});
+    case OAuthConsumerId::kWalletPasses: {
+      CHECK(base::FeatureList::IsEnabled(
+          wallet::features::kWalletApiPrivatePassesEnabled));
+      return signin::OAuthConsumer(
+          /*name=*/kWalletPassesName,
+          /*scopes=*/{GaiaConstants::kWalletPassesOAuth2Scope});
+    }
+    case OAuthConsumerId::kAimEligibilityService:
+      return OAuthConsumer(
+          /*name=*/kAimEligibilityServiceName,
+          /*scopes=*/{GaiaConstants::kSearchResultsOAuth2Scope});
   }
 }
 

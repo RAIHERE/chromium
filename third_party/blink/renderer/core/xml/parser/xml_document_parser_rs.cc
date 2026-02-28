@@ -255,7 +255,13 @@ void XMLDocumentParserRs::ProcessEvents() {
           OrdinalNumber::FromZeroBasedInt(static_cast<int>(row)),
           OrdinalNumber::FromZeroBasedInt(static_cast<int>(column)));
     }
-    HandleError(XMLErrors::kErrorTypeFatal, error_message.c_str(), position);
+    if (xml_ffi::is_error_resumable(*read_state_) && !finish_called_) {
+      carry_unbalanced_root_error_ = {String::FromUTF8(error_message.c_str()),
+                                      position};
+      xml_ffi::reset_error(*read_state_);
+    } else {
+      HandleError(XMLErrors::kErrorTypeFatal, error_message.c_str(), position);
+    }
   }
 }
 
@@ -324,13 +330,22 @@ void XMLDocumentParserRs::ProcessingInstruction(rust::Str target,
     return;
   }
 
-  // ASSERT_NO_EXCEPTION here as we expect the XML parser to produce an error if
-  // the processing instruction would have had an invalid target name or would
-  // have contained the closing sequence '?>'.
   class ProcessingInstruction* pi =
       current_node_->GetDocument().createProcessingInstruction(
           RustStrToWtfString(target), RustStrToWtfString(data),
-          ASSERT_NO_EXCEPTION);
+          IGNORE_EXCEPTION);
+
+  // This situation can arise when the parser accepts a target name or data
+  // because of the XML definition of what a valid character is, but the
+  // construction of the ProcessingInstruction fails when document.cc's
+  // IsValidChar() rejects the target name or data. Follow the non-Rust
+  // implementation here to ignore this situation without throwing a
+  // non-wellformedness error.
+  // For other nullptr result cases of createProcessingInstruction the parser is
+  // expected to report parsing errors before getting here.
+  if (!pi) {
+    return;
+  }
 
   // Insertion needs to be done first to determine is_css_ in
   // ProcessingInstruction.
@@ -604,6 +619,7 @@ void XMLDocumentParserRs::DocType(rust::Str name_rs,
 
 void XMLDocumentParserRs::EndDocument() {
   UpdateLeafTextNode();
+  carry_unbalanced_root_error_ = std::nullopt;
   bool xml_viewer_mode =
       !saw_error_ && !saw_css_ && HasNoStyleInformation(GetDocument());
   if (xml_viewer_mode) {
@@ -678,6 +694,12 @@ void XMLDocumentParserRs::Finish() {
     return;
   }
 
+  if (carry_unbalanced_root_error_) {
+    HandleError(XMLErrors::kErrorTypeFatal,
+                carry_unbalanced_root_error_->error_message.Utf8().c_str(),
+                carry_unbalanced_root_error_->position);
+  }
+
   if (parser_paused_) {
     finish_called_ = true;
   } else {
@@ -727,7 +749,7 @@ void XMLDocumentParserRs::Detach() {
 }
 
 bool XMLDocumentParserRs::WellFormed() const {
-  return !xml_ffi::saw_error(*read_state_);
+  return !xml_ffi::saw_error(*read_state_) && !carry_unbalanced_root_error_;
 }
 
 void XMLDocumentParserRs::InsertErrorMessageBlock() {

@@ -42,6 +42,7 @@
 #include "chrome/browser/ui/browser_window.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/session_crashed_bubble.h"
+#include "chrome/browser/ui/startup/profile_launch_observer.h"
 #include "chrome/browser/ui/startup/startup_browser_creator.h"
 #include "chrome/browser/ui/startup/startup_tab.h"
 #include "chrome/browser/ui/tabs/saved_tab_groups/saved_tab_group_utils.h"
@@ -432,7 +433,7 @@ void SessionService::WindowClosing(SessionID window_id) {
     // browser windows in turn but want them all to be restored when the user
     // unlocks.  To accomplish this, we do a "pending close" on all windows
     // instead of just the last one (which has no open_trackable_browsers).
-    // http://crbug.com/356818
+    // http://crbug.com/41097527
     //
     // Some editions (like iOS) don't have a profile_manager and some tests
     // don't supply one so be lenient.
@@ -593,7 +594,7 @@ bool SessionService::RestoreIfNecessary(const StartupTabs& startup_tabs,
       // instance.
       SessionCrashedBubble::ShowIfNotOffTheRecordProfile(
           browser, /*skip_tab_checking=*/true);
-      AddLaunchedProfile(profile());
+      ProfileLaunchObserver::AddLaunched(profile());
     }
 #endif  // BUILDFLAG(IS_CHROMEOS)
   }

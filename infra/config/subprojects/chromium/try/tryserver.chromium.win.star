@@ -455,6 +455,29 @@ try_.builder(
     execution_timeout = 20 * time.hour,
 )
 
+try_.builder(
+    name = "win-treesinviz-enabled-rel",
+    mirrors = [
+        "ci/win-treesinviz-enabled-rel",
+    ],
+    gn_args = "ci/win-treesinviz-enabled-rel",
+    contact_team_email = "chrome-gpu-team@google.com",
+)
+
+try_.builder(
+    name = "win-webium-product-rel",
+    mirrors = [
+        "ci/win-webium-product-rel",
+    ],
+    gn_args = gn_args.config(
+        configs = [
+            "ci/Win x64 Builder",
+            "release_try_builder",
+        ],
+    ),
+    contact_team_email = "chrome-webium-product-eng@google.com",
+)
+
 gpu.try_.optional_tests_builder(
     name = "win_optional_gpu_tests_rel",
     branch_selector = branches.selector.WINDOWS_BRANCHES,

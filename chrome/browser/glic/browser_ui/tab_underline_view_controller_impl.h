@@ -18,7 +18,6 @@
 #include "chrome/browser/glic/browser_ui/tab_underline_view_controller.h"
 #include "chrome/browser/glic/host/context/glic_tab_data.h"
 #include "chrome/browser/glic/widget/glic_window_controller.h"
-#include "chrome/common/chrome_features.h"
 #include "components/tabs/public/tab_interface.h"
 #include "ui/views/view_observer.h"
 
@@ -47,6 +46,7 @@ class TabUnderlineViewControllerImpl
   // TabUnderlineViewController overrides:
   void Initialize(TabUnderlineView* underline_view,
                   BrowserWindowInterface* browser_window_interface) override;
+  void OnViewAddedToWidget() override;
 
   // contextual_tasks::ActiveTaskContextProvider::Observer overrides:
   // Handles updates from the contextual Tasks backend.

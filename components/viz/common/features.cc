@@ -46,7 +46,7 @@ BASE_FEATURE(kAndroidDumpForBadCompositedUiState,
 // When there is a screenshot request against a surface, issue the copy request
 // into a shared image.
 BASE_FEATURE(kBackForwardTransitionsSameDocSharedImage,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 BASE_FEATURE(kBackdropFilterMirrorEdgeMode, base::FEATURE_ENABLED_BY_DEFAULT);
 
@@ -79,9 +79,6 @@ const char kDrawQuadSplit[] = "num_of_splits";
 // If enabled, overrides the maximum number (exclusive) of quads one draw quad
 // can be split into during occlusion culling.
 BASE_FEATURE(kDrawQuadSplitLimit, base::FEATURE_DISABLED_BY_DEFAULT);
-
-BASE_FEATURE(kEnableRenderPassDrawQuadCullingOptimization,
-             base::FEATURE_ENABLED_BY_DEFAULT);
 
 constexpr base::FeatureParam<DelegatedCompositingMode>::Option
     kDelegatedCompositingModeOption[] = {
@@ -192,6 +189,11 @@ BASE_FEATURE(kVSyncAlignedPresent, base::FEATURE_ENABLED_BY_DEFAULT);
 BASE_FEATURE(kAckCopyOutputRequestEarlyForViewTransition,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
+// If enabled, other frame sinks are throttled when a frame sink is handling
+// user interaction.
+BASE_FEATURE(kThrottleFrameSinksOnInteraction,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kAllowUndamagedNonrootRenderPassToSkip,
 #if BUILDFLAG(IS_MAC)
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -207,13 +209,7 @@ BASE_FEATURE(kAllowForceMergeRenderPassWithRequireOverlayQuads,
 // if enabled, Any CompositorFrameSink of type video that defines a preferred
 // framerate that is below the display framerate will throttle OnBeginFrame
 // callbacks to match the preferred framerate.
-BASE_FEATURE(kOnBeginFrameThrottleVideo,
-#if BUILDFLAG(IS_ANDROID)
-             base::FEATURE_ENABLED_BY_DEFAULT
-#else
-             base::FEATURE_DISABLED_BY_DEFAULT
-#endif
-);
+BASE_FEATURE(kOnBeginFrameThrottleVideo, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // If enabled, Chrome uses ADPF(Android Dynamic Performance Framework) if the
 // device's SOC manufacturer is in the allowlist.
@@ -283,6 +279,16 @@ BASE_FEATURE(kEnableADPFBoostRateLimit, base::FEATURE_DISABLED_BY_DEFAULT);
 const base::FeatureParam<base::TimeDelta> kAdpfBoostRateLimitMinWait{
     &kEnableADPFBoostRateLimit, "adpf_boost_rate_limit_min_wait",
     base::Milliseconds(50)};
+
+// If enabled, Chrome calls the SetThreads
+// ADPF(Android Dynamic Performance Framework) method on a worker thread
+// instead of Viz. The goal is to prevent Viz from blocking on a binder call.
+BASE_FEATURE(kEnableADPFAsyncSetThreads, base::FEATURE_DISABLED_BY_DEFAULT);
+
+// If enabled, Chrome ignores the time spent between swap throttled and the
+// next ScheduleBeginFrameDeadline when sending an ADPF(Android Dynamic
+// Performance Framework) timing report.
+BASE_FEATURE(kEnableADPFIgnoreThrottledTime, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // If enabled, we immediately send acks to clients when a viz surface
 // activates. This effectively removes back-pressure. This can result in wasted
@@ -372,6 +378,12 @@ BASE_FEATURE(kDisplaySchedulerAsClient, base::FEATURE_DISABLED_BY_DEFAULT);
 // receives its BeginFrame.
 BASE_FEATURE(kFlingSchedulingImprovements, base::FEATURE_DISABLED_BY_DEFAULT);
 
+#if BUILDFLAG(IS_WIN)
+// Use BufferQueue for the primary plane instead of a DXGI swap chain or DComp
+// surface.
+BASE_FEATURE(kBufferQueue, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
+
 int DrawQuadSplitLimit() {
   constexpr int kDefaultDrawQuadSplitLimit = 5;
   constexpr int kMinDrawQuadSplitLimit = 1;
@@ -381,12 +393,6 @@ int DrawQuadSplitLimit() {
       kDrawQuadSplitLimit, kDrawQuadSplit, kDefaultDrawQuadSplitLimit);
   return std::clamp(split_limit, kMinDrawQuadSplitLimit,
                     kMaxDrawQuadSplitLimit);
-}
-
-bool IsRenderPassDrawQuadCullingOptimizationEnabled() {
-  static bool is_enabled = base::FeatureList::IsEnabled(
-      kEnableRenderPassDrawQuadCullingOptimization);
-  return is_enabled;
 }
 
 bool IsBackForwardTransitionsSameDocSharedImageEnabled() {
@@ -458,6 +464,11 @@ int MaxOverlaysConsidered() {
 
 bool ShouldOnBeginFrameThrottleVideo() {
   return base::FeatureList::IsEnabled(features::kOnBeginFrameThrottleVideo);
+}
+
+bool ShouldThrottleWhenInteractiveFrameSinks() {
+  return base::FeatureList::IsEnabled(
+      features::kThrottleFrameSinksOnInteraction);
 }
 
 bool ShouldAckOnSurfaceActivationWhenInteractive() {

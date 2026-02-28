@@ -9,7 +9,6 @@
 <translation id="101823271612280837">ರೆಕಾರ್ಡಿಂಗ್ ನಿಲ್ಲಿಸಲಾಗಿದೆ. ಟ್ಯಾಬ್ಲೆಟ್ ಮೋಡ್‌ನಲ್ಲಿ ಗೇಮ್ ಡ್ಯಾಶ್‌ಬೋರ್ಡ್ ಅನ್ನು ಬಳಸಲು ಸಾಧ್ಯವಿಲ್ಲ.</translation>
 <translation id="1024364763893396229">ನಿಮ್ಮ <ph name="NAME" /> ಅನ್ನು ಸೇವ್ ಮಾಡಿ</translation>
 <translation id="1032891413405719768">ಸ್ಟೈಲಸ್ ಬ್ಯಾಟರಿ ಕಡಿಮೆಯಾಗಿದೆ</translation>
-<translation id="1036073649888683237">ಅಧಿಸೂಚನೆಗಳನ್ನು ನಿರ್ವಹಿಸಲು, ಸೆಟ್ಟಿಂಗ್‌ಗಳಿಗೆ ಹೋಗಿ</translation>
 <translation id="1036348656032585052">ಆಫ್ ಮಾಡಿ</translation>
 <translation id="1037492556044956303"><ph name="DEVICE_NAME" /> ಸೇರಿಸಲಾಗಿದೆ</translation>
 <translation id="1038106730571050514">ಸಲಹೆಗಳನ್ನು ತೋರಿಸಿ</translation>
@@ -342,7 +341,6 @@
 <translation id="2201071101391734388">ಇತ್ತೀಚಿನ ಫೋಟೋ <ph name="TOTAL_COUNT" /> ರಲ್ಲಿ <ph name="INDEX" />.</translation>
 <translation id="2201687081523799384">Google Tasks ಅನ್ನು ಕುಗ್ಗಿಸಿ</translation>
 <translation id="2208323208084708176">ಏಕೀಕೃತ ಡೆಸ್ಕ್‌ಟಾಪ್ ಮೋಡ್</translation>
-<translation id="2210311543574621570">ನೀವು Ctrl + V ಅನ್ನು ಒತ್ತಿ ಹಿಡಿದುಕೊಂಡಾಗ ಕ್ಲಿಪ್‌ಬೋರ್ಡ್ ಅನ್ನು ನೀವು ನೋಡುತ್ತೀರಿ. chrome://flags ನಲ್ಲಿ #clipboard-history-longpress ಫ್ಲ್ಯಾಗ್ ಅನ್ನು ನಿಷ್ಕ್ರಿಯಗೊಳಿಸುವ ಮೂಲಕ ನೀವು ಈ ಶಾರ್ಟ್‌ಕಟ್ ಅನ್ನು ಆಫ್ ಮಾಡಬಹುದು.</translation>
 <translation id="2215920961700443347">ಇಂಟರ್ನೆಟ್ ಇಲ್ಲ. ಇಂಟರ್ನೆಟ್‌ಗೆ ಕನೆಕ್ಟ್ ಮಾಡಿ ಹಾಗೂ ಪುನಃ ಪ್ರಯತ್ನಿಸಿ.</translation>
 <translation id="2222841058024245321">ಡೆಸ್ಕ್ 7</translation>
 <translation id="2223384056430485343">ಸ್ಪ್ಲಿಟ್ ಸ್ಕ್ರೀನ್ ಮೋಡ್‌ನಲ್ಲಿ</translation>
@@ -428,6 +426,7 @@
 <translation id="2478076885740497414">ಅಪ್ಲಿಕೇಶನ್ ಸ್ಥಾಪಿಸಿ</translation>
 <translation id="2482878487686419369">ಸೂಚನೆಗಳು</translation>
 <translation id="2484513351006226581">ಕೀಬೋರ್ಡ್ ಲೇಔಟ್ ಬದಲಾಯಿಸಲು <ph name="KEYBOARD_SHORTCUT" /> ಒತ್ತಿರಿ.</translation>
+<translation id="2485422356828889247">ಅನ್‌ಇನ್‌ಸ್ಟಾಲ್</translation>
 <translation id="2486214324139475545"><ph name="DESK_NAME" /> ಪೂರ್ವವೀಕ್ಷಣೆ. ಸಕ್ರಿಯ ಡೆಸ್ಕ್.</translation>
 <translation id="2486405091093637109">"<ph name="DISPLAY_NAME" />" ಅನ್ನು <ph name="RESOLUTION" /> (<ph name="REFRESH_RATE" /> Hz) ರೆಸಲ್ಯೂಷನ್‌ಗೆ ಬದಲಾಯಿಸಲಾಗಿದೆ. ಖಚಿತಪಡಿಸದೆಯೇ, ಈ ಹಿಂದಿನ ಸೆಟ್ಟಿಂಗ್‌ಗಳನ್ನು <ph name="TIMEOUT_SECONDS" /> ನಲ್ಲಿ ಮರುಸ್ಥಾಪಿಸಲಾಗುತ್ತದೆ.</translation>
 <translation id="2487915095798731898">ಸೇರ್ಪಡೆಗೊಳ್ಳು</translation>
@@ -2195,7 +2194,6 @@
 <translation id="8241650983304689286">ಹೊಸ ಸ್ಪ್ಲಿಟ್ ವೀಕ್ಷಣೆಗೆ ಟ್ಯಾಬ್ ಅನ್ನು ಸೇರಿಸಿ</translation>
 <translation id="8247060538831475781"><ph name="CONNECTION_STATUS" />, ಸಿಗ್ನಲ್ ಸಾಮರ್ಥ್ಯ <ph name="SIGNAL_STRENGTH" />, ಫೋನ್ ಬ್ಯಾಟರಿ <ph name="BATTERY_STATUS" /></translation>
 <translation id="825129991941217170">ಎಲ್ಲಾ Google Drive ಕಂಟೆಂಟ್‌ ಅನ್ನು ತೋರಿಸಿ</translation>
-<translation id="8257510091797044096">ನಿಮ್ಮ ಸಾಧನವನ್ನು ಸೆಟಪ್ ಮಾಡಿ</translation>
 <translation id="8261506727792406068">ಅಳಿಸಿ</translation>
 <translation id="8262312463845990408">ಪ್ಲೇಬ್ಯಾಕ್ ಅನ್ನು ಟಾಗಲ್ ಮಾಡಿ</translation>
 <translation id="8268302343625273732">Google Classroom ನಲ್ಲಿ ಎಲ್ಲಾ ಕಾರ್ಯಯೋಜನೆಗಳನ್ನು ನೋಡಿ</translation>

@@ -26,6 +26,7 @@
 #include "content/browser/url_loader_factory_params_helper.h"
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
+#include "content/public/common/child_process_id_util.h"
 #include "ipc/constants.mojom.h"
 #include "mojo/public/cpp/bindings/pending_remote.h"
 #include "net/cookies/site_for_cookies.h"
@@ -80,8 +81,8 @@ class ServiceWorkerAutoAttacher
     if (!IsNewerVersion(host)) {
       return;
     }
-    *should_pause_on_start = wait_for_debugger_on_start();
-    DispatchAutoAttach(host, *should_pause_on_start);
+    *should_pause_on_start =
+        DispatchAutoAttach(host, wait_for_debugger_on_start());
   }
 
   void WorkerDestroyed(ServiceWorkerDevToolsAgentHost* host) override {
@@ -437,15 +438,18 @@ ServiceWorkerDevToolsAgentHost::CreateNetworkFactoryParamsForDevTools() {
   const auto* version = context_wrapper_->GetLiveVersion(version_id_);
   // TODO(crbug.com/40190528): make sure client_security_state is no longer
   // nullptr anywhere.
+  // TODO(crbug.com/447954811): Pass network_restrictions_id so script fetch
+  // can be restricted based on connection allowlist.
   auto factory = URLLoaderFactoryParamsHelper::CreateForWorker(
       rph, origin, version->key().ToPartialNetIsolationInfo(),
       /*coep_reporter=*/mojo::NullRemote(),
       /*dip_reporter=*/mojo::NullRemote(),
       static_cast<StoragePartitionImpl*>(rph->GetStoragePartition())
           ->CreateURLLoaderNetworkObserverForServiceOrSharedWorker(
-              rph->GetDeprecatedID(), origin),
+              ToOriginatingProcessId(rph->GetID()), origin),
       NetworkServiceDevToolsObserver::MakeSelfOwned(GetId()),
       /*client_security_state=*/nullptr,
+      /*network_restrictions_id=*/std::nullopt,
       /*debug_tag=*/"SWDTAH::CreateNetworkFactoryParamsForDevTools",
       /*require_cross_site_request_for_cookies=*/false,
       /*is_for_service_worker_=*/false);

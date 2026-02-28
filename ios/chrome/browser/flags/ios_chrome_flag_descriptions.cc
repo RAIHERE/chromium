@@ -15,6 +15,10 @@ const char kAIHubNewBadgeName[] = "AI Hub New Badge";
 const char kAIHubNewBadgeDescription[] =
     "Enables showing a new badge on the AI Hub button in the toolbar.";
 
+const char kAIMCobrowseDebugEntrypointName[] = "AIM Cobrowse debug entrypoint";
+const char kAIMCobrowseDebugEntrypointDescription[] =
+    "Enables the AIM Cobrowse debug entrypoint feature.";
+
 const char kAIMEligibilityRefreshNTPModulesName[] =
     "AIMEligibilityRefreshNTPModules";
 const char kAIMEligibilityRefreshNTPModulesDescription[] =
@@ -28,6 +32,9 @@ const char kAIMEligibilityServiceStartWithProfileDescription[] =
 const char kAIMNTPEntrypointTabletName[] = "AIMNTPEntrypointTablet";
 const char kAIMNTPEntrypointTabletDescription[] =
     "Enables the AIMNTPEntrypointTablet feature.";
+
+const char kAimCobrowseName[] = "AimCobrowse";
+const char kAimCobrowseDescription[] = "Enables the AimCobrowse feature.";
 
 const char kAnimatedDefaultBrowserPromoInFREName[] =
     "Enable the animated Default Browser Promo in the FRE";
@@ -52,8 +59,9 @@ const char kApplyClientsideModelPredictionsForPasswordTypesDescription[] =
 const char kAskGeminiChipName[] = "Ask Gemini Chip";
 const char kAskGeminiChipDescription[] = "Enables the Ask Gemini Chip feature.";
 
-const char kAssistantSheetName[] = "AssistantSheet";
-const char kAssistantSheetDescription[] = "Enables the assistantSheet feature.";
+const char kAssistantContainerName[] = "Assistant Container";
+const char kAssistantContainerDescription[] =
+    "Enables the Assistant Container feature.";
 
 const char kAutofillAcrossIframesName[] = "Enables Autofill across iframes";
 const char kAutofillAcrossIframesDescription[] =
@@ -89,6 +97,12 @@ const char kAutofillDisableSilentProfileUpdatesName[] =
 const char kAutofillDisableSilentProfileUpdatesDescription[] =
     "When enabled, Autofill will not apply silent updates to address profiles. "
     "For testing purposes.";
+
+const char kAutofillEnableBottomSheetScanCardAndFillName[] =
+    "Enable scan card BottomSheet, then save and fill of the credit card";
+const char kAutofillEnableBottomSheetScanCardAndFillDescription[] =
+    "When enabled, offers a card scanning BottomSheet and allows users to "
+    "save and autofill credit cards in autofill forms.";
 
 const char kAutofillEnableCardBenefitsForAmericanExpressName[] =
     "Enable showing American Express card benefits";
@@ -250,10 +264,6 @@ const char kBestOfAppFREDescription[] =
     "When enabled, displays some views during the FRE highlighting the best "
     "features in the app.";
 
-const char kBottomOmniboxEvolutionName[] = "Bottom Omnibox Evolution";
-const char kBottomOmniboxEvolutionDescription[] =
-    "Enables improvements in the bottom omnibox UX and animations.";
-
 const char kBreakpadNoDelayInitialUploadName[] =
     "Remove delay on initial crash upload";
 const char kBreakpadNoDelayInitialUploadDescription[] =
@@ -299,12 +309,6 @@ const char kComposeboxAttachmentsTypedStateDescription[] =
     "Enables showing suggestions for multiple composebox attachments in a "
     "typed state.";
 
-const char kComposeboxAutoattachTabName[] =
-    "Automatically attach current tab within the composebox";
-const char kComposeboxAutoattachTabDescription[] =
-    "When enabled, the composebox will automatically attach curent tab as "
-    "context.";
-
 const char kComposeboxCloseButtonTopAlignName[] =
     "Align the close button in composebox to the top edge of the view";
 const char kComposeboxCloseButtonTopAlignDescription[] =
@@ -317,15 +321,14 @@ const char kComposeboxCompactModeDescription[] =
     "Enables the compact composebox, adding attachment or enabling AIM will "
     "expand it to the regular size.";
 
+const char kComposeboxDeepSearchName[] = "Enable Composebox Deep Search";
+extern const char kComposeboxDeepSearchDescription[] =
+    "Enables the deep search advanced tool in Composebox";
+
 const char kComposeboxDevToolsName[] = "Enable Composebox Dev Tools";
 const char kComposeboxDevToolsDescription[] =
     "Enables development tools for the composebox, allowing simulation of "
     "delays and failures.";
-
-const char kComposeboxFetchContextualSuggestionsForImageName[] =
-    "Enable Composebox Fetch Contextual Suggestions For image attachment";
-const char kComposeboxFetchContextualSuggestionsForImageDescription[] =
-    "Enables showing suggestions for image attachment.";
 
 const char kComposeboxFetchContextualSuggestionsForMultipleAttachmentsName[] =
     "Enable Composebox Fetch Contextual Suggestions For multiple attachments";
@@ -352,6 +355,11 @@ const char kComposeboxIpadDescription[] = "Enables the composeboxIpad feature.";
 const char kComposeboxMenuTitleName[] = "ComposeboxMenuTitle";
 const char kComposeboxMenuTitleDescription[] =
     "Enables the ComposeboxMenuTitle feature.";
+
+const char kComposeboxServerSideStateName[] =
+    "Enable server side state in Composebox";
+extern const char kComposeboxServerSideStateDescription[] =
+    "When enabled, the server side state will be used in the composebox";
 
 const char kComposeboxTabPickerVariationName[] =
     "Enable tab picker variation in the composebox";
@@ -425,15 +433,16 @@ const char kDataSharingVersioningStatesName[] =
 const char kDataSharingVersioningStatesDescription[] =
     "Testing multiple scenarios for versioning.";
 
-const char kDefaultBrowserMagicStackIosName[] =
-    "Default Browser Magic Stack card.";
-const char kDefaultBrowserMagicStackIosDescription[] =
-    "When enabled, display the Default Browser module in the Magic Stack.";
-
 const char kDefaultBrowserOffCyclePromoName[] =
     "Default Browser off-cycle promo";
 const char kDefaultBrowserOffCyclePromoDescription[] =
     "When enabled, an off-cycle default browser promo will be shown.";
+
+const char kDefaultBrowserPictureInPictureName[] =
+    "Default Browser Promo Picture in Picture";
+const char kDefaultBrowserPictureInPictureDescription[] =
+    "When enabled, default browser instructions will be displayed in "
+    "picture-in-picture format over the iOS settings.";
 
 const char kDefaultBrowserPromoIpadInstructionsName[] =
     "Default Browser Promo iPad Instructions";
@@ -447,10 +456,6 @@ const char kDefaultBrowserPromoPropensityModelDescription[] =
     "When enabled, a propensity model will help make the determination of "
     "whether to show a default browser promo";
 
-const char kDefaultBrowserPromoRefreshName[] = "Default Browser Promo Refresh";
-const char kDefaultBrowserPromoRefreshDescription[] =
-    "When enabled, the default browser promo will be updated.";
-
 const char kDetectMainThreadFreezeName[] = "Detect freeze in the main thread.";
 const char kDetectMainThreadFreezeDescription[] =
     "A crash report will be uploaded if the main thread is frozen more than "
@@ -462,6 +467,11 @@ const char kDisableAutofillStrikeSystemDescription[] =
     "When enabled, the Autofill strike system will not block a feature from "
     "being offered.";
 
+const char kDisableComposeboxFromAIMNTPName[] = "DisableComposeboxFromAIMNTP";
+const char kDisableComposeboxFromAIMNTPDescription[] =
+    "When enabled, the NTP entrypoint will always lead to the AIM webpage even "
+    "when composebox is enabled.";
+
 const char kDisableKeyboardAccessoryName[] =
     "Disable Omnibox Keyboard Accessory";
 const char kDisableKeyboardAccessoryDescription[] =
@@ -472,6 +482,17 @@ const char kDisableLensCameraDescription[] =
     "When enabled, the option use Lens to search for images from your device "
     "camera menu when Google is the selected search engine, accessible from "
     "the home screen widget, new tab page, and keyboard, is disabled.";
+
+const char kDisableShareButtonName[] = "Disable Share Button in Toolbar";
+const char kDisableShareButtonDescription[] =
+    "Hides the share button in toolbar.";
+
+const char kDisableU18FeedbackIosName[] = "DisableU18FeedbackIos";
+const char kDisableU18FeedbackIosDescription[] =
+    "When enabled, the primary identity is set to the feedback UI when opened. "
+    "The user is free add it to the feedback or not. Also the feedback cannot "
+    "be sent if the primary user is under 18. When disabled, the feedback is "
+    "anoymous";
 
 const char kDownloadAutoDeletionClearFilesOnEveryStartupName[] =
     "Enable Download Auto-Deletion Testing Mode";
@@ -508,24 +529,11 @@ const char kEnableAutofillAddressSavePromptName[] =
 const char kEnableAutofillAddressSavePromptDescription[] =
     "Enable the Autofill address save prompts.";
 
-const char kEnableClipboardDataControlsIOSName[] =
-    "Enable Clipboard Data Controls";
-const char kEnableClipboardDataControlsIOSDescription[] =
-    "When this flag is enabled and the DataControlsRules Enterprise policy is "
-    "enabled, Enterprise admins can apply clipboard restrictions to Chrome "
-    "users on iOS.";
-
 const char kEnableCompromisedPasswordsMutingName[] =
     "Enable the muting of compromised passwords in the Password Manager";
 const char kEnableCompromisedPasswordsMutingDescription[] =
     "Enable the compromised password alert mutings in Password Manager to be "
     "respected in the app.";
-
-const char kEnableCrossDevicePrefTrackerName[] =
-    "Enable Cross-Device Pref Tracker";
-const char kEnableCrossDevicePrefTrackerDescription[] =
-    "Enables the tracking and sharing of select non-syncing preference values "
-    "across a user's signed-in devices.";
 
 const char kEnableFamilyLinkControlsName[] = "Family Link parental controls";
 const char kEnableFamilyLinkControlsDescription[] =
@@ -547,6 +555,17 @@ const char kEnableFeedHeaderSettingsName[] =
 const char kEnableFeedHeaderSettingsDescription[] =
     "When enabled, some UI elements of the feed header can be modified.";
 
+const char kEnableFileDownloadConnectorIOSName[] =
+    "Enable file download connectors on iOS.";
+const char kEnableFileDownloadConnectorIOSDescription[] =
+    "When enabled, the enterprise DLP file download featured is available on "
+    "iOS. ";
+
+const char kEnableFuseboxKeyboardAccessoryName[] =
+    "Enable Omnibox Keyboard Accessory in Fusebox";
+extern const char kEnableFuseboxKeyboardAccessoryDescription[] =
+    "Enables parts or all of omnibox keyboard accessory.";
+
 const char kEnableLensInOmniboxCopiedImageName[] =
     "Enable Google Lens in the Omnibox for Copied Images";
 const char kEnableLensInOmniboxCopiedImageDescription[] =
@@ -554,8 +573,10 @@ const char kEnableLensInOmniboxCopiedImageDescription[] =
     "when Google is the selected search engine, accessible from the omnibox or "
     "popup menu.";
 
-const char kEnableLensOverlayName[] = "Enable Lens Overlay";
-const char kEnableLensOverlayDescription[] = "Enables lens overlay UI";
+const char kEnableNTPBackgroundImageCacheName[] =
+    "Enable NTP Background Image Cache";
+const char kEnableNTPBackgroundImageCacheDescription[] =
+    "Enables the NTP background image cache service to improve performance.";
 
 const char kEnableNewStartupFlowName[] = "EnableNewStartupFlow";
 const char kEnableNewStartupFlowDescription[] =
@@ -582,6 +603,11 @@ const char kEnhancedCalendarDescription[] =
     "When enabled, the enhanced calendar flow will be available to eligible "
     "users when adding a calendar event.";
 
+const char kExplainGeminiEditMenuName[] = "Enable Explain Gemini Edit Menu";
+const char kExplainGeminiEditMenuDescription[] =
+    "When enabled, the explain Gemini edit menu will be available to eligible "
+    "users when highlighting any text on a web page.";
+
 const char kFRESignInHeaderTextUpdateName[] =
     "Enable header text variations on the FRE sign-in page.";
 const char kFRESignInHeaderTextUpdateDescription[] =
@@ -601,12 +627,6 @@ const char kForceStartupSigninPromoDescription[] =
     "When enabled, the startup sign-in promo is always displayed when starting "
     "Chrome.";
 
-const char kFullscreenPromosManagerSkipInternalLimitsName[] =
-    "Fullscreen Promos Manager (Skip internal Impression Limits)";
-const char kFullscreenPromosManagerSkipInternalLimitsDescription[] =
-    "When enabled, the internal Impression Limits of the Promos Manager will "
-    "be ignored; this is useful for local development.";
-
 const char kFullscreenScrollThresholdName[] = "Fullscreen Scroll Threshold";
 const char kFullscreenScrollThresholdDescription[] =
     "When enabled, scrolling must exceed a small threshold before the web view "
@@ -623,18 +643,25 @@ const char kFullscreenTransitionSpeedDescription[] =
     "When enabled, the speed of the fullscreen' transition is "
     "increased-decreased.";
 
+const char kGeminiActorName[] = "Gemini Actor";
+const char kGeminiActorDescription[] = "Enables the Gemini Actor.";
+
+const char kGeminiBackendMigrationName[] = "Gemini Backend Migration";
+const char kGeminiBackendMigrationDescription[] =
+    "Enables the backend migration for Gemini.";
+
 const char kGeminiCopresenceName[] = "Gemini Copresence";
 const char kGeminiCopresenceDescription[] =
     "Enables the Gemini Copresence feature, which provides a persistent Gemini "
     "overlay.";
 
-const char kGeminiCrossTabName[] = "Gemini Cross Tab";
-const char kGeminiCrossTabDescription[] =
-    "When enabled, the Gemini floaty conversation persists across all tabs.";
-
 const char kGeminiDynamicSettingsName[] = "Gemini Dynamic Settings";
 const char kGeminiDynamicSettingsDescription[] =
     "Enables loading Gemini settings dynamically using the Gemini SDK.";
+
+const char kGeminiFloatyAllPagesName[] = "Gemini Floaty All Pages";
+const char kGeminiFloatyAllPagesDescription[] =
+    "Enables the Gemini floaty on all pages.";
 
 const char kGeminiFullChatHistoryName[] = "GeminiFullChatHistory";
 const char kGeminiFullChatHistoryDescription[] =
@@ -643,10 +670,6 @@ const char kGeminiFullChatHistoryDescription[] =
 const char kGeminiImageRemixToolName[] = "Gemini Image Remix Tool";
 const char kGeminiImageRemixToolDescription[] =
     "Enables the image remix tool in the Gemini floaty.";
-
-const char kGeminiImmediateOverlayName[] = "GeminiImmediateOverlay";
-const char kGeminiImmediateOverlayDescription[] =
-    "Enables immediate access to Gemini in the page tools menu.";
 
 const char kGeminiLatencyImprovementName[] = "GeminiLatencyImprovement";
 const char kGeminiLatencyImprovementDescription[] =
@@ -663,10 +686,6 @@ const char kGeminiNavigationPromoName[] = "GeminiNavigationPromo";
 const char kGeminiNavigationPromoDescription[] =
     "Enables the automatic promo for Gemini on navigation.";
 
-const char kGeminiOnboardingCardsName[] = "GeminiOnboardingCards";
-const char kGeminiOnboardingCardsDescription[] =
-    "Enables the discovery onboarding cards for new Gemini users.";
-
 const char kGeminiPersonalizationName[] = "GeminiPersonalization";
 const char kGeminiPersonalizationDescription[] =
     "Enables the GeminiPersonalization feature.";
@@ -675,20 +694,33 @@ const char kGeminiRefactoredFREName[] = "Gemini Refactored FRE";
 const char kGeminiRefactoredFREDescription[] =
     "Enables the refactored Gemini First Run Experience (FRE).";
 
+const char kGeminiResponseViewDynamicResizingName[] =
+    "Gemini Response View Dynamic Resizing";
+const char kGeminiResponseViewDynamicResizingDescription[] =
+    "Enables dynamic resizing for the Gemini response view.";
+
+const char kGeminiRichAPCExtractionName[] = "Gemini Rich APC Extraction";
+const char kGeminiRichAPCExtractionDescription[] =
+    "Enables rich APC extraction for Gemini.";
+
+const char kGeminiUpdatedEligibilityName[] = "Gemini Updated Eligibility";
+const char kGeminiUpdatedEligibilityDescription[] =
+    "Enables the updated eligibility checks for Gemini users.";
+
 const char kHandleMdmErrorsForDasherAccountsName[] =
     "Mdm error handling for dasher accounts";
 const char kHandleMdmErrorsForDasherAccountsDescription[] =
     "Enables the mdm error handling feature for dasher accounts";
 
+const char kHideFuseboxVoiceLensActionsName[] =
+    "Hide Voice and Lens in Fusebox";
+const char kHideFuseboxVoiceLensActionsDescription[] =
+    "Hides voice and lens shortcuts in fusebox.";
+
 const char kHideToolbarsInOverflowMenuName[] = "Hide Toolbars in Overflow menu";
 const char kHideToolbarsInOverflowMenuDescription[] =
     "When enabled, adds a button in the overflow menu that force the "
     "fullscreen mode on iOS.";
-
-const char kHomeMemoryImprovementsName[] = "Home Memory Improvements";
-const char kHomeMemoryImprovementsDescription[] =
-    "When enabled, uses code that aims to improve the memory footprint in "
-    "Home.";
 
 const char kHttpsUpgradesName[] = "HTTPS Upgrades";
 const char kHttpsUpgradesDescription[] =
@@ -700,12 +732,6 @@ const char kIOSAppBundlePromoEphemeralCardName[] =
 const char kIOSAppBundlePromoEphemeralCardDescription[] =
     "Enables showing a promotional card for the Best of Google app "
     "bundle in the Magic Stack.";
-
-const char kIOSAutoOpenRemoteTabGroupsSettingsName[] =
-    "Enable Automatically open tab groups from other devices settings";
-const char kIOSAutoOpenRemoteTabGroupsSettingsDescription[] =
-    "When enabled, provides settings controls to auto open remote devices tab "
-    "groups.";
 
 const char kIOSBrowserEditMenuMetricsName[] = "Browser edit menu metrics";
 const char kIOSBrowserEditMenuMetricsDescription[] =
@@ -721,14 +747,28 @@ const char kIOSChooseFromDriveName[] = "IOS Choose from Drive";
 const char kIOSChooseFromDriveDescription[] =
     "Enables the Choose from Drive feature on iOS.";
 
+const char kIOSChooseFromDriveSignedOutName[] = "Choose from Drive Signed Out";
+const char kIOSChooseFromDriveSignedOutDescription[] =
+    "Enables the Choose from Drive feature to signed out users.";
+
 const char kIOSCustomFileUploadMenuName[] = "Custom file upload menu";
 const char kIOSCustomFileUploadMenuDescription[] =
     "Enables the custom file upload menu implementation.";
+
+const char kIOSDateToCalendarSignedOutName[] = "Date to Calendar Signed Out";
+const char kIOSDateToCalendarSignedOutDescription[] =
+    "When enabled, signed-out users can long-press detected dates to access "
+    "the 'Add to Google Calendar' feature.";
 
 const char kIOSDockingPromoName[] = "Docking Promo";
 const char kIOSDockingPromoDescription[] =
     "When enabled, the user will be presented an animated, instructional "
     "promo showing how to move Chrome to their native iOS dock.";
+
+const char kIOSDockingPromoV2Name[] = "Docking Promo V2";
+const char kIOSDockingPromoV2Description[] =
+    "When enabled, the user will be presented an animated, instructional "
+    "promo V2 showing how to move Chrome to their native iOS dock.";
 
 const char kIOSEnableCloudProfileReportingName[] =
     "Enable profile reporting on iOS";
@@ -750,12 +790,6 @@ const char kIOSExpandedTipsName[] = "Expanded Tips Notifications";
 const char kIOSExpandedTipsDescription[] =
     "Enables a feature that adds several new Tips Notifications that can be "
     "sent.";
-
-const char kIOSFillRecoveryPasswordName[] =
-    "Enable autofilling with a recovery password";
-const char kIOSFillRecoveryPasswordDescription[] =
-    "When enabled, users will be able to attempt to log in using a recovery "
-    "password if the main one didn't work.";
 
 const char kIOSKeyboardAccessoryDefaultViewName[] =
     "Default Input Accessory View";
@@ -814,6 +848,14 @@ const char kIOSSaveToDriveClientFolderName[] = "Save to Drive client folder";
 const char kIOSSaveToDriveClientFolderDescription[] =
     "Enables a feature to use a client folder API for Save to Drive on iOS.";
 
+const char kIOSSaveToDriveSignedOutName[] = "Save to Drive Signed Out";
+const char kIOSSaveToDriveSignedOutDescription[] =
+    "Enables the Save to Drive feature to signed out users.";
+
+const char kIOSSaveToPhotosSignedOutName[] = "Save to Photos Signed Out";
+const char kIOSSaveToPhotosSignedOutDescription[] =
+    "Enables the Save to Photos feature to signed out users.";
+
 const char kIOSSoftLockName[] = "Soft Lock on iOS";
 const char kIOSSoftLockDescription[] = "Enables experimental Soft Lock on iOS.";
 
@@ -843,6 +885,11 @@ const char kIdentityConfirmationSnackbarName[] =
     "Identity Confirmation Snackbar";
 const char kIdentityConfirmationSnackbarDescription[] =
     "When enabled, the identity confirmation snackbar will show on startup.";
+
+const char kInFlowTrustedVaultKeyRetrievalIosName[] =
+    "In-flow Trusted Vault key retrieval";
+const char kInFlowTrustedVaultKeyRetrievalIosDescription[] =
+    "Starts the key retrieval flow after offering to save a password.";
 
 const char kInProductHelpDemoModeName[] = "In-Product Help Demo Mode";
 const char kInProductHelpDemoModeDescription[] =
@@ -922,22 +969,10 @@ const char kLensOverlayCustomBottomSheetDescription[] =
     "When enabled the system bottom sheet for the Lens result page is "
     "replaced by a custom bottom sheet presentation";
 
-const char kLensOverlayDisableIPHPanGestureName[] =
-    "Disable Lens Overlay IPH Pan Dismissal";
-const char kLensOverlayDisableIPHPanGestureDescription[] =
-    "Disable the pan gesture that dismisses Lens Overlay IPH. The IPH can "
-    "still be dismissed with a tap.";
-
 const char kLensOverlayEnableLandscapeCompatibilityName[] =
     "Allow Lens overlay to also run in landscape if the feature is enabled";
 const char kLensOverlayEnableLandscapeCompatibilityDescription[] =
     "When enabled, it allows Lens Overlay to run in landscape orientation";
-
-const char kLensOverlayForceShowOnboardingScreenName[] =
-    "Force show Lens overlay onboarding screen";
-const char kLensOverlayForceShowOnboardingScreenDescription[] =
-    "When enabled, it forces showing the onboarding screen everytime lens "
-    "overlay is open";
 
 const char kLensOverlayNavigationHistoryName[] =
     "Enable Lens overlay navigation history";
@@ -1037,6 +1072,11 @@ const char kMobilePromoOnDesktopRecordActiveDaysDescription[] =
     "When enabled, records the user's number of active days for the mobile "
     "promo on desktop.";
 
+const char kModelBasedPageClassificationName[] =
+    "Model Based Page Classification";
+const char kModelBasedPageClassificationDescription[] =
+    "Enables the model based page classification.";
+
 const char kMostVisitedTilesCustomizationName[] =
     "Most Visited Tiles Customization on iOS";
 const char kMostVisitedTilesCustomizationDescription[] =
@@ -1046,10 +1086,6 @@ const char kMostVisitedTilesHorizontalRenderGroupName[] =
     "MVTiles Horizontal Render Group";
 const char kMostVisitedTilesHorizontalRenderGroupDescription[] =
     "When enabled, the MV tiles are represented as individual matches";
-
-const char kMultilineBrowserOmniboxName[] = "Multiline omnibox in browser";
-const char kMultilineBrowserOmniboxDescription[] =
-    "Enables multiline for the browser omnibox.";
 
 const char kNTPBackgroundColorSliderName[] =
     "Enable the background color slider in the background customization color "
@@ -1102,6 +1138,10 @@ const char kNtpComposeboxUsesChromeComposeClientName[] =
 const char kNtpComposeboxUsesChromeComposeClientDescription[] =
     "When enabled, the composebox will use the suggest chrome compose client "
     "when AIM is enabled";
+
+const char kOmniboxCrashFixKillSwitchName[] = "OmniboxCrashFixKillSwitch";
+const char kOmniboxCrashFixKillSwitchDescription[] =
+    "Enables the OmniboxCrashFixKillSwitch feature.";
 
 const char kOmniboxDRSPrototypeName[] = "Enable the Omnibox DRS prototype";
 const char kOmniboxDRSPrototypeDescription[] =
@@ -1237,6 +1277,10 @@ const char kOptimizationGuideDebugLogsDescription[] =
     "Enables the optimization guide to log and save debug messages that can be "
     "shown in the internals page.";
 
+const char kPageActionMenuIconName[] = "PageActionMenuIcon";
+const char kPageActionMenuIconDescription[] =
+    "When enabled, changes the icon for the page action menu entry point.";
+
 const char kPageActionMenuName[] = "Page Action Menu";
 const char kPageActionMenuDescription[] =
     "When enabled, the entry point for the Page Action Menu becomes available "
@@ -1250,10 +1294,6 @@ const char kPageContentAnnotationsRemotePageMetadataName[] =
     "Page content annotations - Remote page metadata";
 const char kPageContentAnnotationsRemotePageMetadataDescription[] =
     "Enables fetching of page load metadata to be persisted on-device.";
-
-const char kPageContextAnchorTagsName[] = "Page Context anchor tags";
-const char kPageContextAnchorTagsDescription[] =
-    "Include the retrieval of anchor tags (links) as part of Page Context.";
 
 const char kPageVisibilityPageContentAnnotationsName[] =
     "Page visibility content annotations";
@@ -1326,6 +1366,12 @@ const char kRcapsDynamicProfileCountryName[] = "Dynamic Profile Country";
 const char kRcapsDynamicProfileCountryDescription[] =
     "When enabled, Chrome updates the country associated with "
     "the profile on open";
+
+const char kReaderModeContentSettingsForLinksName[] =
+    "Enables Content Settings options for Reading Mode";
+const char kReaderModeContentSettingsForLinksDescription[] =
+    "Enables Content Settings options for disabling/enabling links in Reading "
+    "Mode.";
 
 const char kReaderModeOmniboxEntrypointInUSName[] =
     "Reader Mode Omnibox Entrypoint In US";
@@ -1414,11 +1460,29 @@ const char kSegmentationPlatformIosModuleRankerSplitBySurfaceDescription[] =
     "Enables the Magic Stack module ranking to be split by surface for "
     "engagement";
 
+const char kSendTabToSelfEnhancedHandoffName[] =
+    "Send Tab To Self enhanced handoff";
+const char kSendTabToSelfEnhancedHandoffDescription[] =
+    "Enables an enhanced version of Send Tab To Self that propagates more "
+    "information, such as form fields.";
+
 const char kSendTabToSelfIOSPushNotificationsName[] =
     "Send tab to self iOS push notifications";
 const char kSendTabToSelfIOSPushNotificationsDescription[] =
     "Feature to allow users to send tabs to their iOS device through a system "
     "push notitification.";
+
+const char kShareInOmniboxLongPressName[] = "Share in Omnibox Long Press";
+const char kShareInOmniboxLongPressDescription[] =
+    "Displays an option to share current page in the omnibox long press menu";
+
+const char kShareInOverflowMenuName[] = "Share in Overflow Menu";
+const char kShareInOverflowMenuDescription[] =
+    "Displays share menu item in overflow menu";
+
+const char kShareInVerbatimMatchName[] = "Share in Verbatim Match";
+const char kShareInVerbatimMatchDescription[] =
+    "Displays share button in the omnibox verbatim match";
 
 const char kSharedHighlightingIOSName[] = "Enable Shared Highlighting features";
 const char kSharedHighlightingIOSDescription[] =
@@ -1455,10 +1519,11 @@ const char kSmartTabGroupingDescription[] =
     "When enabled, users will have access to use the smart tab grouping "
     "feature in the tab grid.";
 
-const char kSpotlightNeverRetainIndexName[] = "Don't retain spotlight index";
-const char kSpotlightNeverRetainIndexDescription[] =
-    "Tentative spotlight memory improvement by not storing a strong pointer to "
-    "the spotlight default index";
+const char kSmoothScrollingUseDelegateName[] =
+    "Fullscreen Smooth Scrolling No Broadcaster";
+const char kSmoothScrollingUseDelegateDescription[] =
+    "When enabled, the SmoothScrollingDefault experiment uses the regular "
+    "UIScrollViewDelegate instead of KVO and broadcasting.";
 
 const char kStrokesAPIEnabledName[] = "Enable Strokes API for Lens";
 const char kStrokesAPIEnabledDescription[] =
@@ -1469,18 +1534,26 @@ const char kSupervisedUserBlockInterstitialV3Name[] =
 const char kSupervisedUserBlockInterstitialV3Description[] =
     "Enables URL filter interstitial V3 for Family Link users.";
 
+const char kSupervisedUserEmitLogRecordSeparatelyName[] =
+    "Emit supervised user log record separately";
+const char kSupervisedUserEmitLogRecordSeparatelyDescription[] =
+    "Emit supervised user log record separately for Family Link and device "
+    "parental controls users (no user-visible effect).";
+
 const char kSupervisedUserMergeDeviceParentalControlsAndFamilyLinkPrefsName[] =
     "Merge device parental controls and Family Link prefs";
 const char
     kSupervisedUserMergeDeviceParentalControlsAndFamilyLinkPrefsDescription[] =
         "Merges non-web filtering device parental controls settings with "
-        "Family Link settings in the SupervisedUserPrefStore.";
+        "Family Link settings in the SupervisedUserPrefStore (no user-visible "
+        "effect).";
 
 const char kSupervisedUserUseUrlFilteringServiceName[] =
     "Use URL filtering service";
 const char kSupervisedUserUseUrlFilteringServiceDescription[] =
     "Use the SupervisedUserUrlFilteringService to get URL filtering settings "
-    "directly from supervision services instead of using PrefService.";
+    "directly from supervision services instead of using PrefService (no "
+    "user-visible effect).";
 
 const char kSyncAutofillWalletCredentialDataName[] =
     "Sync Autofill Wallet Credential Data";
@@ -1490,6 +1563,10 @@ const char kSyncAutofillWalletCredentialDataDescription[] =
 const char kSyncSandboxName[] = "Use Chrome Sync sandbox";
 const char kSyncSandboxDescription[] =
     "Connects to the testing server for Chrome Sync.";
+
+const char kSyncThemesIosName[] = "Enable Sync Themes on iOS";
+const char kSyncThemesIosDescription[] =
+    "Enables syncing of themes across iOS devices.";
 
 const char kSyncTrustedVaultInfobarMessageImprovementsName[] =
     "Trusted vault infobar message improvements";
@@ -1573,10 +1650,19 @@ const char kUseFeedEligibilityServiceDescription[] =
     "Use the new eligibility service to handle whether the Discover "
     "feed is displayed on NTP";
 
-const char kVariationsSeedCorpusName[] = "Variations seed corpus";
-const char kVariationsSeedCorpusDescription[] =
-    "The value of the 'corpus' parameter in the variations seed request. "
-    "If unspecified, the 'corpus' parameter is omitted from the request.";
+const char kUseSceneViewControllerName[] = "Use Scene View Controller";
+const char kUseSceneViewControllerDescription[] =
+    "Enables the use of SceneViewController.";
+
+const char kVariationsExperimentalCorpusName[] =
+    "Variations experimental corpus";
+const char kVariationsExperimentalCorpusDescription[] =
+    "When enabled, request the experimental variations seed from the "
+    "variations server.";
+
+const char kVariationsRestrictDogfoodName[] = "Variations restrict dogfood";
+const char kVariationsRestrictDogfoodDescription[] =
+    "When enabled, request dogfood variations from the variations server.";
 
 const char kViewCertificateInformationName[] = "View Certificate Information";
 const char kViewCertificateInformationDescription[] =
@@ -1602,12 +1688,6 @@ const char kWebPageDefaultZoomFromDynamicTypeName[] =
 const char kWebPageDefaultZoomFromDynamicTypeDescription[] =
     "When enabled, the default text zoom level for a website comes from the "
     "current dynamic type setting.";
-
-const char kWebPageReportedImagesSheetName[] =
-    "Surface web page-reported images";
-const char kWebPageReportedImagesSheetDescription[] =
-    "When enabled, surface a sheet on page load which shows web page-reported "
-    "images and associated metadata.";
 
 const char kWebPageTextZoomIPadName[] = "Enable text zoom on iPad";
 const char kWebPageTextZoomIPadDescription[] =

@@ -44,7 +44,7 @@ interface SettingsItem {
   enabled?: boolean;
   // Needed when the aria label should be different from the title
   ariaLabel?: string;
-  className?: string;
+  showSeparator?: boolean;
 }
 
 const MENU_ITEM_DATA: Record<SettingsOption, SettingsItem> = {
@@ -77,7 +77,7 @@ const MENU_ITEM_DATA: Record<SettingsOption, SettingsItem> = {
     icon: 'read-anything:links-enabled',
     title: 'linksLabel',
     itemType: SettingsItemType.TOGGLE,
-    className: 'hr',
+    showSeparator: true,
   },
   [SettingsOption.LINE_SPACING]: {
     id: SettingsOption.LINE_SPACING,
@@ -96,6 +96,12 @@ const MENU_ITEM_DATA: Record<SettingsOption, SettingsItem> = {
     icon: 'read-anything:line-focus',
     title: 'lineFocusLabel',
     itemType: SettingsItemType.MENU,
+  },
+  [SettingsOption.PINNED_TO_TOOLBAR]: {
+    id: SettingsOption.PINNED_TO_TOOLBAR,
+    icon: 'read-anything:pin',
+    title: 'pinLabel',
+    itemType: SettingsItemType.TOGGLE,
   },
   [SettingsOption.PRESENTATION]: {
     id: SettingsOption.PRESENTATION,
@@ -132,20 +138,24 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     return 'settings-menu';
   }
 
-  override render() {
-    return getHtml.bind(this)();
-  }
-
   static override get styles() {
     return getCss();
   }
 
+  override render() {
+    return getHtml.bind(this)();
+  }
+
   static override get properties() {
     return {
+      isImmersiveMode: {type: Boolean},
+      isReadAnythingPinned: {type: Boolean},
       settingsPrefs: {type: Object},
     };
   }
 
+  accessor isImmersiveMode: boolean = false;
+  accessor isReadAnythingPinned: boolean = false;
   accessor settingsPrefs: SettingsPrefs = DEFAULT_SETTINGS;
 
   protected options_: SettingsItem[] = [];
@@ -160,6 +170,10 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   private pointerEventCallback_: (e: Event) => void = () => {};
   private keyDownCallback_: (e: KeyboardEvent) => void = () => {};
 
+  // Used to check if focus is currently on the PreviewPlayButton of the
+  // VOICE_SELECTION submenu.
+  private isOnPreviewPlayButton = false;
+
   override connectedCallback() {
     super.connectedCallback();
     this.pointerEventCallback_ = this.onPointerEvent_.bind(this);
@@ -169,7 +183,9 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
 
-    if (changedProperties.has('settingsPrefs')) {
+    if (changedProperties.has('settingsPrefs') ||
+        changedProperties.has('isImmersiveMode') ||
+        changedProperties.has('isReadAnythingPinned')) {
       this.initializeMenuOptions_();
     }
   }
@@ -188,11 +204,21 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
       optionIDs.push(SettingsOption.LINE_FOCUS);
     }
 
-    optionIDs =
-        optionIDs.concat([SettingsOption.PRESENTATION, SettingsOption.LINKS]);
+    optionIDs.push(SettingsOption.PRESENTATION);
+
+    // If Readability is enabled but ReadabilityWithLinks is not enabled,
+    // don't show the links toggle.
+    if (!chrome.readingMode.isReadabilityEnabled ||
+        chrome.readingMode.isReadabilityWithLinksEnabled) {
+      optionIDs = optionIDs.concat([SettingsOption.LINKS]);
+    }
 
     if (chrome.readingMode.imagesFeatureEnabled) {
       optionIDs.push(SettingsOption.IMAGES);
+    }
+
+    if (this.isImmersiveMode) {
+      optionIDs.push(SettingsOption.PINNED_TO_TOOLBAR);
     }
 
     this.options_ = optionIDs.map(id => {
@@ -211,6 +237,11 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
         ariaLabel = this.getLinkItemLabels();
       }
 
+      if (id === SettingsOption.PINNED_TO_TOOLBAR) {
+        enabled = this.isReadAnythingPinned;
+        ariaLabel = this.getPinItemLabels();
+      }
+
       return {
         ...original,
         id,
@@ -219,6 +250,22 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
         enabled,
       };
     });
+
+    // There should be a separator between the menu items and the toggle items.
+    // The base combination is on the Links toggle, but that's not
+    // always the first toggle.
+    this.options_.forEach(option => {
+      if (option.itemType === SettingsItemType.TOGGLE) {
+        option.showSeparator = false;
+      }
+    });
+
+    // Add the separator to the first toggle.
+    const firstToggle =
+        this.options_.find(item => item.itemType === SettingsItemType.TOGGLE);
+    if (firstToggle) {
+      firstToggle.showSeparator = true;
+    }
   }
 
   private getLinkItemLabels() {
@@ -235,6 +282,14 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     }
 
     return loadTimeData.getString('enableImagesLabel');
+  }
+
+  private getPinItemLabels() {
+    if (this.isReadAnythingPinned) {
+      return loadTimeData.getString('enablePinLabel');
+    }
+
+    return loadTimeData.getString('disablePinLabel');
   }
 
   protected onMenuItemClick_(e: Event) {
@@ -282,17 +337,26 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
       this.fire(ToolbarEvent.IMAGES);
       item.ariaLabel = this.getImageItemLabels();
       item.enabled = chrome.readingMode.imagesEnabled;
+    } else if (item.id === SettingsOption.PINNED_TO_TOOLBAR) {
+      chrome.readingMode.togglePinState();
+      chrome.readingMode.sendPinStateRequest();
     }
 
     this.requestUpdate();
   }
 
-  protected onMenuItemHover_(e: PointerEvent) {
+  protected onPointerenter_(e: PointerEvent) {
     this.clearTimers_();
 
     const currentTarget = e.currentTarget as HTMLElement;
     if (!currentTarget) {
       return;
+    }
+
+    const activeItems =
+        this.shadowRoot?.querySelectorAll<HTMLElement>('.active');
+    for (const activeItem of activeItems) {
+      activeItem.classList.remove('active');
     }
 
     const index = Number.parseInt(currentTarget.dataset['index']!);
@@ -323,17 +387,12 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     }, delay);
   }
 
-  protected onMenuItemLeave_(e: PointerEvent) {
+  protected onPointerleave_() {
     // Clear the open timer so that submenus aren't opened after the cursor
     // stops hovering.
     this.clearOpenTimer_();
-
-    const currentTarget = e.currentTarget as HTMLElement;
-    if (currentTarget) {
-      currentTarget.classList.remove('active');
     this.startCloseTimer_();
   }
-}
 
   private startCloseTimer_() {
     if (this.closeTimer_) {
@@ -375,12 +434,16 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
       window.addEventListener(
           eventType, this.pointerEventCallback_, {capture: true});
     });
+    this.fire(ToolbarEvent.SETTINGS_OPENED);
+  }
+
+  protected onClose_() {
+    this.close();
   }
 
   close() {
     this.clearTimers_();
     this.$.lazyMenu.get().close();
-    document.body.classList.remove('read-anything-menu-open');
     window.removeEventListener(
         'keydown', this.keyDownCallback_, {capture: true});
     this.interceptedEvents_.forEach(eventType => {
@@ -388,6 +451,7 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
           eventType, this.pointerEventCallback_, {capture: true});
     });
     this.currentOpenId_ = null;
+    this.fire(ToolbarEvent.SETTINGS_CLOSED);
   }
 
   // Immersive design uses non-modal menus to support submenus. Since non-modal
@@ -396,6 +460,9 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
   // 1. Prevent interactions with elements outside the menu.
   // 2. Close the menu when clicking outside (simulating modal behavior).
   private onPointerEvent_(e: Event) {
+    // Whenever the user moves or clicks the mouse, reset state for
+    // isOnPreviewPlayButton.
+    this.isOnPreviewPlayButton = false;
     if (e.type === 'pointermove') {
       const menu = this.$.lazyMenu.get();
       if (menu.classList.contains(KEYBOARD_NAV_CLASS)) {
@@ -425,6 +492,13 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     // we should cancel the close timer, as the user intentionally moved into
     // the submenu.
     if (e.type === 'pointermove' && isInsideSubmenu) {
+      if (this.currentOpenId_) {
+        const activeItem = this.shadowRoot?.querySelector<HTMLElement>(
+            `#${this.currentOpenId_}`);
+        if (activeItem) {
+          activeItem.classList.add('active');
+        }
+      }
       this.clearCloseTimer_();
     }
 
@@ -464,6 +538,12 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     // open submenu. We consume the event to stop further propagation.
     if (this.currentOpenId_ &&
         (key === 'Escape' || (isBackwardArrow(key) && !isVerticalArrow(key)))) {
+      // if backward horizontal arrow is pressed and focus is on the preview
+      // play button, let the VOICE_SELECTION submenu handle backwards arrow.
+      if (key !== 'Escape' && this.isOnPreviewPlayButton) {
+        this.isOnPreviewPlayButton = false;
+        return;
+      }
       e.stopPropagation();
       e.preventDefault();
       this.fire(
@@ -474,13 +554,21 @@ export class SettingsMenuElement extends SettingsMenuElementBase {
     }
 
     if (isForwardArrow(key) && !isVerticalArrow(key)) {
-      e.stopPropagation();
-      e.preventDefault();
-
       const focused = this.shadowRoot.activeElement as HTMLElement;
-      if (!focused || !focused.classList.contains('menu-row')) {
+      // If focus is null, do nothing.
+      if (!focused) {
         return;
       }
+      // If forward-horizontal arrow is pressed and we are on VOICE_SELECTION
+      // submenu, set isOnPreviewPlayButton to true to indicate current focus.
+      if (this.currentOpenId_ &&
+          this.currentOpenId_ === SettingsOption.VOICE_SELECTION &&
+          !focused?.classList.contains('menu-row')) {
+        this.isOnPreviewPlayButton = true;
+        return;
+      }
+      e.stopPropagation();
+      e.preventDefault();
 
       const index = Number.parseInt(focused.dataset['index']!);
       const item = this.options_[index];

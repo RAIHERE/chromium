@@ -5,8 +5,10 @@
 #include "chrome/browser/ui/views/user_education/impl/browser_feature_promo_preconditions.h"
 
 #include "base/time/default_clock.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service.h"
 #include "chrome/browser/privacy_sandbox/privacy_sandbox_service_factory.h"
+#include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service.h"
 #include "chrome/browser/search_engine_choice/search_engine_choice_dialog_service_factory.h"
 #include "chrome/browser/ui/browser_element_identifiers.h"
@@ -22,11 +24,14 @@
 #include "chrome/browser/ui/views/frame/browser_view.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_controller.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
+#include "chrome/browser/ui/views/user_education/browser_user_education_service.h"
 #include "components/user_education/common/feature_promo/feature_promo_controller.h"
 #include "components/user_education/common/feature_promo/feature_promo_precondition.h"
 #include "components/user_education/common/feature_promo/feature_promo_result.h"
 #include "components/user_education/common/feature_promo/impl/common_preconditions.h"
+#include "components/user_education/common/feature_promo/impl/feature_promo_controller_impl.h"
 #include "components/user_education/common/user_education_features.h"
+#include "components/user_education/views/view_subregion_anchor.h"
 #include "components/user_education/webui/help_bubble_handler.h"
 #include "components/user_education/webui/tracked_element_help_bubble_webui_anchor.h"
 #include "content/public/browser/web_contents.h"
@@ -45,6 +50,10 @@ DEFINE_FEATURE_PROMO_PRECONDITION_IDENTIFIER_VALUE(
 DEFINE_FEATURE_PROMO_PRECONDITION_IDENTIFIER_VALUE(
     kNoCriticalNoticeShowingPrecondition);
 DEFINE_FEATURE_PROMO_PRECONDITION_IDENTIFIER_VALUE(kUserNotActivePrecondition);
+DEFINE_FEATURE_PROMO_PRECONDITION_IDENTIFIER_VALUE(
+    kEnterprisePolicyNotBlockingPrecondition);
+DEFINE_FEATURE_PROMO_PRECONDITION_IDENTIFIER_VALUE(
+    kActorNotActuatingActiveTabPrecondition);
 
 WindowActivePrecondition::WindowActivePrecondition()
     : FeaturePromoPreconditionBase(kWindowActivePrecondition,
@@ -53,7 +62,7 @@ WindowActivePrecondition::~WindowActivePrecondition() = default;
 
 user_education::FeaturePromoResult WindowActivePrecondition::CheckPrecondition(
     ui::UnownedTypedDataCollection& data) const {
-  if (user_education::FeaturePromoControllerCommon::
+  if (user_education::FeaturePromoControllerImpl::
           active_window_check_blocked()) {
     return user_education::FeaturePromoResult::Success();
   }
@@ -62,6 +71,9 @@ user_education::FeaturePromoResult WindowActivePrecondition::CheckPrecondition(
   views::Widget* widget = nullptr;
   if (auto* const view_el = element_ref.get_as<views::TrackedElementViews>()) {
     widget = view_el->view()->GetWidget();
+  } else if (auto* const subregion_el =
+                 element_ref.get_as<user_education::ViewSubregionAnchor>()) {
+    widget = subregion_el->view().GetWidget();
   } else if (auto* web_el =
                  element_ref.get_as<
                      user_education::TrackedElementHelpBubbleWebUIAnchor>()) {
@@ -242,4 +254,44 @@ void UserNotActivePrecondition::OnViewAddedToWidget(
 
 void UserNotActivePrecondition::OnViewIsDeleting(views::View* observed_view) {
   browser_view_observation_.Reset();
+}
+
+EnterprisePolicyNotBlockingPrecondition::
+    EnterprisePolicyNotBlockingPrecondition()
+    : FeaturePromoPreconditionBase(kEnterprisePolicyNotBlockingPrecondition,
+                                   "Enterprise policy does not block promos") {}
+
+EnterprisePolicyNotBlockingPrecondition::
+    ~EnterprisePolicyNotBlockingPrecondition() = default;
+
+user_education::FeaturePromoResult
+EnterprisePolicyNotBlockingPrecondition::CheckPrecondition(
+    ui::UnownedTypedDataCollection&) const {
+  return DoesEnterprisePolicyBlockPromotions()
+             ? user_education::FeaturePromoResult::kBlockedByContext
+             : user_education::FeaturePromoResult::Success();
+}
+
+ActorNotActuatingActiveTabPrecondition::ActorNotActuatingActiveTabPrecondition(
+    BrowserWindowInterface& browser_window_interface)
+    : FeaturePromoPreconditionBase(kActorNotActuatingActiveTabPrecondition,
+                                   "Active tab is not being actuated"),
+      browser_window_interface_(browser_window_interface) {}
+
+ActorNotActuatingActiveTabPrecondition::
+    ~ActorNotActuatingActiveTabPrecondition() = default;
+
+user_education::FeaturePromoResult
+ActorNotActuatingActiveTabPrecondition::CheckPrecondition(
+    ui::UnownedTypedDataCollection&) const {
+  auto* tab = browser_window_interface_->GetActiveTabInterface();
+  if (!tab) {
+    return user_education::FeaturePromoResult::Success();
+  }
+  auto* actor_service =
+      actor::ActorKeyedService::Get(browser_window_interface_->GetProfile());
+  if (actor_service && actor_service->IsActiveOnTab(*tab)) {
+    return user_education::FeaturePromoResult::kBlockedByUi;
+  }
+  return user_education::FeaturePromoResult::Success();
 }

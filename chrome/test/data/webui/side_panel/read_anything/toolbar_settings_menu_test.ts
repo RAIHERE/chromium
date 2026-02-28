@@ -50,7 +50,6 @@ suite('Toolbar Settings Menu', () => {
     document.body.innerHTML = window.trustedTypes!.emptyHTML;
     const readingMode = new FakeReadingMode();
     chrome.readingMode = readingMode as unknown as typeof chrome.readingMode;
-    chrome.readingMode.isReadAloudEnabled = true;
     chrome.readingMode.isImmersiveEnabled = true;
     stubAnimationFrame();
     await createToolbar();
@@ -265,5 +264,17 @@ suite('Toolbar Settings Menu', () => {
 
     assertFalse(toolbar.$.fontMenu.$.menu.$.lazyMenu.get().open);
     timer.uninstall();
+  });
+
+  test('close button appears in immersive mode', async () => {
+    toolbar.isImmersiveMode = true;
+    await microtasksFinished();
+    const closeButton = getButton('close');
+    assertTrue(!!closeButton);
+  });
+
+  test('close button does not appear in side panel mode', () => {
+    const closeButton = getButton('close');
+    assertFalse(!!closeButton);
   });
 });

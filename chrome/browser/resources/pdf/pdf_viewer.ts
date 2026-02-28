@@ -1867,6 +1867,10 @@ export class PdfViewerElement extends PdfViewerBaseElement {
     }
   }
 
+  protected onGlicSummarize_() {
+    PdfViewerPrivateProxyImpl.getInstance().glicSummarize();
+  }
+
   protected onPrint_() {
     record(UserAction.PRINT);
     assert(this.currentController);

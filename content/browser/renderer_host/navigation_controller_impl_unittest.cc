@@ -1524,9 +1524,11 @@ TEST_F(NavigationControllerTest, ReloadWithGuest) {
 
   // Ensure the entry's SiteInstance and RenderProcessHost are for a guest.
   NavigationEntryImpl* entry1 = controller.GetVisibleEntry();
-  ASSERT_EQ(entry1->site_instance()->GetStoragePartitionConfig(),
+  ASSERT_EQ(entry1->site_instance()
+                ->GetSecurityPrincipal()
+                .GetStoragePartitionConfig(),
             kGuestPartitionConfig);
-  ASSERT_TRUE(entry1->site_instance()->IsGuest());
+  ASSERT_TRUE(entry1->site_instance()->GetSecurityPrincipal().IsGuest());
   ASSERT_TRUE(entry1->site_instance()->GetProcess()->IsForGuestsOnly());
 
   // And reload.
@@ -4069,9 +4071,7 @@ TEST_F(NavigationControllerTest, NoURLRewriteForSubframes) {
       blink::NavigationDownloadPolicy(), "GET", nullptr, "",
       network::mojom::SourceLocation::New(), nullptr,
       false /* is_form_submission */, std::nullopt,
-      false /* has_user_gesture */,
-      blink::mojom::NavigationInitiatorActivationAndAdStatus::
-          kDidNotStartWithTransientActivation,
+      false /* has_user_gesture */, false /* started_by_ad */,
       base::TimeTicks::Now() /* actual_navigation_start_time */,
       base::TimeTicks::Now() /* navigation_start_time */);
 
@@ -4115,9 +4115,7 @@ TEST_F(NavigationControllerTest,
       blink::NavigationDownloadPolicy(), "GET", nullptr, "",
       network::mojom::SourceLocation::New(), nullptr,
       false /* is_form_submission */, std::nullopt,
-      false /* has_user_gesture */,
-      blink::mojom::NavigationInitiatorActivationAndAdStatus::
-          kDidNotStartWithTransientActivation,
+      false /* has_user_gesture */, false /* started_by_ad */,
       base::TimeTicks::Now() /* actual_navigation_start_time */,
       base::TimeTicks::Now() /* navigation_start_time */);
   NavigationRequest* request = node->navigation_request();
@@ -4503,9 +4501,7 @@ TEST_F(NavigationControllerFencedFrameTest, NoURLRewriteForFencedFrames) {
       blink::NavigationDownloadPolicy(), "GET", nullptr, "",
       network::mojom::SourceLocation::New(), nullptr,
       false /* is_form_submission */, std::nullopt,
-      false /* has_user_gesture */,
-      blink::mojom::NavigationInitiatorActivationAndAdStatus::
-          kDidNotStartWithTransientActivation,
+      false /* has_user_gesture */, false /* started_by_ad */,
       base::TimeTicks::Now() /* actual_navigation_start_time */,
       base::TimeTicks::Now() /* navigation_start_time */);
 

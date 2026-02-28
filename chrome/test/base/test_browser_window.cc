@@ -52,6 +52,11 @@ OmniboxController* TestBrowserWindow::TestLocationBar::GetOmniboxController() {
   return nullptr;
 }
 
+bool TestBrowserWindow::TestLocationBar::ShouldCloseOmniboxPopup(
+    ui::MouseEvent* event) {
+  return false;
+}
+
 ChipController* TestBrowserWindow::TestLocationBar::GetChipController() {
   return nullptr;
 }
@@ -74,8 +79,32 @@ TestBrowserWindow::TestLocationBar::GetChipAnchor() {
   return {};
 }
 
+ui::TrackedElement* TestBrowserWindow::TestLocationBar::GetAnchorOrNull() {
+  return nullptr;
+}
+
+Browser* TestBrowserWindow::TestLocationBar::GetBrowser() {
+  return nullptr;
+}
+
+bool TestBrowserWindow::TestLocationBar::IsInitialized() const {
+  return true;
+}
+
 bool TestBrowserWindow::TestLocationBar::IsVisible() const {
   return true;
+}
+
+bool TestBrowserWindow::TestLocationBar::IsDrawn() const {
+  return true;
+}
+
+bool TestBrowserWindow::TestLocationBar::IsFullscreen() const {
+  return false;
+}
+
+bool TestBrowserWindow::TestLocationBar::IsEditingOrEmpty() const {
+  return false;
 }
 
 gfx::Rect TestBrowserWindow::TestLocationBar::Bounds() const {
@@ -281,7 +310,7 @@ bool TestBrowserWindow::IsLocationBarVisible() const {
   return false;
 }
 
-bool TestBrowserWindow::IsBorderlessModeEnabled() const {
+bool TestBrowserWindow::IsUnframedModeEnabled() const {
   return false;
 }
 

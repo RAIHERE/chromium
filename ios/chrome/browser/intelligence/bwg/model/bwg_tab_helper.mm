@@ -25,10 +25,12 @@
 #import "components/prefs/pref_service.h"
 #import "components/prefs/scoped_user_pref_update.h"
 #import "ios/chrome/browser/feature_engagement/model/tracker_factory.h"
+#import "ios/chrome/browser/intelligence/bwg/model/bwg_service.h"
+#import "ios/chrome/browser/intelligence/bwg/model/bwg_service_factory.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_snapshot_utils.h"
 #import "ios/chrome/browser/intelligence/bwg/model/gemini_page_context.h"
-#import "ios/chrome/browser/intelligence/bwg/ui/bwg_ui_utils.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/ui/gemini_ui_utils.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intelligence/proto_wrappers/page_context_wrapper.h"
 #import "ios/chrome/browser/intelligence/zero_state_suggestions/model/zero_state_suggestions_service_impl.h"
@@ -44,16 +46,10 @@
 #import "ios/chrome/browser/shared/public/commands/bwg_commands.h"
 #import "ios/chrome/browser/shared/public/commands/help_commands.h"
 #import "ios/chrome/browser/shared/public/commands/location_bar_badge_commands.h"
-#import "ios/chrome/browser/shared/public/commands/snackbar_commands.h"
-#import "ios/chrome/browser/shared/public/snackbar/snackbar_message.h"
-#import "ios/chrome/browser/shared/public/snackbar/snackbar_message_action.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
 #import "ios/chrome/browser/snapshots/model/snapshot_tab_helper.h"
-#import "ios/chrome/browser/web/model/image_fetch/image_fetch_tab_helper.h"
 #import "ios/chrome/grit/ios_strings.h"
 #import "ios/public/provider/chrome/browser/bwg/bwg_api.h"
-#import "ios/web/public/js_messaging/web_frame.h"
-#import "ios/web/public/js_messaging/web_frames_manager.h"
 #import "ios/web/public/navigation/navigation_context.h"
 #import "ios/web/public/web_state.h"
 #import "mojo/public/cpp/bindings/remote.h"
@@ -61,40 +57,6 @@
 #import "url/gurl.h"
 
 namespace {
-
-// Gets the session dictionary for `cliend_id` from `profile`'s prefs, if the
-// session is not expired.
-std::optional<const base::DictValue*> GetSessionDictFromPrefs(
-    std::string client_id,
-    ProfileIOS* profile) {
-  const base::DictValue& sessions_map =
-      profile->GetPrefs()->GetDict(prefs::kBwgSessionMap);
-  if (sessions_map.empty()) {
-    return std::nullopt;
-  }
-
-  const base::DictValue* current_session_dict =
-      sessions_map.FindDict(client_id);
-  if (!current_session_dict) {
-    return std::nullopt;
-  }
-
-  std::optional<double> creation_timestamp =
-      current_session_dict->FindDouble(kLastInteractionTimestampDictKey);
-  if (!creation_timestamp) {
-    return std::nullopt;
-  }
-
-  // Return the session dict if it hasn't yet expired.
-  int64_t latest_valid_timestamp =
-      base::Time::Now().InMillisecondsSinceUnixEpoch() -
-      BWGSessionValidityDuration().InMilliseconds();
-  if (*creation_timestamp > latest_valid_timestamp) {
-    return current_session_dict;
-  }
-
-  return std::nullopt;
-}
 
 NSMutableArray<NSString*>* ZeroStateSuggestionsAsNSArray(
     std::vector<std::string> suggestions) {
@@ -162,39 +124,33 @@ bool BwgTabHelper::HasObserver(GeminiTabHelperObserver* observer) {
   return observers_.HasObserver(observer);
 }
 
-void BwgTabHelper::GeneratePageContext(
-    base::OnceCallback<void(PageContextWrapperCallbackResponse)> callback,
-    bool full_page_context) {
-  // Cancel any ongoing page context operation.
-  if (page_context_wrapper_) {
-    page_context_wrapper_ = nil;
-  }
-
-  // Create a new wrapper.
-  page_context_wrapper_ =
-      [[PageContextWrapper alloc] initWithWebState:web_state_
-                                completionCallback:std::move(callback)];
-
-  // Configure it to fetch full context.
-  [page_context_wrapper_ setShouldGetAnnotatedPageContent:full_page_context];
-  [page_context_wrapper_ setShouldGetSnapshot:full_page_context];
+void BwgTabHelper::SetupPageContextGeneration(
+    base::RepeatingCallback<void(PageContextWrapperCallbackResponse)>
+        callback) {
+  page_context_wrapper_response_ready_callback_ = std::move(callback);
 
   // If the page is still loading, wait for it to finish before extracting the
   // page context.
-  bool should_update_context_after_page_load =
-      full_page_context && IsGeminiImmediateOverlayEnabled() &&
-      web_state_->IsLoading();
-  if (should_update_context_after_page_load) {
+  if (web_state_->IsLoading()) {
     // TODO(crbug.com/466107255): Move waiting for page loading responsibility
-    // to BwgBrowserAgent.
-    base::OnceCallback<void()> pageContextPopulateCallback =
-        base::BindOnce(&BwgTabHelper::PopulatePageContextFields,
-                       weak_ptr_factory_.GetWeakPtr());
+    // to GeminiBrowserAgent.
+    base::RepeatingCallback<void()> pageContextPopulateCallback =
+        base::BindRepeating(&BwgTabHelper::PopulatePageContextFields,
+                            weak_ptr_factory_.GetWeakPtr());
     SetPageLoadedCallback(std::move(pageContextPopulateCallback));
     return;
   }
 
   PopulatePageContextFields();
+}
+
+void BwgTabHelper::ForcePageContextGeneration() {
+  if (page_loaded_callback_) {
+    // Override the wait for PageLoaded.
+    // Run the callback but do not reset it, so it can run again when the page
+    // actually finishes loading (to get the full context).
+    page_loaded_callback_.Run();
+  }
 }
 
 void BwgTabHelper::ExecuteZeroStateSuggestions(
@@ -256,10 +212,6 @@ bool BwgTabHelper::GetIsFirstRun() {
   return is_first_run_;
 }
 
-std::optional<bool> BwgTabHelper::GetIsGeminiEligible() {
-  return is_gemini_eligible_;
-}
-
 bool BwgTabHelper::ShouldPreventContextualPanelEntryPoint() {
   return prevent_contextual_panel_entry_point_;
 }
@@ -268,24 +220,14 @@ void BwgTabHelper::SetPreventContextualPanelEntryPoint(bool shouldPrevent) {
   prevent_contextual_panel_entry_point_ = shouldPrevent;
 }
 
-void BwgTabHelper::SetPageLoadedCallback(base::OnceClosure callback) {
+void BwgTabHelper::SetPageLoadedCallback(base::RepeatingClosure callback) {
   page_loaded_callback_ = std::move(callback);
-}
-
-NSString* BwgTabHelper::GetContextualCueLabel() {
-  return contextual_cue_label_;
-}
-
-void BwgTabHelper::SetContextualCueLabel(NSString* cue_label) {
-  contextual_cue_label_ = cue_label;
 }
 
 GeminiPageContext* BwgTabHelper::GetPartialPageContext() {
   GeminiPageContext* gemini_page_context = [[GeminiPageContext alloc] init];
-  gemini_page_context.BWGPageContextComputationState =
-      is_gemini_eligible_.value_or(true)
-          ? ios::provider::BWGPageContextComputationState::kPending
-          : ios::provider::BWGPageContextComputationState::kBlocked;
+  gemini_page_context.geminiPageContextComputationState =
+      ios::provider::GeminiPageContextComputationState::kPending;
   gemini_page_context.favicon = current_favicon_;
 
   std::unique_ptr<optimization_guide::proto::PageContext> page_context =
@@ -295,6 +237,31 @@ GeminiPageContext* BwgTabHelper::GetPartialPageContext() {
   gemini_page_context.uniquePageContext = std::move(page_context);
 
   return gemini_page_context;
+}
+
+bool BwgTabHelper::ShouldBlockFloatyFromShowing() {
+  return is_external_overlay_presented_ || is_alert_presented_ ||
+         is_banner_presented_ || is_snackbar_presented_;
+}
+
+void BwgTabHelper::UpdatePresentedSource(gemini::FloatyUpdateSource source,
+                                         bool is_presented) {
+  switch (source) {
+    case gemini::FloatyUpdateSource::Alert:
+      is_alert_presented_ = is_presented;
+      break;
+    case gemini::FloatyUpdateSource::Banner:
+      is_banner_presented_ = is_presented;
+      break;
+    case gemini::FloatyUpdateSource::Overlay:
+      is_external_overlay_presented_ = is_presented;
+      break;
+    case gemini::FloatyUpdateSource::Snackbar:
+      is_snackbar_presented_ = is_presented;
+      break;
+    default:
+      break;
+  }
 }
 
 bool BwgTabHelper::GetIsBwgSessionActiveInBackground() {
@@ -310,14 +277,10 @@ void BwgTabHelper::DeactivateBWGSession() {
 bool BwgTabHelper::IsLastInteractionUrlDifferent() {
   std::optional<std::string> last_interaction_url;
 
-  if (IsGeminiCrossTabEnabled()) {
-    PrefService* pref_service =
-        ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
-    last_interaction_url =
-        pref_service->GetString(prefs::kLastGeminiInteractionURL);
-  } else {
-    last_interaction_url = GetURLOnLastInteraction();
-  }
+  PrefService* pref_service =
+      ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
+  last_interaction_url =
+      pref_service->GetString(prefs::kLastGeminiInteractionURL);
 
   if (!last_interaction_url.has_value()) {
     return true;
@@ -336,12 +299,16 @@ void BwgTabHelper::CreateOrUpdateBwgSessionInStorage(std::string server_id) {
 }
 
 void BwgTabHelper::DeleteBwgSessionInStorage() {
-  CleanupSessionFromPrefs(GetClientId());
+  CleanupSessionFromPrefs();
 }
 
 void BwgTabHelper::PrepareBwgFreBackgrounding() {
-  cached_snapshot_ =
-      bwg_snapshot_utils::GetCroppedFullscreenSnapshot(web_state_->GetView());
+  if (!IsGeminiCopresenceEnabled()) {
+    // TODO(crbug.com/486134176) Clean up snapshot logic to rely on the default
+    // snapshot mechanism once copresence is launched.
+    cached_snapshot_ =
+        bwg_snapshot_utils::GetCroppedFullscreenSnapshot(web_state_->GetView());
+  }
   is_bwg_session_active_in_background_ = true;
 }
 
@@ -350,7 +317,6 @@ std::string BwgTabHelper::GetClientId() {
 }
 
 std::optional<std::string> BwgTabHelper::GetServerId() {
-  if (IsGeminiCrossTabEnabled()) {
     PrefService* pref_service =
         ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
     base::Time last_interaction_timestamp =
@@ -363,21 +329,6 @@ std::optional<std::string> BwgTabHelper::GetServerId() {
         return server_id;
       }
     }
-  } else {
-    std::optional<const base::DictValue*> session_dict =
-        GetSessionDictFromPrefs(
-            GetClientId(),
-            ProfileIOS::FromBrowserState(web_state_->GetBrowserState()));
-    if (!session_dict.has_value()) {
-      return std::nullopt;
-    }
-
-    const std::string* server_id =
-        session_dict.value()->FindString(kServerIDDictKey);
-    if (server_id) {
-      return *server_id;
-    }
-  }
   return std::nullopt;
 }
 
@@ -387,11 +338,6 @@ void BwgTabHelper::SetBwgCommandsHandler(id<BWGCommands> handler) {
 
 void BwgTabHelper::SetHelpCommandsHandler(id<HelpCommands> handler) {
   help_commands_handler_ = handler;
-}
-
-void BwgTabHelper::SetSnackbarCommandsHandler(id<SnackbarCommands> handler) {
-  CHECK(IsWebPageReportedImagesSheetEnabled());
-  snackbar_commands_handler_ = handler;
 }
 
 void BwgTabHelper::SetLocationBarBadgeCommandsHandler(
@@ -405,20 +351,31 @@ void BwgTabHelper::WasShown(web::WebState* web_state) {
   if (is_bwg_session_active_in_background_) {
     if (!IsGeminiCopresenceEnabled()) {
       [bwg_commands_handler_
-          startGeminiFlowWithEntryPoint:gemini::EntryPoint::TabReopen];
+          startGeminiFlowWithStartupState:
+              [[GeminiStartupState alloc]
+                  initWithEntryPoint:gemini::EntryPoint::TabReopen]];
     }
     cached_snapshot_ = nil;
   }
 
   if (IsGeminiCopresenceEnabled()) {
-    [bwg_commands_handler_ updateFloatyVisibilityForWebState:web_state];
+    [bwg_commands_handler_
+        updateFloatyVisibilityIfEligibleAnimated:NO
+                                      fromSource:gemini::FloatyUpdateSource::
+                                                     WebNavigation];
   }
 }
 
 void BwgTabHelper::WasHidden(web::WebState* web_state) {
   if (is_bwg_ui_showing_) {
-    cached_snapshot_ =
-        bwg_snapshot_utils::GetCroppedFullscreenSnapshot(web_state_->GetView());
+    // Only capture the window snapshot if Copresence is disabled. This ensures
+    // Copresence uses the default snapshot mechanism to avoid UI corruption.
+    if (!IsGeminiCopresenceEnabled()) {
+      // TODO(crbug.com/486134176) Clean up snaoshot logic to rely on the
+      // default snapshot mechanism once copresence is launched.
+      cached_snapshot_ = bwg_snapshot_utils::GetCroppedFullscreenSnapshot(
+          web_state_->GetView());
+    }
     is_bwg_session_active_in_background_ = true;
 
     if (!IsGeminiCopresenceEnabled()) {
@@ -427,6 +384,14 @@ void BwgTabHelper::WasHidden(web::WebState* web_state) {
   }
 
   UpdateWebStateSnapshotInStorage();
+
+  if (!IsGeminiCopresenceEnabled()) {
+    return;
+  }
+
+  [bwg_commands_handler_
+      hideFloatyIfInvokedAnimated:NO
+                       fromSource:gemini::FloatyUpdateSource::WebNavigation];
 }
 
 void BwgTabHelper::DidStartNavigation(
@@ -444,7 +409,6 @@ void BwgTabHelper::DidStartNavigation(
   }
 
   weak_ptr_factory_.InvalidateWeakPtrs();
-  is_gemini_eligible_ = std::nullopt;
   current_url_ = new_url;
   if (IsGeminiCopresenceEnabled()) {
     NotifyPageContextUpdated(web_state_);
@@ -456,7 +420,11 @@ void BwgTabHelper::DidStartNavigation(
 
   ProfileIOS* profile =
       ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
-  if (profile->GetPrefs()->GetBoolean(prefs::kIOSBWGPageContentSetting)) {
+  raw_ptr<BwgService> bwg_service = BwgServiceFactory::GetForProfile(profile);
+  const bool gemini_available =
+      bwg_service && bwg_service->IsBwgAvailableForWebState(web_state_);
+  if (gemini_available &&
+      profile->GetPrefs()->GetBoolean(prefs::kIOSBWGPageContentSetting)) {
     bool can_request_metadata =
         optimization_guide::IsUserPermittedToFetchFromRemoteOptimizationGuide(
             profile->IsOffTheRecord(), profile->GetPrefs());
@@ -465,7 +433,8 @@ void BwgTabHelper::DidStartNavigation(
           new_url_without_ref,
           optimization_guide::proto::GLIC_ZERO_STATE_SUGGESTIONS,
           base::BindOnce(&BwgTabHelper::OnGeminiEligibilityDecision,
-                         weak_ptr_factory_.GetWeakPtr(), new_url_without_ref));
+                         weak_ptr_factory_.GetWeakPtr(), new_url_without_ref,
+                         can_request_metadata));
     } else {
       optimization_guide_decider_->CanApplyOptimizationOnDemand(
           {new_url_without_ref},
@@ -484,7 +453,10 @@ void BwgTabHelper::DidFinishNavigation(
     web::WebState* web_state,
     web::NavigationContext* navigation_context) {
   if (IsGeminiCopresenceEnabled()) {
-    [bwg_commands_handler_ updateFloatyVisibilityForWebState:web_state];
+    [bwg_commands_handler_
+        updateFloatyVisibilityIfEligibleAnimated:NO
+                                      fromSource:gemini::FloatyUpdateSource::
+                                                     WebNavigation];
   }
 
   const GURL& current_url = navigation_context->GetUrl().GetWithoutRef();
@@ -527,11 +499,8 @@ void BwgTabHelper::PageLoaded(
     web::WebState* web_state,
     web::PageLoadCompletionStatus load_completion_status) {
   if (page_loaded_callback_) {
-    std::move(page_loaded_callback_).Run();
-  }
-
-  if (IsWebPageReportedImagesSheetEnabled()) {
-    PrepareWebPageReportedImagesSnackbar();
+    page_loaded_callback_.Run();
+    page_loaded_callback_.Reset();
   }
 }
 
@@ -569,9 +538,6 @@ void BwgTabHelper::FaviconUrlUpdated(
 void BwgTabHelper::WebStateDestroyed(web::WebState* web_state) {
   weak_ptr_factory_.InvalidateWeakPtrs();
   web_state_observation_.Reset();
-  if (!IsGeminiCrossTabEnabled()) {
-    CleanupSessionFromPrefs(GetClientId());
-  }
   web_state_ = nullptr;
   if (IsAskGeminiChipEnabled()) {
     optimization_guide_decider_ = nullptr;
@@ -582,9 +548,30 @@ void BwgTabHelper::WebStateDestroyed(web::WebState* web_state) {
 #pragma mark - Private
 
 void BwgTabHelper::PopulatePageContextFields() {
+  // Cancel any ongoing page context operation.
   if (page_context_wrapper_) {
-    [page_context_wrapper_ populatePageContextFieldsAsync];
+    page_context_wrapper_ = nil;
   }
+
+  PageContextWrapperConfig config =
+      PageContextWrapperConfigBuilder()
+          .SetUseRefactoredExtractor(IsPageContextExtractorRefactoredEnabled())
+          .SetGraftCrossOriginFrameContent(IsGeminiRichAPCExtractionEnabled())
+          .SetUseRichExtraction(IsGeminiRichAPCExtractionEnabled())
+          .Build();
+
+  // Create a new wrapper.
+  page_context_wrapper_ = [[PageContextWrapper alloc]
+        initWithWebState:web_state_
+                  config:config
+      completionCallback:page_context_wrapper_response_ready_callback_];
+
+  // Configure it to fetch full context.
+  [page_context_wrapper_ setShouldGetAnnotatedPageContent:YES];
+  [page_context_wrapper_ setShouldGetSnapshot:YES];
+
+  // Start populating the page context fields.
+  [page_context_wrapper_ populatePageContextFieldsAsync];
 }
 
 void BwgTabHelper::ClearZeroStateSuggestions() {
@@ -608,7 +595,6 @@ void BwgTabHelper::CreateOrUpdateSessionInPrefs(std::string client_id,
     return;
   }
 
-  if (IsGeminiCrossTabEnabled()) {
     PrefService* pref_service =
         ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
     pref_service->SetTime(prefs::kLastGeminiInteractionTimestamp,
@@ -616,57 +602,12 @@ void BwgTabHelper::CreateOrUpdateSessionInPrefs(std::string client_id,
     pref_service->SetString(prefs::kLastGeminiInteractionURL,
                             web_state_->GetVisibleURL().spec());
     pref_service->SetString(prefs::kGeminiConversationId, server_id);
-  } else {
-    base::DictValue session_info_dict;
-    session_info_dict.Set(kServerIDDictKey, server_id);
-    session_info_dict.Set(
-        kLastInteractionTimestampDictKey,
-        static_cast<double>(base::Time::Now().InMillisecondsSinceUnixEpoch()));
-    session_info_dict.Set(kURLOnLastInteractionDictKey,
-                          web_state_->GetVisibleURL().spec());
-
-    ProfileIOS* profile =
-        ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
-    ScopedDictPrefUpdate update(profile->GetPrefs(), prefs::kBwgSessionMap);
-    update->Set(client_id, std::move(session_info_dict));
-  }
 }
 
-void BwgTabHelper::CleanupSessionFromPrefs(std::string session_id) {
-  if (IsGeminiCrossTabEnabled()) {
-    // TODO(crbug.com/436012307): Once this launches, remove `session_id` from
-    // method.
-    PrefService* pref_service =
-        ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
-    pref_service->ClearPref(prefs::kGeminiConversationId);
-    return;
-  }
-
-  if (session_id.empty()) {
-    return;
-  }
-
-  ProfileIOS* profile =
-      ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
-  ScopedDictPrefUpdate update(profile->GetPrefs(), prefs::kBwgSessionMap);
-  update->Remove(session_id);
-}
-
-std::optional<std::string> BwgTabHelper::GetURLOnLastInteraction() {
-  std::optional<const base::DictValue*> session_dict = GetSessionDictFromPrefs(
-      GetClientId(),
-      ProfileIOS::FromBrowserState(web_state_->GetBrowserState()));
-  if (!session_dict.has_value()) {
-    return std::nullopt;
-  }
-
-  const std::string* last_interaction_url =
-      session_dict.value()->FindString(kURLOnLastInteractionDictKey);
-  if (last_interaction_url) {
-    return *last_interaction_url;
-  }
-
-  return std::nullopt;
+void BwgTabHelper::CleanupSessionFromPrefs() {
+  PrefService* pref_service =
+      ProfileIOS::FromBrowserState(web_state_->GetBrowserState())->GetPrefs();
+  pref_service->ClearPref(prefs::kGeminiConversationId);
 }
 
 void BwgTabHelper::UpdateWebStateSnapshotInStorage() {
@@ -708,7 +649,7 @@ void BwgTabHelper::OnCanApplyContextualCueingDecision(
   ProfileIOS* profile =
       ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
 
-  // TODO (crbug.com/461595639): Remove pref checks to fully migrate logic to
+  // TODO(crbug.com/461595639): Remove pref checks to fully migrate logic to
   // FET.
   bool floaty_shown = profile->GetPrefs()->GetBoolean(prefs::kIOSBwgConsent);
   bool bwg_promo_shown =
@@ -727,7 +668,7 @@ void BwgTabHelper::OnCanApplyContextualCueingDecision(
   }
 
   UIImage* badge_image =
-      [BWGUIUtils brandedGeminiSymbolWithPointSize:kBadgeSymbolPointSize];
+      [GeminiUIUtils brandedGeminiSymbolWithPointSize:kBadgeSymbolPointSize];
   NSString* cue_label =
       l10n_util::GetNSString(IDS_IOS_ASK_GEMINI_CHIP_CUE_LABEL);
   LocationBarBadgeConfiguration* badge_config =
@@ -764,6 +705,7 @@ bool BwgTabHelper::ComputeGeminiEligibility(
 
 void BwgTabHelper::OnGeminiEligibilityDecision(
     const GURL& url_without_ref,
+    bool user_enabled_request_metadata,
     optimization_guide::OptimizationGuideDecision decision,
     const optimization_guide::OptimizationMetadata& metadata) {
   // The URL has changed so the metadata is obsolete.
@@ -772,11 +714,6 @@ void BwgTabHelper::OnGeminiEligibilityDecision(
   }
 
   const bool eligible = ComputeGeminiEligibility(decision, metadata);
-  is_gemini_eligible_ = eligible;
-  if (IsGeminiCopresenceEnabled()) {
-    NotifyPageContextUpdated(web_state_);
-  }
-
   if (IsZeroStateSuggestionsEnabled()) {
     zero_state_suggestions_->can_apply = eligible;
   }
@@ -784,6 +721,7 @@ void BwgTabHelper::OnGeminiEligibilityDecision(
   ProfileIOS* profile =
       ProfileIOS::FromBrowserState(web_state_->GetBrowserState());
   if (eligible && IsGeminiImageRemixToolEnabled() &&
+      user_enabled_request_metadata &&
       feature_engagement::TrackerFactory::GetForProfile(profile)
           ->WouldTriggerHelpUI(
               feature_engagement::kIPHiOSGeminiImageRemixFeature) &&
@@ -802,13 +740,18 @@ void BwgTabHelper::OnGeminiEligibilityOnDemandDecision(
       decisions.find(optimization_guide::proto::GLIC_ZERO_STATE_SUGGESTIONS);
   if (it == decisions.end()) {
     // If the optimization type is missing, treat it as kTrue.
+    // On demand decisions are made for users who have not enabled metadata
+    // requests (MSBB).
     OnGeminiEligibilityDecision(
-        url_without_ref, optimization_guide::OptimizationGuideDecision::kTrue,
+        url_without_ref, false,
+        optimization_guide::OptimizationGuideDecision::kTrue,
         optimization_guide::OptimizationMetadata());
     return;
   }
 
-  OnGeminiEligibilityDecision(url_without_ref, it->second.decision,
+  // On demand decisions are made for users who have not enabled metadata
+  // requests (MSBB).
+  OnGeminiEligibilityDecision(url_without_ref, false, it->second.decision,
                               it->second.metadata);
 }
 
@@ -838,147 +781,4 @@ void BwgTabHelper::ParseSuggestionsResponse(
 
   std::move(callback).Run(ZeroStateSuggestionsAsNSArray(
       zero_state_suggestions_->suggestions.value()));
-}
-
-// TODO(crbug.com/456782848): Cleanup when no longer needed/wanted.
-#pragma mark - Experimental. Do not use in production code.
-
-// TODO(crbug.com/456782848): Cleanup when no longer needed/wanted.
-void BwgTabHelper::PrepareWebPageReportedImagesSnackbar() {
-  if (!IsWebPageReportedImagesSheetEnabled() || !web_state_) {
-    return;
-  }
-
-  web::WebFrame* main_frame =
-      web_state_->GetPageWorldWebFramesManager()->GetMainWebFrame();
-
-  if (!main_frame) {
-    return;
-  }
-
-  // Extract the OG image.
-  main_frame->ExecuteJavaScript(
-      u"(() => {"
-      u"return document.querySelector('meta[property=\"og:image\"]')?.content;"
-      u"})()",
-      base::BindOnce(&BwgTabHelper::OnImageExtractedFromWebState,
-                     weak_ptr_factory_.GetWeakPtr()));
-}
-
-// TODO(crbug.com/456782848): Cleanup when no longer needed/wanted.
-void BwgTabHelper::OnImageExtractedFromWebState(const base::Value* value,
-                                                NSError* error) {
-  if (!IsWebPageReportedImagesSheetEnabled() || !web_state_) {
-    return;
-  }
-
-  if (error) {
-    DLOG(WARNING) << "Failed to fetch og:image."
-                  << base::SysNSStringToUTF8([error localizedDescription]);
-    return;
-  }
-
-  // Skip to the last step if no og:image was found.
-  if (!value || !value->is_string()) {
-    OnImageTranscoded(nil, nil);
-    return;
-  }
-
-  // Fetch the image bytes.
-  ImageFetchTabHelper* image_fetcher =
-      ImageFetchTabHelper::FromWebState(web_state_.get());
-  const GURL& lastCommittedURL = web_state_->GetLastCommittedURL();
-  web::Referrer referrer(lastCommittedURL, web::ReferrerPolicyDefault);
-
-  if (!image_fetcher) {
-    return;
-  }
-
-  image_fetcher->GetImageData(
-      GURL(value->GetString()), referrer,
-      base::CallbackToBlock(base::BindOnce(&BwgTabHelper::OnImageFetched,
-                                           weak_ptr_factory_.GetWeakPtr())));
-}
-
-// TODO(crbug.com/456782848): Cleanup when no longer needed/wanted.
-void BwgTabHelper::OnImageFetched(NSData* data) {
-  if (!IsWebPageReportedImagesSheetEnabled() || !web_state_ || !data) {
-    return;
-  }
-
-  image_transcoder_ = std::make_unique<web::JavaScriptImageTranscoder>();
-  image_transcoder_->TranscodeImage(
-      data, @"image/png", nil, nil, nil,
-      base::BindOnce(&BwgTabHelper::OnImageTranscoded,
-                     weak_ptr_factory_.GetWeakPtr()));
-}
-
-// TODO(crbug.com/456782848): Cleanup when no longer needed/wanted.
-void BwgTabHelper::OnImageTranscoded(NSData* png_data, NSError* error) {
-  image_transcoder_ = nullptr;
-  if (!IsWebPageReportedImagesSheetEnabled() || !web_state_) {
-    return;
-  }
-
-  if (error) {
-    DLOG(WARNING) << "Failed to transcode og:image."
-                  << base::SysNSStringToUTF8([error localizedDescription]);
-    return;
-  }
-
-  UIWindow* web_state_window = web_state_->GetView().window;
-  UIViewController* parentVC = web_state_window.rootViewController;
-  ProceduralBlock present_sheet = ^{
-    if (!parentVC) {
-      return;
-    }
-
-    // Create the presentation sheet.
-    UIViewController* sheet = [[UIViewController alloc] init];
-    sheet.view.backgroundColor = [UIColor blackColor];
-
-    // Prepare the image if it exists.
-    UIImage* image = nil;
-    if (png_data) {
-      image = [UIImage imageWithData:png_data];
-      UIImageView* imageView = [[UIImageView alloc] initWithImage:image];
-      imageView.contentMode = UIViewContentModeScaleAspectFit;
-      imageView.frame = sheet.view.bounds;
-      imageView.autoresizingMask =
-          UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-      [sheet.view addSubview:imageView];
-    }
-
-    // Prepare the label and its constraints.
-    NSString* labelText =
-        image ? [NSString stringWithFormat:@"og:image %.0fw x %.0fh",
-                                           image.size.width, image.size.height]
-              : @"no og:image reported";
-    UILabel* label = [[UILabel alloc] init];
-    label.text = labelText;
-    label.font = [UIFont boldSystemFontOfSize:16];
-    label.textColor = [UIColor whiteColor];
-    label.backgroundColor = [[UIColor blackColor] colorWithAlphaComponent:0.6];
-    label.translatesAutoresizingMaskIntoConstraints = NO;
-    [sheet.view addSubview:label];
-    [NSLayoutConstraint activateConstraints:@[
-      [label.centerXAnchor constraintEqualToAnchor:sheet.view.centerXAnchor],
-      [label.topAnchor
-          constraintEqualToAnchor:sheet.view.safeAreaLayoutGuide.topAnchor],
-    ]];
-
-    [parentVC presentViewController:sheet animated:YES completion:nil];
-  };
-
-  // Show a snackbar which shows a sheet as action.
-  SnackbarMessage* message = [[SnackbarMessage alloc]
-      initWithTitle:png_data ? @"og:image detected" : @"No og:image detected"];
-  if (png_data) {
-    SnackbarMessageAction* action = [[SnackbarMessageAction alloc] init];
-    action.handler = present_sheet;
-    action.title = @"View image";
-    message.action = action;
-  }
-
-  [snackbar_commands_handler_ showSnackbarMessage:message];
 }

@@ -78,7 +78,6 @@
 #include "chrome/browser/sync/sessions/sync_sessions_web_contents_router_factory.h"
 #include "chrome/browser/tab_contents/navigation_metrics_recorder.h"
 #include "chrome/browser/task_manager/web_contents_tags.h"
-#include "chrome/browser/tpcd/http_error_observer/http_error_tab_helper.h"
 #include "chrome/browser/tpcd/metadata/devtools_observer.h"
 #include "chrome/browser/translate/chrome_translate_client.h"
 #include "chrome/browser/trusted_vault/trusted_vault_encryption_keys_tab_helper.h"
@@ -443,9 +442,14 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents) {
       download::NavigationMonitorFactory::GetForKey(profile->GetProfileKey()));
   history::WebContentsTopSitesObserver::CreateForWebContents(
       web_contents, TopSitesFactory::GetForProfile(profile).get());
-  HistoryTabHelper::CreateForWebContents(web_contents);
-  HistoryClustersTabHelper::CreateForWebContents(web_contents);
-  HistoryEmbeddingsTabHelper::CreateForWebContents(web_contents);
+  {
+    auto* history_tab_helper =
+        HistoryTabHelper::GetOrCreateForWebContents(web_contents);
+    HistoryClustersTabHelper::CreateForWebContents(web_contents,
+                                                   history_tab_helper);
+    HistoryEmbeddingsTabHelper::CreateForWebContents(web_contents,
+                                                     history_tab_helper);
+  }
   HttpsOnlyModeTabHelper::CreateForWebContents(web_contents);
   webapps::InstallableManager::CreateForWebContents(web_contents);
   login_detection::LoginDetectionTabHelper::MaybeCreateForWebContents(
@@ -585,7 +589,6 @@ void TabHelpers::AttachTabHelpers(WebContents* web_contents) {
     SupervisedUserNavigationObserver::CreateForWebContents(web_contents);
   }
 #endif
-  HttpErrorTabHelper::CreateForWebContents(web_contents);
   tasks::TaskTabHelper::CreateForWebContents(web_contents);
   tpcd::metadata::TpcdMetadataDevtoolsObserver::CreateForWebContents(
       web_contents);

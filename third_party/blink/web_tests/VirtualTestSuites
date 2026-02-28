@@ -54,6 +54,19 @@
     "expires": "never"
   },
   {
+    "prefix": "allow-unsafe-redirect-schemes",
+    "platforms": ["Linux"],
+    "bases": [
+      "external/wpt/fetch/api/redirect/redirect-location.any.js"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-features=AllowUnsafeRedirectSchemesForManualMode"
+    ],
+    "owners": ["helmut@januschka.com"],
+    "expires": "Jan 24, 2027"
+  },
+  {
     "prefix": "attribution-reporting-aggregatable-debug",
     "platforms": [
       "Linux",
@@ -302,7 +315,10 @@
     "prefix": "connection-allowlist",
     "owners": [ "mkwst@chromium.org" ],
     "platforms": [ "Linux" ],
-    "bases": [ "external/wpt/connection-allowlist" ],
+    "bases": [
+      "external/wpt/connection-allowlist",
+      "http/tests/inspector-protocol/issues/connection-allowlists"
+    ],
     "exclusive_tests": "ALL",
     "args": [ "--enable-features=ConnectionAllowlists" ],
     "expires": "Jul 1, 2026"
@@ -433,25 +449,6 @@
     ]
   },
   {
-    "prefix": "css-anchor-update-disabled",
-    "owners": [
-      "ikilpatrick@chromium.org",
-      "rendering-core-dev@chromium.org"
-    ],
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "bases": [
-      "external/wpt/css/css-anchor-position"
-    ],
-    "args": [
-      "--disable-blink-features=CSSAnchorUpdate"
-    ],
-    "expires": "Aug 13, 2026"
-  },
-  {
     "prefix": "css-gap-decorations-disabled",
     "platforms": ["Linux"],
     "bases": [
@@ -493,7 +490,7 @@
     "owners": ["samomekarajr@microsoft.com", "kbabbitt@microsoft.com"]
   },
   {
-    "prefix": "css-line-clamp-line-breaking-ellipsis",
+    "prefix": "disable-css-line-clamp-line-breaking-ellipsis",
     "platforms": [
       "Linux"
     ],
@@ -529,7 +526,7 @@
       "external/wpt/css/css-ui/text-overflow-string-003.html",
       "external/wpt/css/css-ui/text-overflow-string-004.html",
       "external/wpt/css/css-ui/text-overflow-string-005.html",
-      "external/wpt/css/css-ui/text-overflow-string-006.tentative.html",
+      "external/wpt/css/css-ui/text-overflow-string-006.html",
       "fast/deprecated-flexbox/dynamically-change-line-clamp.html",
       "fast/deprecated-flexbox/line-clamp-crash.html",
       "fast/deprecated-flexbox/line-clamp-removed-dynamically.html",
@@ -540,7 +537,7 @@
       "paint/invalidation/text-line-clamp-truncation.html"
     ],
     "args": [
-      "--enable-blink-features=CSSLineClamp,CSSLineClampLineBreakingEllipsis"
+      "--disable-blink-features=CSSLineClampLineBreakingEllipsis"
     ],
     "owners": [
       "abotella@igalia.com"
@@ -625,13 +622,11 @@
       "Linux"
     ],
     "bases": [
-      "external/wpt/device-bound-session-credentials",
       "http/tests/inspector-protocol/network/device-bound-sessions.js"
     ],
     "exclusive_tests": "ALL",
     "args": [
-      "--enable-features=EnableBoundSessionCredentialsSoftwareKeysForManualTesting,DeviceBoundSessions:RefreshQuota/false/RequireOriginTrialTokens/false,DeviceBoundSessionsFederatedRegistration,DeviceBoundSessionsDevTools",
-      "--disable-features=TrackingProtection3pcd"
+      "--enable-features=EnableBoundSessionCredentialsSoftwareKeysForManualTesting,DeviceBoundSessions:RefreshQuota/false/RequireOriginTrialTokens/false,DeviceBoundSessionsFederatedRegistration,DeviceBoundSessionsDevTools"
     ],
     "expires": "never"
   },
@@ -737,7 +732,20 @@
       "external/wpt/css/css-overflow/line-clamp",
       "external/wpt/css/css-overflow/parsing",
       "external/wpt/css/css-overflow/inheritance.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-001.tentative.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-002.tentative.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-003.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-001.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-002.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-003.tentative.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-001.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-002.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-003.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-001.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-002.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-003.html",
       "external/wpt/css/css-inline/text-box-trim/text-box-trim-line-clamp-001.html",
+      "external/wpt/css/css-inline/text-box-trim/text-box-trim-line-clamp-002.html",
       "external/wpt/css/css-text/white-space/text-wrap-balance-005.html",
       "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-001.html",
       "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-002.html",
@@ -747,7 +755,17 @@
       "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-006.html",
       "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-007.html",
       "external/wpt/css/css-text/white-space/text-wrap-pretty-line-clamp-crash-001.html",
-      "fast/overflow"
+      "external/wpt/css/css-ui/text-overflow-string-001.html",
+      "external/wpt/css/css-ui/text-overflow-string-002.html",
+      "external/wpt/css/css-ui/text-overflow-string-003.html",
+      "external/wpt/css/css-ui/text-overflow-string-004.html",
+      "external/wpt/css/css-ui/text-overflow-string-005.html",
+      "external/wpt/css/css-ui/text-overflow-string-006.html",
+      "fast/deprecated-flexbox/dynamically-change-line-clamp.html",
+      "fast/deprecated-flexbox/line-clamp-crash.html",
+      "fast/deprecated-flexbox/line-clamp-removed-dynamically.html",
+      "fast/overflow",
+      "paint/invalidation/text-line-clamp-truncation.html"
     ],
     "args": [
       "--disable-blink-features=CSSLineClamp"
@@ -843,39 +861,6 @@
     ]
   },
   {
-    "prefix": "dom-parts-disabled",
-    "owners": [
-      "masonf@chromium.org"
-    ],
-    "platforms": [
-      "Linux"
-    ],
-    "bases": [
-      "external/wpt/dom/parts",
-      "fast/parser"
-    ],
-    "args": [
-      "--disable-features=DOMPartsAPI,DOMPartsAPIMinimal"
-    ],
-    "expires": "Jun 1, 2026"
-  },
-  {
-    "prefix": "dom-parts-minimal",
-    "owners": [
-      "masonf@chromium.org"
-    ],
-    "platforms": [
-      "Linux"
-    ],
-    "bases": [
-      "external/wpt/dom/parts"
-    ],
-    "args": [
-      "--enable-features=DOMPartsAPIMinimal"
-    ],
-    "expires": "Jun 1, 2026"
-  },
-  {
     "prefix": "echo-cancellation-mode-all",
     "platforms": [
       "Win11",
@@ -912,7 +897,7 @@
     ],
     "expires": "never",
     "owners": [
-      "arakeri@microsoft.com"
+      "gastonr@microsoft.com"
     ]
   },
   {
@@ -969,6 +954,22 @@
     "args": [
       "--enable-features=SystemCursorSizeSupported",
       "--disable-headless-mode"
+    ],
+    "expires": "Dec 1, 2026"
+  },
+  {
+    "prefix": "event-timing-strict-order-disabled",
+    "owners": [
+      "mmocny@chromium.org"
+    ],
+    "platforms": [
+      "Linux"
+    ],
+    "bases": [
+      "external/wpt/event-timing"
+    ],
+    "args": [
+      "--disable-features=EventTimingReportingInStrictOrderOnly"
     ],
     "expires": "Dec 1, 2026"
   },
@@ -1053,6 +1054,27 @@
       "--enable-features=FedCmLightweightMode"
     ],
     "expires": "Aug 1, 2026"
+  },
+  {
+    "prefix": "fedcm-navigation-interception",
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win"
+    ],
+    "bases": [
+      "external/wpt/fedcm/fedcm-navigation-interception/"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-features=FedCmNavigationInterception"
+    ],
+    "owners": [
+      "cbiesinger@chromium.org",
+      "npm@chromium.org",
+      "goto@chromium.org"
+    ],
+    "expires": "Dec 1, 2026"
   },
   {
     "prefix": "fedcm-flexible-tokens",
@@ -1204,12 +1226,10 @@
       "Win"
     ],
     "bases": [
-      "wpt_internal/fenced_frame",
-      "wpt_internal/shared-worker/back-forward-cache/shared-worker-with-fenced-frame-client.https.window.js"
+      "wpt_internal/fenced_frame"
     ],
     "exclusive_tests": [
-      "wpt_internal/fenced_frame",
-      "wpt_internal/shared-worker/back-forward-cache/shared-worker-with-fenced-frame-client.https.window.js"
+      "wpt_internal/fenced_frame"
     ],
     "args": [
       "--enable-features=PrivacySandboxAdsAPIsOverride,Fledge,AdInterestGroupAPI,FencedFramesEnforceFocus,FencedFramesLocalUnpartitionedDataAccess,ExemptUrlFromNetworkRevocationForTesting,FencedFramesCrossOriginEventReportingAllTraffic,FencedFramesReportEventHeaderChanges,FencedFramesDefaultMode"
@@ -1235,71 +1255,7 @@
       "chrome-first-party-sets@chromium.org"
     ]
   },
-  {
-    "prefix": "fledge-bidding-and-auction",
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "owners": [
-      "behamilton@google.com",
-      "mmenke@chromium.org",
-      "pauljensen@chromium.org"
-    ],
-    "bases": [
-      "external/wpt/fledge/tentative/get-interest-group-auction-data.https.window.js",
-      "external/wpt/fledge/tentative/server-response.https.window.js"
-    ],
-    "args": [
-      "--enable-features=EnableBandATriggeredUpdates,FledgeBiddingAndAuctionServer:FledgeBiddingAndAuctionKeyConfig/{\"https%3A%2F%2Fweb-platform.test%22%3A%22https%3A%2F%2Fweb-platform.test%3A8444%2Ffledge%2Ftentative%2Fresources%2Fba-public-keys\"}"
-    ],
-    "expires": "Jul 14, 2025"
-  },
-  {
-    "prefix": "fledge-bidding-and-auction-for-debugging-only",
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "owners": [
-      "behamilton@google.com",
-      "pauljensen@chromium.org",
-      "qingxinwu@google.com"
-    ],
-    "bases": [
-      "external/wpt/fledge/tentative/server-response-for-debugging-only.https.window.js"
-    ],
-    "args": [
-      "--enable-features=EnableBandASampleDebugReports,FledgeBiddingAndAuctionServer:FledgeBiddingAndAuctionKeyConfig/{\"https%3A%2F%2Fweb-platform.test%22%3A%22https%3A%2F%2Fweb-platform.test%3A8444%2Ffledge%2Ftentative%2Fresources%2Fba-public-keys\"}",
-      "--disable-features=FledgeSampleDebugReports"
-    ],
-    "expires": "Jul 14, 2025"
-  },
-  {
-    "prefix": "fledge-bidding-and-auction-private-aggregation",
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "owners": [
-      "behamilton@google.com",
-      "pauljensen@chromium.org",
-      "qingxinwu@google.com"
-    ],
-    "bases": [
-      "external/wpt/fledge/tentative/private-aggregation.https.window.js",
-      "external/wpt/fledge/tentative/server-response-private-aggregation.https.window.js"
-    ],
-    "args": [
-      "--private-aggregation-developer-mode",
-      "--enable-features=EnableBandAPrivateAggregation,AggregationServiceMultipleCloudProviders:allowlist/https%3A%2F%2Fweb-platform.test%3A8444,FledgeBiddingAndAuctionServer:FledgeBiddingAndAuctionKeyConfig/{\"https%3A%2F%2Fweb-platform.test%22%3A%22https%3A%2F%2Fweb-platform.test%3A8444%2Ffledge%2Ftentative%2Fresources%2Fba-public-keys\"}"
-    ],
-    "expires": "Jul 14, 2025"
-  },
-  "RasterInducingScroll disabled due to crbug.com/349939555",
+ "RasterInducingScroll disabled due to crbug.com/349939555",
   "TODO(crbug.com/398193016): Merge this suite into virtual/overlay-scrollbar",
   {
     "prefix": "fluent-overlay-scrollbar",
@@ -1612,7 +1568,7 @@
   {
     "prefix": "hidpi",
     "owners": [
-      "arakeri@microsoft.com"
+      "gastonr@microsoft.com"
     ],
     "platforms": [
       "Linux",
@@ -1627,24 +1583,6 @@
       "--force-device-scale-factor=2"
     ],
     "expires": "Jun 1, 2025"
-  },
-  {
-    "prefix": "html-anchor-attribute-disabled",
-    "owners": [
-      "masonf@chromium.org"
-    ],
-    "platforms": [
-      "Linux",
-      "Mac",
-      "Win"
-    ],
-    "bases": [
-      "external/wpt/html/semantics/popovers"
-    ],
-    "args": [
-      "--disable-blink-features=HTMLAnchorAttribute"
-    ],
-    "expires": "Jun 1, 2026"
   },
   {
     "prefix": "http-cache-default-backend",
@@ -1759,7 +1697,6 @@
       "external/wpt/webcodecs/video-frame-serialization.any.html",
       "external/wpt/workers/data-url-shared.html",
       "external/wpt/workers/data-url.html",
-      "fast/dom/domstringlist.html",
       "http/tests/devtools/indexeddb/database-names.js",
       "http/tests/devtools/indexeddb/upgrade-events.js",
       "http/tests/inspector-protocol/storage/indexed-db-storage-key-request-database-names.js"
@@ -2005,7 +1942,8 @@
       "Win"
     ],
     "bases": [
-      "fast/peerconnection"
+      "fast/peerconnection",
+      "wpt_internal/peerconnection"
     ],
     "args": [
       "--enable-features=LocalNetworkAccessChecks,LocalNetworkAccessChecksWebRTC"
@@ -2391,23 +2329,6 @@
     ],
     "expires": "Dec 1, 2026"
   },
-  {
-    "prefix": "orb-errors-for-all-fetches",
-    "owners": [
-      "vogelheim@chromium.org"
-    ],
-    "platforms": [
-      "Linux"
-    ],
-    "args": [
-      "--enable-features=OpaqueResponseBlockingErrorsForAllFetches"
-    ],
-    "bases": [
-      "external/wpt/fetch/orb",
-      "external/wpt/fetch/corb"
-    ],
-    "expires": "Jul 1, 2024"
-  },
   "The origin trials suite tests that OT-controlled features are exposed to",
   "the web as expected, so should not expire.",
   {
@@ -2435,30 +2356,42 @@
       "Linux"
     ],
     "bases": [
-      "external/wpt/css/css-overflow/column-scroll-marker-001.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-003.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-004.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-005.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-006.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-007.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-008.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-010.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-011.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-012.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-013.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-014.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-counters.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-dynamic-style-update.html",
-      "external/wpt/css/css-overflow/column-scroll-marker-reattach-target-current.html",
-      "external/wpt/css/css-overflow/nested-scroll-markers-under-content-visibility-auto.html",
-      "external/wpt/css/css-overflow/root-scroll-marker-activation-in-iframe.html",
-      "external/wpt/css/css-overflow/scroll-marker-group-015.html",
-      "external/wpt/css/css-overflow/scroll-target-group-003.html",
-      "external/wpt/css/css-overflow/targeted-column-scroll-marker-selection-001.html",
-      "external/wpt/css/css-overflow/targeted-column-scroll-marker-selection-002.html",
-      "external/wpt/css/css-overflow/targeted-column-scroll-marker-selection-003.html",
-      "external/wpt/css/css-overflow/targeted-column-scroll-marker-selection-004.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-001.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-003.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-004.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-005.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-006.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-007.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-008.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-010.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-011.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-012.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-013.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-014.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-counters.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-dynamic-style-update.html",
+      "external/wpt/css/css-overflow/scroll-markers/column-scroll-marker-reattach-target-current.html",
+      "external/wpt/css/css-overflow/scroll-markers/nested-scroll-markers-under-content-visibility-auto.html",
+      "external/wpt/css/css-overflow/scroll-markers/root-scroll-marker-activation-in-iframe.html",
+      "external/wpt/css/css-overflow/scroll-markers/scroll-marker-group-015.html",
+      "external/wpt/css/css-overflow/scroll-markers/scroll-target-group-003.html",
+      "external/wpt/css/css-overflow/scroll-markers/scroll-marker-group-size-container-query-root.html",
+      "external/wpt/css/css-overflow/scroll-markers/targeted-column-scroll-marker-selection-001.html",
+      "external/wpt/css/css-overflow/scroll-markers/targeted-column-scroll-marker-selection-002.html",
+      "external/wpt/css/css-overflow/scroll-markers/targeted-column-scroll-marker-selection-003.html",
+      "external/wpt/css/css-overflow/scroll-markers/targeted-column-scroll-marker-selection-004.html",
       "external/wpt/css/css-pseudo/events-on-pseudo-element.tentative.html",
+      "external/wpt/fullscreen/api/element-request-fullscreen-namespaces.html",
+      "external/wpt/fullscreen/rendering/exit-fullscreen-scroll-to-unscrollable-area-overflow-hidden.html",
+      "external/wpt/fullscreen/rendering/exit-fullscreen-scroll-to-unscrollable-area-overflow-x-hidden.html",
+      "external/wpt/html/semantics/menu/tentative/menu-elements-default-style.html",
+      "external/wpt/html/semantics/menu/tentative/menuitem-activate.html",
+      "external/wpt/screen-orientation/lock-sandboxed-iframe.html",
+      "external/wpt/shadow-dom/focus-navigation/reading-flow/tentative/carousel-grid-order.html",
+      "fullscreen/full-screen-placeholder.html",
+      "fullscreen/full-screen-render-inline.html",
+      "fullscreen/full-screen-zIndex-after.html",
+      "fullscreen/parent-flow-inline-with-block-child.html",
       "external/wpt/html/semantics/interactive-elements/the-dialog-element/dialog-popover-overlay.html",
       "external/wpt/html/semantics/interactive-elements/the-dialog-element/dialog-overlay-re-add-during-transition.html",
       "external/wpt/html/semantics/popovers/chrome-392042073-crash.html",
@@ -2533,6 +2466,35 @@
     ],
     "expires": "Jul 1, 2023"
   },
+  "Running existing tests that assert that processing instructions are parsed as bogus comments",
+  "while actual processing-instruction HTML parser support is being worked on",
+  {
+    "prefix": "parse-processing-instructions-as-bogus-comments",
+    "owners": [
+      "nrosenthal@chromium.org",
+      "foolip@chromium.org"
+    ],
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win"
+    ],
+    "bases": [
+      "html5lib/generated/run-html5test-com-data.html",
+      "html5lib/generated/run-html5test-com-write.html",
+      "html5lib/generated/run-tests1-data.html",
+      "html5lib/generated/run-tests1-write.html",
+      "external/wpt/html/syntax/parsing/html5lib_html5test-com.html",
+      "external/wpt/html/syntax/parsing/html5lib_tests1.html",
+      "external/wpt/html/syntax/xmldecl/xmldecl-1.html",
+      "external/wpt/html/syntax/xmldecl/xmldecl-2.html"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--disable-blink-features=HTMLProcessingInstruction"
+    ],
+    "expires": "Sep 1, 2026"
+  },
   {
     "prefix": "permission-element",
     "platforms": [
@@ -2544,7 +2506,7 @@
       "external/wpt/html/semantics/permission-element"
     ],
     "args": [
-      "--enable-blink-features=PermissionElement"
+      "--enable-blink-features=UserMediaElement"
     ],
     "owners": [
       "permissions-core@google.com"
@@ -2558,7 +2520,7 @@
     ],
     "bases": [],
     "args": [
-      "--disable-blink-features=PermissionElement,GeolocationElement,InstallElement"
+      "--disable-blink-features=UserMediaElement,GeolocationElement,InstallElement"
     ],
     "owners": [
       "permissions-core@google.com"
@@ -2633,7 +2595,7 @@
       "--enable-blink-features=PreferDefaultScrollbarStyles",
       "--blink-settings=prefersDefaultScrollbarStyles=true"
     ],
-    "expires": "Feb 1, 2026",
+    "expires": "Feb 1, 2027",
     "owners": [
       "evelynn.kaplan@microsoft.com",
       "almaher@microsoft.com"
@@ -2697,6 +2659,25 @@
       "--disable-features=PreloadLinkRelDataUrls"
     ],
     "expires": "Jul 3, 2025"
+  },
+  {
+    "prefix": "prerender-by-form-submission",
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win"
+    ],
+    "bases": [
+      "external/wpt/speculation-rules/prerender/activation-by-form-submission.https.html"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-blink-features=PrerenderActivationByFormSubmission"
+    ],
+    "owners": [
+      "robertlin@chromium.org"
+    ],
+    "expires": "Jul 1, 2026"
   },
   {
     "prefix": "prerender2-fallback-prefetch-spec-rules",
@@ -2804,37 +2785,6 @@
       "--disable-features=DeprecateUnload"
     ],
     "expires": "never"
-  },
-  {
-    "prefix": "relax-dom-valid-names-disabled",
-    "owners": [
-      "jarhar@chromium.org"
-    ],
-    "platforms": [
-      "Linux"
-    ],
-    "bases": [
-      "external/wpt/acid/acid3/numbered-tests.html",
-      "external/wpt/dom/nodes/DOMImplementation-createDocument.html",
-      "external/wpt/dom/nodes/DOMImplementation-createDocumentType.html",
-      "external/wpt/dom/nodes/Document-createElement.html",
-      "external/wpt/dom/nodes/Document-createElementNS.html",
-      "external/wpt/dom/nodes/attributes.html",
-      "external/wpt/html/dom/elements/global-attributes/dataset-set.html",
-      "fast/dom/dataset-xhtml.xhtml",
-      "fast/dom/dataset.html",
-      "fast/dom/name-validity-usecounter.html",
-      "fast/dom/DOMImplementation/createDocument-namespace-err.html",
-      "fast/dom/DOMImplementation/createDocumentType-err.html",
-      "fast/dom/Document/createAttributeNS-namespace-err.html",
-      "fast/dom/Document/createElement-invalid-names.html",
-      "fast/dom/Document/createElementNS-namespace-err.html",
-      "fast/dom/Element/setAttributeNS-namespace-err.html"
-    ],
-    "args": [
-      "--disable-features=RelaxDOMValidNames"
-    ],
-    "expires": "Feb 1, 2026"
   },
   {
     "prefix": "renderer-side-content-decoding",
@@ -2955,7 +2905,7 @@
     "bases": [
       "css3/filters",
       "external/wpt/css/css-backgrounds/hidpi",
-      "external/wpt/css/css-overflow/scroll-buttons-scroll-distance.html",
+      "external/wpt/css/css-overflow/scroll-markers/scroll-buttons-scroll-distance.html",
       "external/wpt/css/css-paint-api/hidpi",
       "external/wpt/css/cssom-view/Element-currentCSSZoom.html",
       "external/wpt/element-timing",
@@ -3014,7 +2964,7 @@
     ]
   },
   {
-    "prefix": "scoped-custom-element-registry",
+    "prefix": "scoped-custom-element-registry-disabled",
     "owners": [
       "masonf@chromium.org",
       "tgivens@microsoft.com",
@@ -3025,10 +2975,11 @@
       "Win"
     ],
     "bases": [
-      "external/wpt/custom-elements/"
+      "external/wpt/custom-elements/",
+      "custom-elements/"
     ],
     "args": [
-      "--enable-blink-features=ScopedCustomElementRegistry"
+      "--disable-blink-features=ScopedCustomElementRegistry"
     ],
     "expires": "Jun 1, 2026"
   },
@@ -3059,6 +3010,27 @@
       "guidou@chromium.org"
     ],
     "expires": "Nov 11, 2026"
+  },
+  {
+    "prefix": "selective-permissions-intervention",
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win",
+      "Android",
+      "Fuchsia"
+    ],
+    "bases": [
+      "http/tests/inspector-protocol/issues/selective-permissions-intervention-issue.js"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-features=SelectivePermissionsIntervention"
+    ],
+    "owners": [
+      "jkarlin@google.com"
+    ],
+    "expires": "Jan 24, 2027"
   },
   {
     "prefix": "shadow-realm-enabled",
@@ -4400,8 +4372,10 @@
   },
   {
     "prefix": "symphonia-audio-decoding",
-    "owners": ["jophba@chromium.org"],
-    "platforms": ["Android", "Fuchsia", "Linux", "Mac", "Win", "Webview"],
+    "owners": [
+      "jophba@chromium.org"
+    ],
+    "platforms": ["Linux", "Mac", "Win", "ChromeOS"],
     "bases": [
       "webaudio/codec-tests"
     ],
@@ -4411,6 +4385,40 @@
       "--enable-features=SymphoniaAudioDecoding"
     ],
     "expires": "Jul 7, 2026"
+  },
+   {
+    "prefix": "symphonia-mp3-decoding",
+    "owners": ["wenz@google.com"],
+    "platforms": ["Linux", "Mac", "Win", "ChromeOS"],
+    "bases": [
+      "webaudio/codec-tests"
+    ],
+    "args": [
+      "--enable-features=SymphoniaMp3Decoding"
+    ],
+    "expires": "Aug 10, 2026"
+  },
+  {
+    "prefix": "freeze-shared-worker-bfcache",
+    "owners": ["annasato@chromium.org"],
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win",
+      "Fuchsia"
+    ],
+    "bases": [
+      "external/wpt/html/browsers/browsing-the-web/back-forward-cache/eligibility/shared-worker.html",
+      "wpt_internal/shared-worker/back-forward-cache/shared-worker-client-postmessage-transferred-port.window.js",
+      "wpt_internal/shared-worker/back-forward-cache/shared-worker-client-postmessage.window.js",
+      "wpt_internal/shared-worker/back-forward-cache/shared-worker-extended-lifetime.window.js",
+      "wpt_internal/shared-worker/back-forward-cache/shared-worker-freeze.window.js"
+    ],
+    "exclusive_tests": "ALL",
+    "args": [
+      "--enable-features=FreezeSharedWorker"
+    ],
+    "expires": "Sep 10, 2026"
   },
   {
     "prefix": "target-device-scale-factor-2",
@@ -4651,10 +4659,10 @@
     "args": [
       "--disable-features=ThirdPartyStoragePartitioning"
     ],
-    "expires": "Feb 4, 2026",
+    "expires": "Feb 4, 2027",
     "owners": [
       "arichiv@chromium.org",
-      "bingler@chromium.org"
+      "katabolism-finch@google.com"
     ]
   },
   "The threaded virtual suite tests with threaded compositing, which is the",
@@ -4686,7 +4694,7 @@
       "external/wpt/css/css-anchor-position/transform-015.html",
       "external/wpt/css/css-backgrounds",
       "external/wpt/css/css-view-transitions",
-      "external/wpt/css/css-overflow/scroll-markers-updated-by-programmatic-scroll.html",
+      "external/wpt/css/css-overflow/scroll-markers/scroll-markers-updated-by-programmatic-scroll.html",
       "external/wpt/css/cssom-view/overflow-hidden-smooth-scroll-crash.html",
       "external/wpt/css/cssom-view/scroll-behavior-smooth-after-hiding-iframe.html",
       "external/wpt/feature-policy/experimental-features",
@@ -6066,6 +6074,16 @@
     ],
     "expires": "never"
   },
+  {
+    "prefix": "webaudio-playback-stats",
+    "platforms": ["Linux", "Mac", "Win"],
+    "bases": [
+      "external/wpt/webaudio/the-audio-api/the-audiocontext-interface/audiocontext-playbackstats.html"
+    ],
+    "args": ["--enable-blink-features=AudioContextPlaybackStats"],
+    "owners": ["hongchan@chromium.org"],
+    "expires": "Jan 1, 2027"
+  },
   "Currently, XSLT is disabled on ToT for tests, via the",
   "fieldtrial_testing_config.json file which enables the XSLTSpecialTrial",
   "flag and disables the XSLT flag. The `xslt-enabled` virtual suite just",
@@ -6126,5 +6144,130 @@
       "drott@chromium.org"
     ],
     "expires": "Nov 1, 2026"
+  },
+  {
+    "prefix": "cssom-getcomputedstyle-pseudo-no-colon-disabled",
+    "platforms": ["Linux"],
+    "bases": [
+      "external/wpt/css/cssom/getComputedStyle-pseudo.html",
+      "fast/css/getComputedStyle/getComputedStyle-with-pseudo-element.html"
+    ],
+    "args": ["--disable-blink-features=CSSOMGetComputedStylePseudoElementRequiresColon"],
+    "owners": [
+      "helmut@januschka.com"
+    ],
+    "expires": "Feb 1, 2027"
+  },
+  {
+    "prefix": "dom_storage_sqlite",
+    "owners": [
+      "evanstade@microsoft.com",
+      "stevebe@microsoft.com",
+      "rahsin@microsoft.com",
+      "chrome-storage-team@google.com"
+    ],
+    "platforms": [
+      "Linux",
+      "Win"
+    ],
+    "bases": [
+      "external/wpt/webstorage",
+      "storage/domstorage"
+    ],
+    "args": ["--enable-features=DomStorageSqlite"],
+    "expires": "Aug 13, 2026"
+  },
+  {
+    "prefix": "css-line-clamp-lines-and-height",
+    "platforms": [
+      "Linux"
+    ],
+    "bases": [
+      "external/wpt/css/css-overflow/line-clamp/",
+      "external/wpt/compat/webkit-box-clamp-bottom-border.html",
+      "external/wpt/compat/webkit-box-clamp-visibility-change.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-001.tentative.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-002.tentative.html",
+      "external/wpt/css/css-flexbox/alignment/flex-align-baseline-line-clamp-003.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-001.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-002.tentative.html",
+      "external/wpt/css/css-grid/alignment/grid-align-baseline-line-clamp-003.tentative.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-001.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-002.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-first-003.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-001.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-002.html",
+      "external/wpt/css/css-inline/baseline-source/baseline-source-last-003.html",
+      "external/wpt/css/css-inline/text-box-trim/text-box-trim-line-clamp-001.html",
+      "external/wpt/css/css-inline/text-box-trim/text-box-trim-line-clamp-002.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-005.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-001.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-002.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-003.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-004.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-005.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-006.html",
+      "external/wpt/css/css-text/white-space/text-wrap-balance-line-clamp-007.html",
+      "external/wpt/css/css-text/white-space/text-wrap-pretty-line-clamp-crash-001.html",
+      "external/wpt/css/css-ui/text-overflow-string-001.html",
+      "external/wpt/css/css-ui/text-overflow-string-002.html",
+      "external/wpt/css/css-ui/text-overflow-string-003.html",
+      "external/wpt/css/css-ui/text-overflow-string-004.html",
+      "external/wpt/css/css-ui/text-overflow-string-005.html",
+      "external/wpt/css/css-ui/text-overflow-string-006.html",
+      "fast/deprecated-flexbox/dynamically-change-line-clamp.html",
+      "fast/deprecated-flexbox/line-clamp-crash.html",
+      "fast/deprecated-flexbox/line-clamp-removed-dynamically.html",
+      "fast/overflow/line-clamp-and-columns.html",
+      "fast/overflow/line-clamp-ellipsis-in-free-space.html",
+      "fast/overflow/line-clamp-hides-trailing-anchor.html",
+      "fast/overflow/line-clamp.html",
+      "paint/invalidation/text-line-clamp-truncation.html"
+    ],
+    "args": [
+      "--enable-blink-features=CSSLineClamp,CSSLineClampLinesAndHeight"
+    ],
+    "owners": [
+      "abotella@igalia.com"
+    ]
+  },
+  {
+    "prefix": "durable-messages",
+    "owners": [
+      "alexnj@chromium.org"
+    ],
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win"
+    ],
+    "bases": [
+      "http/tests/inspector-protocol/network/durable-messages-global-limits.js"
+    ],
+    "args": [
+      "--enable-features=DurableMessages:max_global_buffer_size/20000"
+    ],
+    "expires": "Dec 31, 2026"
+  },
+  {
+    "prefix": "web-audio-configurable-render-quantum",
+    "owners": [
+      "mjwilson@chromium.org",
+      "web-audio-team@google.com"
+    ],
+    "platforms": [
+      "Linux",
+      "Mac",
+      "Win",
+      "Android"
+    ],
+    "bases": [
+      "webaudio/BiquadFilter/biquad-render-size-hint.html",
+      "webaudio/WaveShaper/waveshaper-rendersizehint.html"
+    ],
+    "args": [
+      "--enable-features=WebAudioConfigurableRenderQuantum"
+    ],
+    "expires": "never"
   }
 ]

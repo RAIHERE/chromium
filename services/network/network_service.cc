@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "base/check.h"
+#include "base/check_is_test.h"
 #include "base/check_op.h"
 #include "base/command_line.h"
 #include "base/containers/to_vector.h"
@@ -115,6 +116,10 @@
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/application_status_listener.h"
 #include "net/android/http_auth_negotiate_android.h"
+#endif
+
+#if BUILDFLAG(IS_MAC)
+#include "components/enterprise/platform_auth/url_session_url_loader_bridge.h"
 #endif
 
 #if BUILDFLAG(IS_CT_SUPPORTED)
@@ -787,7 +792,7 @@ void NetworkService::ConfigureHttpAuthPrefs(
 }
 
 void NetworkService::SetRawHeadersAccess(
-    int32_t process_id,
+    network::RendererProcessId process_id,
     const std::vector<url::Origin>& origins) {
   DCHECK(process_id);
   if (!origins.size()) {
@@ -811,13 +816,15 @@ void NetworkService::SetMaxConnectionsPerProxyChain(uint32_t max_connections) {
       net::HttpNetworkSession::NORMAL_SOCKET_POOL, new_limit);
 }
 
-bool NetworkService::HasRawHeadersAccess(int32_t process_id,
-                                         const GURL& resource_url) const {
+bool NetworkService::HasRawHeadersAccess(
+    const network::OriginatingProcessId& process_id,
+    const GURL& resource_url) const {
   // Allow raw headers for browser-initiated requests.
-  if (!process_id) {
+  if (process_id.is_browser()) {
     return true;
   }
-  auto it = raw_headers_access_origins_by_pid_.find(process_id);
+  auto it =
+      raw_headers_access_origins_by_pid_.find(process_id.renderer_process_id());
   if (it == raw_headers_access_origins_by_pid_.end()) {
     return false;
   }
@@ -1213,6 +1220,22 @@ void NetworkService::AddDurableMessageCollector(
   }
   durable_message_collector_manager_->AddCollector(std::move(receiver));
 }
+
+#if BUILDFLAG(IS_MAC)
+void NetworkService::CreateURLSessionURLLoaderAndStart(
+    const ResourceRequest& request,
+    mojo::PendingReceiver<mojom::URLLoader> loader_receiver,
+    mojo::PendingRemote<mojom::URLLoaderClient> client_remote) {
+  if (use_mock_url_session_url_loader_for_testing_) {
+    CHECK_IS_TEST();
+    enterprise_auth::CreateURLSessionURLLoaderAndStartForTesting(  // IN-TEST
+        request, std::move(loader_receiver), std::move(client_remote));
+  } else {
+    enterprise_auth::CreateURLSessionURLLoaderAndStart(
+        request, std::move(loader_receiver), std::move(client_remote));
+  }
+}
+#endif
 
 std::unique_ptr<DevtoolsDurableMessageWriter>
 NetworkService::MaybeCreateDurableMessageWriter(

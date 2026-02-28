@@ -73,16 +73,11 @@ class FileSystemAccessBrowserTest : public InProcessBrowserTest,
                                     public ::testing::WithParamInterface<bool> {
  public:
   FileSystemAccessBrowserTest() {
-    if (IsMigrationEnabled()) {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          {{::features::kPageActionsMigration,
-            {{::features::kPageActionsMigrationFileSystemAccess.name,
-              "true"}}}},
-          {});
-    } else {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          {}, {::features::kPageActionsMigration});
-    }
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {{::features::kPageActionsMigration,
+          {{::features::kPageActionsMigrationFileSystemAccess.name,
+            IsMigrationEnabled() ? "true" : "false"}}}},
+        {});
   }
 
   void SetUp() override {
@@ -1366,16 +1361,11 @@ class FileSystemAccessBrowserTestForWebUI
       public ::testing::WithParamInterface<bool> {
  public:
   FileSystemAccessBrowserTestForWebUI() {
-    if (IsMigrationEnabled()) {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          {{::features::kPageActionsMigration,
-            {{::features::kPageActionsMigrationFileSystemAccess.name,
-              "true"}}}},
-          {});
-    } else {
-      scoped_feature_list_.InitWithFeaturesAndParameters(
-          {}, {::features::kPageActionsMigration});
-    }
+    scoped_feature_list_.InitWithFeaturesAndParameters(
+        {{::features::kPageActionsMigration,
+          {{::features::kPageActionsMigrationFileSystemAccess.name,
+            IsMigrationEnabled() ? "true" : "false"}}}},
+        {});
     base::ScopedAllowBlockingForTesting allow_blocking;
 
     // Create a scoped directory under %TEMP% instead of using
@@ -1384,6 +1374,13 @@ class FileSystemAccessBrowserTestForWebUI
     // %ProgramFiles% on Windows when running as Admin, which is a blocked path
     // (`kBlockedPaths`). This can fail some of the tests.
     CHECK(temp_dir_.CreateUniqueTempDirUnderPath(base::GetTempDirForTesting()));
+  }
+
+  void SetUpOnMainThread() override {
+    InProcessBrowserTest::SetUpOnMainThread();
+    factory_registration_ =
+        std::make_unique<content::ScopedWebUIControllerFactoryRegistration>(
+            &factory_);
   }
 
   content::WebContents* SetUpAndNavigateToTestWebUI() {
@@ -1474,8 +1471,8 @@ class FileSystemAccessBrowserTestForWebUI
 
  private:
   content::TestWebUIControllerFactory factory_;
-  content::ScopedWebUIControllerFactoryRegistration factory_registration_{
-      &factory_};
+  std::unique_ptr<content::ScopedWebUIControllerFactoryRegistration>
+      factory_registration_;
   base::test::ScopedFeatureList scoped_feature_list_;
 };
 

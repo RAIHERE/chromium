@@ -84,6 +84,10 @@ class CORE_EXPORT HTMLOptionElement final : public HTMLElement {
     return nearest_ancestor_select_;
   }
 
+  HTMLOptGroupElement* NearestAncestorOptgroup() const {
+    return nearest_ancestor_optgroup_;
+  }
+
   String label() const;
   void setLabel(const AtomicString&);
 
@@ -130,6 +134,27 @@ class CORE_EXPORT HTMLOptionElement final : public HTMLElement {
   void UpdateMutationObserver(bool in_style_recalc);
   bool HasMutationObserver() const { return text_observer_; }
 
+  // Returns true if this option is in a state which supports the :active-option
+  // pseudo-element, meaning that this option is visible and not disabled.
+  bool SupportsActiveOptionPseudo();
+
+  // Helper to choose the option for customizable select event handling in
+  // DefaultEventHandler. Depending on the state of OwnerSelectElement, it may
+  // toggle selectedness and dirtiness, deselect other options, close the
+  // select's picker, and set default handled on the event.
+  void ChooseOption(Event&);
+
+  // This constant is a distance in pixels (post zoom, page-relative). It is
+  // used in multiple cases (select popups, submenu popups) where we support
+  // mousedown -> popup opens -> drag into popup -> mouseup on item in popup
+  // as an interaction pattern for selecting an item in a popup. If the mouse
+  // *movement* is less than this distance, we don't want to treat the mouseup
+  // as selecting the item in the menu; instead we want to treat the gesture
+  // as a "click" that opened the menu but didn't select an item in it. This
+  // is important because the popup might open at a position that overlaps the
+  // current mouse pointer position.
+  static constexpr float kPopupMenuDragEpsilon = 5;
+
  private:
   FocusableState SupportsFocus(UpdateBehavior update_behavior) const override;
   bool IsKeyboardFocusableSlow(UpdateBehavior update_behavior) const override;
@@ -144,16 +169,11 @@ class CORE_EXPORT HTMLOptionElement final : public HTMLElement {
   String CollectOptionInnerText() const;
 
   void UpdateLabel();
+  void UpdateAncestors();
 
   void DefaultEventHandlerInternal(Event&);
 
   void RecalcOwnerSelectElement() const;
-
-  // Helper to choose the option for customizable select event handling in
-  // DefaultEventHandler. Depending on the state of OwnerSelectElement, it may
-  // toggle selectedness and dirtiness, deselect other options, close the
-  // select's picker, and set default handled on the event.
-  void ChooseOption(Event&);
 
   bool IsVisibleInViewport();
   bool NeedsMutationObserver();
@@ -176,6 +196,11 @@ class CORE_EXPORT HTMLOptionElement final : public HTMLElement {
   // maintained just like nearest_ancestor_select_, but doesn't account for any
   // <optgroup> element ancestor above nearest_ancestor_select_.
   Member<HTMLOptGroupElement> nearest_ancestor_optgroup_;
+
+  // Just like nearest_ancestor_select_ and nearest_ancestor_optgroup_, but for
+  // an ancestor <datalist> if present. Only one of nearest_ancestor_select_ and
+  // nearest_ancestor_datalist_ can be non-null.
+  Member<HTMLDataListElement> nearest_ancestor_datalist_;
 
   // label_container_ contains the text content of DisplayLabel(). Based on UA
   // style rules, it is rendered when this option is not inside of a select

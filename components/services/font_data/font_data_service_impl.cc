@@ -119,10 +119,10 @@ std::tuple<base::File, uint64_t> FontDataServiceImpl::GetFileHandle(
   typeface.getResourceName(&font_path);
   base::UmaHistogramBoolean("Chrome.FontDataService.EmptyPathOnGetFileHandle",
                             font_path.isEmpty());
-#if BUILDFLAG(IS_LINUX)
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   // TODO(crbug.com/463411679): `getResourceName()` is not implemented for
-  // Linux, so the returned file will always be invalid and a memory region will
-  // be shared instead.
+  // Linux nor ChromeOS, so the returned file will always be invalid and a
+  // memory region will be shared instead.
   CHECK(font_path.isEmpty());
 #endif  // BUILDFLAG(IS_LINUX)
   if (font_path.isEmpty()) {
@@ -479,6 +479,9 @@ FontDataServiceImpl::CreateMatchFamilyNameResult(
   if (!result->typeface_data) {
     return nullptr;
   }
+
+  result->synthetic_bold = typeface->isSyntheticBold();
+  result->synthetic_oblique = typeface->isSyntheticOblique();
 
   const int axis_count = typeface->getVariationDesignPosition({});
   if (axis_count > 0) {

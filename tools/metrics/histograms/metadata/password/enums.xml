@@ -308,6 +308,29 @@ chromium-metrics-reviews@google.com.
 
 <!-- LINT.ThenChange(//components/password_manager/core/browser/password_manager_metrics_util.h:BrowserAssistedLoginType) -->
 
+<enum name="ChangePasswordFormFinderError">
+  <int value="0" label="Failed to capture page content"/>
+  <int value="1" label="Failed to parse response"/>
+  <int value="2" label="No button to click"/>
+  <int value="3" label="Interruption detected (OTP, etc.)"/>
+  <int value="4" label="Failed to click button"/>
+  <int value="5" label="Form not found"/>
+</enum>
+
+<!-- LINT.IfChange(ChangePasswordFormSubmissionError) -->
+
+<enum name="ChangePasswordFormSubmissionError">
+  <int value="0" label="Failed to fill the form"/>
+  <int value="1" label="Timeout"/>
+  <int value="2" label="Failed to capture page content"/>
+  <int value="3" label="Failed to parse response"/>
+  <int value="4" label="Submit button not found"/>
+  <int value="5" label="Interruption detected (OTP, etc.)"/>
+  <int value="6" label="Failed to click submit"/>
+</enum>
+
+<!-- LINT.ThenChange(/chrome/browser/password_manager/change_password_form_filling_submission_helper.h) -->
+
 <enum name="CharacterClassPresenceChange">
   <int value="0" label="No change"/>
   <int value="1" label="Character class was absent and is added"/>
@@ -797,6 +820,7 @@ chromium-metrics-reviews@google.com.
   <int value="8" label="Unsupported site"/>
   <int value="9" label="User has no saved passwords"/>
   <int value="10" label="Throttled"/>
+  <int value="11" label="Signup form"/>
 </enum>
 
 <!-- LINT.ThenChange(/chrome/browser/password_manager/chrome_password_change_service.h) -->
@@ -1113,7 +1137,7 @@ chromium-metrics-reviews@google.com.
     passwords in the account. Recorded only on Win/Mac/Linux.
   </int>
   <int value="4"
-      label="(obsolete)ExplicitlyTriggeredForSinglePasswordInDetailsInSettings">
+      label="kExplicitlyTriggeredForSinglePasswordInDetailsInSettings">
     The user explicitly asked to move a password to account store from password
     details page.
   </int>
@@ -1836,18 +1860,6 @@ chromium-metrics-reviews@google.com.
   <int value="8" label=":-) User used manual fallback to fill the form"/>
 </enum>
 
-<enum name="SingleUsernameVoteDataAvailability">
-  <summary>
-    Whether two existing single username detection mechanisms (UFF and FPF) have
-    data, overlapping or not.
-  </summary>
-  <int value="0" label="None"/>
-  <int value="1" label="Username First only."/>
-  <int value="2" label="Forgot password only."/>
-  <int value="3" label="Both, but for different forms."/>
-  <int value="4" label="Both, and FPF data contains UFF candidate field."/>
-</enum>
-
 <enum name="StoreAffiliationResult">
   <int value="0" label="Success"/>
   <int value="1" label="Failed to start transaction"/>
@@ -1887,6 +1899,7 @@ chromium-metrics-reviews@google.com.
   <int value="6" label="Error - page error"/>
   <int value="7" label="No Response"/>
   <int value="8" label="Could not parse response"/>
+  <int value="9" label="User intervention needed"/>
 </enum>
 
 <!-- LINT.ThenChange(/chrome/browser/password_manager/password_change/password_change_submission_verifier.h:SubmissionOutcome)-->

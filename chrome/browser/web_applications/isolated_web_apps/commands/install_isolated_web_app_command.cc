@@ -29,16 +29,19 @@
 #include "chrome/browser/web_applications/commands/web_app_command.h"
 #include "chrome/browser/web_applications/isolated_web_apps/commands/isolated_web_app_install_command_helper.h"
 #include "chrome/browser/web_applications/isolated_web_apps/install/isolated_web_app_install_source.h"
+#include "chrome/browser/web_applications/isolated_web_apps/install/non_installed_bundle_inspection_context.h"
 #include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_integrity_block_data.h"
 #include "chrome/browser/web_applications/isolated_web_apps/jobs/prepare_install_info_job.h"
 #include "chrome/browser/web_applications/isolated_web_apps/remove_isolated_web_app_data.h"
 #include "chrome/browser/web_applications/isolated_web_apps/runtime_data/chrome_iwa_runtime_data_provider.h"
+#include "chrome/browser/web_applications/jobs/finalize_install_job.h"
 #include "chrome/browser/web_applications/locks/app_lock.h"
 #include "chrome/browser/web_applications/web_app.h"
 #include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/browser/web_applications/web_app_install_finalizer.h"
 #include "chrome/browser/web_applications/web_app_install_info.h"
 #include "chrome/browser/web_applications/web_app_install_utils.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
 #include "chrome/browser/web_applications/web_contents/web_contents_manager.h"
@@ -239,7 +242,8 @@ void InstallIsolatedWebAppCommand::OnCopiedToProfileDirectory(
 void InstallIsolatedWebAppCommand::CheckTrustAndSignatures(
     base::OnceClosure next_step_callback) {
   command_helper_->CheckTrustAndSignatures(
-      *destination_source_, &profile(),
+      *destination_source_, IwaInstallOperation{.source = install_surface_},
+      &profile(),
       base::BindOnce(&InstallIsolatedWebAppCommand::OnTrustAndSignaturesChecked,
                      weak_factory_.GetWeakPtr(),
                      std::move(next_step_callback)));
@@ -271,8 +275,10 @@ void InstallIsolatedWebAppCommand::PrepareInstallInfo(
     base::OnceCallback<void(PrepareInstallInfoJob::InstallInfoOrFailure)>
         next_step_callback) {
   prepare_install_info_job_ = PrepareInstallInfoJob::CreateAndStart(
-      profile(), *destination_source_, expected_version_, *web_contents_,
-      *command_helper_, lock_->web_contents_manager().CreateUrlLoader(),
+      profile(), *destination_source_,
+      IwaInstallOperation{.source = install_surface_}, expected_version_,
+      *web_contents_, *command_helper_,
+      lock_->web_contents_manager().CreateUrlLoader(),
       std::move(next_step_callback));
 }
 
@@ -336,13 +342,15 @@ void InstallIsolatedWebAppCommand::FinalizeInstall(
                              to_be_installed_version.GetString());
   GetMutableDebugValue().Set("app_title", install_info.title.value());
 
-  WebAppInstallFinalizer::FinalizeOptions options(install_surface_);
+  FinalizeJobOptions options(install_surface_);
 
-  options.iwa_options = WebAppInstallFinalizer::FinalizeOptions::IwaOptions(
+  options.iwa_options = FinalizeJobOptions::IwaOptions(
       *destination_storage_location_, std::move(integrity_block_data_));
 
-  lock_->install_finalizer().FinalizeInstall(
-      std::move(install_info), options,
+  install_job_ = std::make_unique<FinalizeInstallJob>(
+      profile(), lock_.get(), lock_.get(), std::move(install_info), options);
+
+  install_job_->Start(
       base::BindOnce(&InstallIsolatedWebAppCommand::OnFinalizeInstall,
                      weak_factory_.GetWeakPtr(), to_be_installed_version));
 }
@@ -351,6 +359,7 @@ void InstallIsolatedWebAppCommand::OnFinalizeInstall(
     const IwaVersion& attempted_version,
     const webapps::AppId& unused_app_id,
     webapps::InstallResultCode install_result_code) {
+  install_job_.reset();
   if (install_result_code == webapps::InstallResultCode::kSuccessNewInstall) {
     ReportSuccess(attempted_version);
   } else {

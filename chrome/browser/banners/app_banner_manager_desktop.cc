@@ -85,7 +85,7 @@ AppBannerManagerDesktop::AsTestAppBannerManagerDesktopForTesting() {
 
 AppBannerManagerDesktop::AppBannerManagerDesktop(
     content::WebContents* web_contents)
-    : AppBannerManager(web_contents),
+    : AppBannerManager(this, web_contents),
       content::WebContentsUserData<AppBannerManagerDesktop>(*web_contents) {
   Profile* profile =
       Profile::FromBrowserContext(web_contents->GetBrowserContext());
@@ -125,17 +125,12 @@ void AppBannerManagerDesktop::DoNativeAppInstallableCheck(
 }
 
 void AppBannerManagerDesktop::OnWebAppInstallableCheckedNoErrors(
-    const ManifestId& manifest_id) const {}
+    const ManifestId& manifest_id) {}
 
 base::expected<void, InstallableStatusCode>
 AppBannerManagerDesktop::CanRunWebAppInstallableChecks(
     const blink::mojom::Manifest& manifest) {
   return base::ok();
-}
-
-base::WeakPtr<AppBannerManager>
-AppBannerManagerDesktop::GetWeakPtrForThisNavigation() {
-  return weak_factory_.GetWeakPtr();
 }
 
 void AppBannerManagerDesktop::InvalidateWeakPtrsForThisNavigation() {
@@ -189,9 +184,7 @@ bool AppBannerManagerDesktop::IsRelatedNonWebAppInstalled(
 void AppBannerManagerDesktop::MaybeShowAmbientBadge(
     const InstallBannerConfig& config) {}
 
-void AppBannerManagerDesktop::OnMlInstallPrediction(
-    base::PassKey<MLInstallabilityPromoter>,
-    std::string result_label) {
+void AppBannerManagerDesktop::OnMlInstallPrediction(std::string result_label) {
   if (result_label == MLInstallabilityPromoter::kShowInstallPromptLabel) {
     CreateWebApp(
         WebappInstallSource::ML_PROMOTION,

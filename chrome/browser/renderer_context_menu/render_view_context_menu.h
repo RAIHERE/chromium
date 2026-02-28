@@ -14,7 +14,6 @@
 #include "base/functional/callback.h"
 #include "base/memory/raw_ptr.h"
 #include "base/scoped_observation.h"
-#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
 #include "chrome/browser/ui/autofill/autofill_context_menu_manager.h"
@@ -373,6 +372,7 @@ class RenderViewContextMenu
   void ExecProtocolHandler(int event_flags, int handler_index);
   void ExecOpenLinkInProfile(int profile_index);
   void ExecInspectElement();
+  void ExecInspectElementWithGemini();
   void ExecInspectBackgroundPage();
   void ExecSaveLinkAs();
   void ExecSaveAs();
@@ -497,6 +497,9 @@ class RenderViewContextMenu
   // - Whether or not the registered protocols have changed since the menu was
   //   built.
   bool is_protocol_submenu_valid_ = false;
+
+  // Inspect sub-menu handling.
+  ui::SimpleMenuModel inspect_submenu_model_;
 
   // An observer that handles spelling suggestions, "Add to dictionary", and
   // "Use enhanced spell check" items.

@@ -76,30 +76,27 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
   protected maxFileCount_: number =
       loadTimeData.getInteger('composeboxFileMaxCount');
   private metricsSource_: string = loadTimeData.getString('composeboxSource');
-
+  protected showContextMenuHeaders_: boolean =
+      loadTimeData.getBoolean('ShowContextMenuHeaders');
   protected get supportedTools_(): Map<ToolMode, {
-    id: string,
     icon: string,
   }> {
     return new Map([
       [
-        ToolMode.kDeepSearch,
+        ToolMode.kImageGen,
         {
-          id: 'deepSearch',
-          icon: 'composebox:deepSearch',
+          icon: 'composebox:nanoBanana',
         },
       ],
       [
-        ToolMode.kImageGen,
+        ToolMode.kDeepSearch,
         {
-          id: 'createImages',
-          icon: 'composebox:nanoBanana',
+          icon: 'composebox:deepSearch',
         },
       ],
       [
         ToolMode.kCanvas,
         {
-          id: 'canvas',
           icon: 'composebox:canvas',
         },
       ],
@@ -107,19 +104,37 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
   }
 
   protected get supportedModels_(): Map<ModelMode, {
-    id: string,
+    icon: string,
   }> {
+    const thinkingIcon =
+        (loadTimeData.getBoolean('thinkingModelIconUpdate') &&
+         this.inputState &&
+         this.inputState.allowedModels.includes(ModelMode.kGeminiProNoGenUi)) ?
+        'composebox:astrophotographyMode' :
+        'composebox:thinkingModel';
     return new Map([
+      [
+        ModelMode.kGeminiRegular,
+        {
+          icon: 'composebox:regularModel',
+        },
+      ],
       [
         ModelMode.kGeminiProAutoroute,
         {
-          id: 'geminiModelAuto',
+          icon: 'composebox:autoModel',
         },
       ],
       [
         ModelMode.kGeminiPro,
         {
-          id: 'geminiModelThinking',
+          icon: thinkingIcon,
+        },
+      ],
+      [
+        ModelMode.kGeminiProNoGenUi,
+        {
+          icon: 'composebox:thinkingModel',
         },
       ],
     ]);
@@ -133,12 +148,15 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
     this.$.menu.close();
   }
 
+  private onWindowBlur_ = this.close.bind(this);
+
   showAt(anchor: HTMLElement) {
     this.$.menu.showAt(anchor, {
       top: anchor.getBoundingClientRect().bottom,
       width: MENU_WIDTH_PX,
       anchorAlignmentX: AnchorAlignment['AFTER_START'],
     });
+    window.addEventListener('blur', this.onWindowBlur_);
   }
 
   protected isToolAllowed_(tool: ToolMode): boolean {
@@ -174,6 +192,79 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
       return false;
     }
     return this.inputState.activeModel === model;
+  }
+
+  protected getToolLabel_(tool: ToolMode): string {
+    if (this.inputState) {
+      const config = this.inputState.toolConfigs.find(c => c.tool === tool);
+      if (config && config.menuLabel) {
+        return config.menuLabel;
+      }
+    }
+    switch (tool) {
+      case ToolMode.kDeepSearch:
+        return this.i18n('deepSearch');
+      case ToolMode.kImageGen:
+        return this.i18n('createImages');
+      case ToolMode.kCanvas:
+        return this.i18n('canvas');
+      default:
+        return '';
+    }
+  }
+
+  protected getModelLabel_(model: ModelMode): string {
+    if (this.inputState) {
+      const config = this.inputState.modelConfigs.find(c => c.model === model);
+      if (config && config.menuLabel) {
+        return config.menuLabel;
+      }
+    }
+    switch (model) {
+      // We don't have a string for the regular model in the client code.
+      case ModelMode.kGeminiRegular:
+        return '';
+      case ModelMode.kGeminiProAutoroute:
+        return this.i18n('geminiModelAuto');
+      case ModelMode.kGeminiPro:
+        return this.i18n('geminiModelThinking');
+      default:
+        return '';
+    }
+  }
+
+  protected get toolHeader_(): string {
+    if (this.inputState && this.inputState.toolsSectionConfig) {
+      return this.inputState.toolsSectionConfig.header;
+    }
+    return '';
+  }
+
+  protected get modelHeader_(): string {
+    if (this.inputState && this.inputState.modelSectionConfig) {
+      return this.inputState.modelSectionConfig.header;
+    }
+    return '';
+  }
+
+  protected getInputTypeLabel_(inputType: InputType): string {
+    if (this.inputState && this.inputState.inputTypeConfigs) {
+      const config =
+          this.inputState.inputTypeConfigs.find(c => c.inputType === inputType);
+      if (config && config.menuLabel) {
+        return config.menuLabel;
+      }
+    }
+    switch (inputType) {
+      case InputType.kBrowserTab:
+        return this.i18n('addTab');
+      case InputType.kLensImage:
+        return this.i18n('addImage');
+      case InputType.kLensFile:
+        return this.i18n('uploadFile');
+      default:
+        return '';
+    }
   }
 
   // Checks if the image upload item in the context menu should be visible.
@@ -253,25 +344,17 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
   }
 
   protected deleteTabContext_(uuid: UnguessableToken) {
-    this.dispatchEvent(new CustomEvent('delete-tab-context', {
-      bubbles: true,
-      composed: true,
-      detail: {uuid: uuid},
-    }));
+    this.fire('delete-tab-context', {uuid: uuid});
   }
 
   protected addTabContext_(tabInfo: TabInfo) {
-    this.dispatchEvent(new CustomEvent('add-tab-context', {
-      bubbles: true,
-      composed: true,
-      detail: {
-        id: tabInfo.tabId,
-        title: tabInfo.title,
-        url: tabInfo.url,
-        delayUpload: false,
-        origin: TabUploadOrigin.CONTEXT_MENU,
-      },
-    }));
+    this.fire('add-tab-context', {
+      id: tabInfo.tabId,
+      title: tabInfo.title,
+      url: tabInfo.url,
+      delayUpload: false,
+      origin: TabUploadOrigin.CONTEXT_MENU,
+    });
     if (!this.enableMultiTabSelection_) {
       this.$.menu.close();
     }
@@ -289,16 +372,12 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
     // Clear the preview URL before fetching the new one to make sure an old
     // or incorrect preview doesn't show while the new one is loading.
     this.tabPreviewUrl_ = '';
-    this.dispatchEvent(new CustomEvent('get-tab-preview', {
-      bubbles: true,
-      composed: true,
-      detail: {
-        tabId: tabInfo.tabId,
-        onPreviewFetched: (previewDataUrl: string) => {
-          this.tabPreviewUrl_ = previewDataUrl;
-        },
+    this.fire('get-tab-preview', {
+      tabId: tabInfo.tabId,
+      onPreviewFetched: (previewDataUrl: string) => {
+        this.tabPreviewUrl_ = previewDataUrl;
       },
-    }));
+    });
   }
 
   protected shouldShowTabPreview_(): boolean {
@@ -306,46 +385,39 @@ export class ContextualActionMenuElement extends ContextualActionMenuElementBase
   }
 
   protected openImageUpload_() {
-    this.dispatchEvent(new CustomEvent('open-image-upload', {
-      bubbles: true,
-      composed: true,
-    }));
+    this.fire('open-image-upload');
     this.$.menu.close();
   }
 
   protected openFileUpload_() {
-    this.dispatchEvent(new CustomEvent('open-file-upload', {
-      bubbles: true,
-      composed: true,
-    }));
+    this.fire('open-file-upload');
     this.$.menu.close();
   }
 
-  protected onToolClick_(tool: ToolMode) {
-    this.dispatchEvent(new CustomEvent('tool-click', {
-      bubbles: true,
-      composed: true,
-      detail: {tool},
-    }));
+  protected onToolClick_(e: Event) {
+    const toolMode = Number((e.currentTarget as HTMLElement).dataset['mode']);
+    this.fire('tool-click', {toolMode});
     this.$.menu.close();
   }
 
   protected onModelClick_(e: Event) {
     const button = e.currentTarget as HTMLElement;
     const model = Number(button.dataset['model']) as ModelMode;
-    this.dispatchEvent(new CustomEvent('model-click', {
-      bubbles: true,
-      composed: true,
-      detail: {model},
-    }));
+    this.fire('model-click', {model});
     this.$.menu.close();
   }
 
   protected onMenuClose_() {
-    this.dispatchEvent(new CustomEvent('close', {
-      bubbles: true,
-      composed: true,
-    }));
+    window.removeEventListener('blur', this.onWindowBlur_);
+    this.fire('close');
+  }
+
+  protected getIconForToolMode_(mode: ToolMode): string|undefined {
+    return this.supportedTools_.get(mode)?.icon;
+  }
+
+  protected getIconForModelMode_(mode: ModelMode): string|undefined {
+    return this.supportedModels_.get(mode)?.icon;
   }
 }
 

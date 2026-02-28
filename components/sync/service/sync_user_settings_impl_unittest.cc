@@ -113,11 +113,8 @@ class SyncUserSettingsImplTest : public testing::Test {
 
     sync_service_crypto_ = std::make_unique<SyncServiceCrypto>(
         &sync_service_crypto_delegate_, &trusted_vault_client_);
-    if (base::FeatureList::IsEnabled(kSyncUseOsCryptAsync)) {
-      sync_service_crypto_->SetEncryptor(
-          std::make_unique<os_crypt_async::Encryptor>(
-              GetEncryptorForTest()));
-    }
+    sync_service_crypto_->SetEncryptor(
+        std::make_unique<os_crypt_async::Encryptor>(GetEncryptorForTest()));
 
     ON_CALL(delegate_, IsCustomPassphraseAllowed).WillByDefault(Return(true));
     ON_CALL(delegate_, GetSyncAccountStateForPrefs)
@@ -179,6 +176,10 @@ TEST_F(SyncUserSettingsImplTest, PreferredTypesSyncEverything) {
   // TODO(crbug.com/476335087): In CL #3, delete (GEMINI_THREAD is now mapped to
   // a selectable type.
   expected_types.Remove(GEMINI_THREAD);
+
+  // TODO(crbug.com/486879778): In CL #3, delete (ACCESSIBILITY_ANNOTATION is
+  // now mapped to a selectable type.
+  expected_types.Remove(ACCESSIBILITY_ANNOTATION);
 
 #if BUILDFLAG(IS_CHROMEOS)
   expected_types.RemoveAll({WEB_APKS});
@@ -361,6 +362,11 @@ TEST_F(SyncUserSettingsImplTest, PreferredTypesSyncAllOsTypes) {
   // TODO(crbug.com/476335087): In CL #3, delete (GEMINI_THREAD is now mapped to
   // a selectable type.
   expected_types.Remove(GEMINI_THREAD);
+
+  // TODO(crbug.com/486879778): In CL #3, delete (ACCESSIBILITY_ANNOTATION is
+  // now mapped to a selectable type.
+  expected_types.Remove(ACCESSIBILITY_ANNOTATION);
+
   EXPECT_TRUE(sync_user_settings->IsSyncAllOsTypesEnabled());
   EXPECT_THAT(GetPreferredUserTypes(*sync_user_settings),
               ContainerEq(expected_types));

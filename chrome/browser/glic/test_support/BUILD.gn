@@ -9,6 +9,8 @@ assert(enable_glic)
 source_set("test_support") {
   testonly = true
   sources = [
+    "glic_browser_test.h",
+    "glic_histogram_tester.h",
     "glic_test_environment.cc",
     "glic_test_environment.h",
     "glic_test_util.cc",
@@ -18,6 +20,8 @@ source_set("test_support") {
     sources += [
       "glic_api_test.cc",
       "glic_api_test.h",
+      "glic_functional_browsertest.cc",
+      "glic_functional_browsertest.h",
       "interactive_glic_test.cc",
       "interactive_glic_test.h",
       "interactive_test_util.cc",
@@ -31,11 +35,12 @@ source_set("test_support") {
     ]
   }
   deps = [
+    "//chrome/browser/actor:test_support",
     "//chrome/browser/glic",
     "//chrome/browser/glic:impl",
     "//chrome/browser/glic/fre",
+    "//chrome/browser/tab_list",
     "//chrome/browser/ui:ui_features",
-    "//chrome/browser/ui/tabs:tab_list_interface",
     "//components/signin/public/identity_manager:test_support",
   ]
   if (!is_android) {
@@ -44,6 +49,11 @@ source_set("test_support") {
       "//chrome/browser/actor/ui",
       "//chrome/browser/ui/tabs:glic",
       "//ui/events:test_support",
+    ]
+  } else {
+    deps += [
+      "//components/signin/public/android:jni_headers",
+      "//google_apis/gaia/android:jni_headers",
     ]
   }
   public_deps = [ "//chrome/test:test_support" ]

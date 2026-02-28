@@ -14,15 +14,12 @@ import androidx.annotation.VisibleForTesting;
 import com.google.errorprone.annotations.MustBeClosed;
 
 import org.chromium.base.ObserverList;
-import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.build.annotations.NullMarked;
 import org.chromium.build.annotations.Nullable;
-import org.chromium.chrome.browser.omnibox.fusebox.ComposeBoxQueryControllerBridge.FileUploadObserver;
+import org.chromium.chrome.browser.omnibox.fusebox.ComposeboxQueryControllerBridge.FileUploadObserver;
 import org.chromium.chrome.browser.omnibox.fusebox.FuseboxAttachmentRecyclerViewAdapter.FuseboxAttachmentType;
-import org.chromium.chrome.browser.tab.Tab;
-import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.ui.theme.BrandedColorScheme;
-import org.chromium.components.contextual_search.FileUploadStatus;
+import org.chromium.components.contextual_search.ContextUploadStatus;
 import org.chromium.components.omnibox.OmniboxFeatures;
 import org.chromium.ui.modelutil.ListObservable.ListObserver;
 import org.chromium.ui.modelutil.MVCListAdapter.ListItem;
@@ -36,9 +33,9 @@ import java.util.Set;
 import java.util.function.Predicate;
 
 /**
- * A specialized container for Fusebox attachments that maintains tight coupling with
- * ComposeBoxQueryController, coordinating all operations with the backend to ensure consistent
- * state.
+ * A specialized container for Fusebox attachments that maintains tight coupling with {@link
+ * ComposeboxQueryControllerBridge}, coordinating all operations with the backend to ensure
+ * consistent state.
  */
 @NullMarked
 public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<FuseboxAttachment> {
@@ -46,12 +43,14 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
     private final SimpleRecyclerViewAdapter mAdapter =
             new FuseboxAttachmentRecyclerViewAdapter(mModelList);
 
-    static final int MAX_ATTACHMENTS = OmniboxFeatures.sMultiattachmentFusebox.getValue() ? 10 : 1;
+    public static int getMaxAttachments() {
+        return OmniboxFeatures.sMultiattachmentFusebox.getValue() ? 10 : 1;
+    }
+
     private final Set<Integer> mAttachedTabIds = new ArraySet<>();
-    private final MonotonicObservableSupplier<TabModelSelector> mTabModelSelectorSupplier;
     private final ObserverList<FuseboxAttachmentChangeListener> mAttachmentChangeListeners =
             new ObserverList<>();
-    private @Nullable ComposeBoxQueryControllerBridge mComposeBoxQueryControllerBridge;
+    private @Nullable ComposeboxQueryControllerBridge mComposeboxQueryControllerBridge;
     private @BrandedColorScheme int mBrandedColorScheme;
     private @Nullable Runnable mAttachmentUploadFailedListener;
     private int mBatchEditDepth;
@@ -86,16 +85,6 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
         }
     }
 
-    /**
-     * Constructor for {@link FuseboxAttachmentModelList}.
-     *
-     * @param tabModelSelectorSupplier The supplier for the {@link TabModelSelector}.
-     */
-    /* package */ FuseboxAttachmentModelList(
-            MonotonicObservableSupplier<TabModelSelector> tabModelSelectorSupplier) {
-        mTabModelSelectorSupplier = tabModelSelectorSupplier;
-    }
-
     /** Creates a new adapter for the attachments in this list. */
     public SimpleRecyclerViewAdapter getAdapter() {
         return mAdapter;
@@ -103,7 +92,7 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
 
     @Override
     public Iterator<FuseboxAttachment> iterator() {
-        return new Iterator<FuseboxAttachment>() {
+        return new Iterator<>() {
             private int mIndex;
 
             @Override
@@ -145,18 +134,18 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
     }
 
     /**
-     * @param composeBoxQueryControllerBridge The bridge to use for backend operations
+     * @param composeboxQueryControllerBridge The bridge to use for backend operations
      */
-    public void setComposeBoxQueryControllerBridge(
-            @Nullable ComposeBoxQueryControllerBridge composeBoxQueryControllerBridge) {
-        if (mComposeBoxQueryControllerBridge == composeBoxQueryControllerBridge) return;
+    public void setComposeboxQueryControllerBridge(
+            @Nullable ComposeboxQueryControllerBridge composeboxQueryControllerBridge) {
+        if (mComposeboxQueryControllerBridge == composeboxQueryControllerBridge) return;
         clear();
-        if (mComposeBoxQueryControllerBridge != null) {
-            mComposeBoxQueryControllerBridge.setFileUploadObserver(null);
+        if (mComposeboxQueryControllerBridge != null) {
+            mComposeboxQueryControllerBridge.setFileUploadObserver(null);
         }
-        mComposeBoxQueryControllerBridge = composeBoxQueryControllerBridge;
-        if (mComposeBoxQueryControllerBridge != null) {
-            mComposeBoxQueryControllerBridge.setFileUploadObserver(this);
+        mComposeboxQueryControllerBridge = composeboxQueryControllerBridge;
+        if (mComposeboxQueryControllerBridge != null) {
+            mComposeboxQueryControllerBridge.setFileUploadObserver(this);
         }
     }
 
@@ -207,8 +196,8 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
     }
 
     /** Release all resources and mark this instance ready for recycling. */
-    void destroy() {
-        setComposeBoxQueryControllerBridge(null);
+    public void destroy() {
+        setComposeboxQueryControllerBridge(null);
         mAttachmentUploadFailedListener = null;
     }
 
@@ -226,20 +215,18 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
      * @param attachment The attachment to add
      */
     public boolean add(FuseboxAttachment attachment) {
-        if (mComposeBoxQueryControllerBridge == null || getRemainingAttachments() == 0) {
+        if (mComposeboxQueryControllerBridge == null || getRemainingAttachments() == 0) {
             return false;
         }
 
         // Start session if this is the first attachment
-        if (isEmpty()) mComposeBoxQueryControllerBridge.notifySessionStarted();
+        if (isEmpty()) mComposeboxQueryControllerBridge.notifySessionStarted();
 
         // Upload the attachment if it doesn't have a token
-        @Nullable TabModelSelector selector = mTabModelSelectorSupplier.get();
-        @Nullable Tab currentlySelectedTab = selector != null ? selector.getCurrentTab() : null;
         if (!attachment.uploadToBackend(
-                mComposeBoxQueryControllerBridge, currentlySelectedTab, false)) {
+                mComposeboxQueryControllerBridge, /* bypassTabCacheThisTime= */ false)) {
             // Upload failed, abandon session if we just started it
-            if (isEmpty()) mComposeBoxQueryControllerBridge.notifySessionAbandoned();
+            if (isEmpty()) mComposeboxQueryControllerBridge.notifySessionAbandoned();
             return false;
         }
 
@@ -248,7 +235,7 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
         }
 
         attachment.model.set(FuseboxAttachmentProperties.COLOR_SCHEME, mBrandedColorScheme);
-        attachment.setOnRemoveCallback(() -> remove(attachment));
+        attachment.setOnRemoveCallback(() -> remove(attachment, /* isFailure= */ false));
         mModelList.add(attachment);
 
         maybeEmitListChangedEvent(/* asResultOfChange= */ true);
@@ -260,21 +247,44 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
      * removing attachments.
      *
      * @param attachment The attachment to remove
+     * @param isFailure Whether the removal is from a failure or a decision by the user.
      */
-    public void remove(FuseboxAttachment attachment) {
+    public void remove(FuseboxAttachment attachment, boolean isFailure) {
         mModelList.remove(attachment);
 
         if (attachment.type == FuseboxAttachmentType.ATTACHMENT_TAB) {
             mAttachedTabIds.remove(attachment.tabId);
         }
 
+        if (isFailure) {
+            FuseboxMetrics.notifyAttachmentFailed(attachment.startTime, attachment.buttonType);
+        } else if (!attachment.isUploadComplete()) {
+            FuseboxMetrics.notifyAttachmentAbandoned(attachment.startTime, attachment.buttonType);
+        }
+
         // Always try to remove from backend using the model list's bridge
         // We have previously added attachments, so the controller must be set.
-        attachment.removeFromBackend(assumeNonNull(mComposeBoxQueryControllerBridge));
+        attachment.removeFromBackend(assumeNonNull(mComposeboxQueryControllerBridge));
         if (isEmpty()) {
-            assumeNonNull(mComposeBoxQueryControllerBridge).notifySessionAbandoned();
+            assumeNonNull(mComposeboxQueryControllerBridge).notifySessionAbandoned();
         }
         maybeEmitListChangedEvent(/* asResultOfChange= */ true);
+    }
+
+    /**
+     * Removes all tab attachments that are not explicitly identified.
+     *
+     * @param tabIdsToKeep A set of tab ids corresponding to tabs that are to be kept.
+     */
+    public void removeTabsNotInSet(Set<Integer> tabIdsToKeep) {
+        removeIf(
+                (ListItem item) -> {
+                    if (item.type != FuseboxAttachmentType.ATTACHMENT_TAB) return false;
+                    FuseboxAttachment attachment =
+                            item.model.get(FuseboxAttachmentProperties.ATTACHMENT);
+                    Integer tabId = assumeNonNull(attachment).tabId;
+                    return !tabIdsToKeep.contains(tabId);
+                });
     }
 
     /**
@@ -282,9 +292,8 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
      * predicate.
      *
      * @param filter The predicate to test each {@link ListItem} against for removal.
-     * @return True if one or more attachments were removed; False, otherwise.
      */
-    public boolean removeIf(Predicate<ListItem> filter) {
+    private void removeIf(Predicate<ListItem> filter) {
         List<FuseboxAttachment> attachmentsToRemove = new ArrayList<>();
 
         // Identify attachments that satisfy the filter.
@@ -297,16 +306,13 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
 
         // If nothing was found, return false.
         if (attachmentsToRemove.isEmpty()) {
-            return false;
+            return;
         }
 
         // Execute removal using the existing single-item method.
         for (FuseboxAttachment attachment : attachmentsToRemove) {
-            remove(attachment);
+            remove(attachment, /* isFailure= */ false);
         }
-
-        // Since we executed actual removal logic one or more times, return true.
-        return true;
     }
 
     /**
@@ -319,12 +325,16 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
         // We have previously added attachments, so the controller must be set.
         for (int index = 0; index < size(); index++) {
             var attachment = get(index);
-            attachment.removeFromBackend(assumeNonNull(mComposeBoxQueryControllerBridge));
+            attachment.removeFromBackend(assumeNonNull(mComposeboxQueryControllerBridge));
+            if (!attachment.isUploadComplete()) {
+                FuseboxMetrics.notifyAttachmentAbandoned(
+                        attachment.startTime, attachment.buttonType);
+            }
         }
 
         mAttachedTabIds.clear();
 
-        assumeNonNull(mComposeBoxQueryControllerBridge).notifySessionAbandoned();
+        assumeNonNull(mComposeboxQueryControllerBridge).notifySessionAbandoned();
         mModelList.clear();
         maybeEmitListChangedEvent(/* asResultOfChange= */ true);
     }
@@ -354,28 +364,29 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
     }
 
     @Override
-    public void onFileUploadStatusChanged(String token, @FileUploadStatus int status) {
+    public void onFileUploadStatusChanged(String token, @ContextUploadStatus int status) {
         if (TextUtils.isEmpty(token)) return;
         FuseboxAttachment pendingAttachment = findAttachmentWithToken(token);
         if (pendingAttachment == null) return;
 
         switch (status) {
-            case FileUploadStatus.VALIDATION_FAILED:
-            case FileUploadStatus.UPLOAD_FAILED:
-            case FileUploadStatus.UPLOAD_EXPIRED:
+            case ContextUploadStatus.VALIDATION_FAILED:
+            case ContextUploadStatus.UPLOAD_FAILED:
+            case ContextUploadStatus.UPLOAD_EXPIRED:
                 if (pendingAttachment.retryUpload(
-                        mTabModelSelectorSupplier.get(),
-                        assumeNonNull(mComposeBoxQueryControllerBridge))) {
+                        assumeNonNull(mComposeboxQueryControllerBridge))) {
                     break;
                 }
                 notifyAttachmentUploadFailed();
                 pendingAttachment.setUploadIsComplete();
-                remove(pendingAttachment);
+                remove(pendingAttachment, /* isFailure= */ true);
                 break;
-            case FileUploadStatus.UPLOAD_SUCCESSFUL:
+            case ContextUploadStatus.UPLOAD_SUCCESSFUL:
                 pendingAttachment.setUploadIsComplete();
                 int index = indexOf(pendingAttachment);
                 mModelList.update(index, pendingAttachment);
+                FuseboxMetrics.notifyAttachmentSucceeded(
+                        pendingAttachment.startTime, pendingAttachment.buttonType);
                 break;
         }
 
@@ -406,7 +417,7 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
      * if needed.
      */
     public int getRemainingAttachments() {
-        return MAX_ATTACHMENTS - size();
+        return getMaxAttachments() - size();
     }
 
     private void notifyAttachmentUploadFailed() {
@@ -423,5 +434,9 @@ public class FuseboxAttachmentModelList implements FileUploadObserver, Iterable<
     /** Unregisters the listener from being notified that attachments list has been changed. */
     public void removeAttachmentChangeListener(FuseboxAttachmentChangeListener listener) {
         mAttachmentChangeListeners.removeObserver(listener);
+    }
+
+    public ModelList getModelListForTesting() {
+        return mModelList;
     }
 }

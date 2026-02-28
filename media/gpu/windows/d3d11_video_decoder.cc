@@ -95,6 +95,12 @@ bool ShouldUseDXVADeviceForHEVCRangeExtension(const VideoDecoderConfig& config,
 }
 #endif  // BUILDFLAG(ENABLE_HEVC_PARSER_AND_HW_DECODER)
 
+// Killswitch for setting default fallback color space if its invalid (BT601 for
+// multi-planar, SRGB for single-planar). This color space is used to create
+// shared image, and set on video frame which is create from shared image.
+BASE_FEATURE(kSetDefaultColorSpaceForVideoFrameAndSharedImage,
+             base::FEATURE_ENABLED_BY_DEFAULT);
+
 }  // namespace
 
 std::unique_ptr<VideoDecoder> D3D11VideoDecoder::Create(
@@ -776,6 +782,23 @@ void D3D11VideoDecoder::CreatePictureBuffers() {
   if (!color_space.IsValid()) {
     color_space = config_.color_space_info().ToGfxColorSpace();
   }
+  if (!color_space.IsValid() &&
+      base::FeatureList::IsEnabled(
+          kSetDefaultColorSpaceForVideoFrameAndSharedImage)) {
+    auto output_si_format = texture_selector_->OutputSharedImageFormat();
+    // Always set color space for `kWebRTCColorAccuracy` feature if it is
+    // invalid. Use BT709 as the default color space.
+    // TODO(crbug.com/425634684): Perform fallback regardless of feature check
+    // as it is better to have a default color space when creating
+    // SharedImage/VideoFrame rather than invalid.
+    if (base::FeatureList::IsEnabled(media::kWebRTCColorAccuracy) &&
+        output_si_format.is_multi_plane()) {
+      color_space = gfx::ColorSpace::CreateREC709();
+    }
+    if (output_si_format.is_single_plane()) {
+      color_space = gfx::ColorSpace::CreateSRGB();
+    }
+  }
 
   // Since we are about to allocate new picture buffers, record whatever usage
   // we had for the outgoing ones, if any.
@@ -897,24 +920,14 @@ bool D3D11VideoDecoder::OutputResult(const CodecPicture* picture,
     visible_rect = config_.visible_rect();
 
   gfx::Size natural_size = config_.aspect_ratio().GetNaturalSize(visible_rect);
-
   base::TimeDelta timestamp = picture_buffer->timestamp_;
 
-  // Prefer the frame color space over what's in the config.
-  auto picture_color_space = picture->get_colorspace().ToGfxColorSpace();
-  if (!picture_color_space.IsValid()) {
-    picture_color_space = config_.color_space_info().ToGfxColorSpace();
-  }
-
   scoped_refptr<gpu::ClientSharedImage> shared_image;
-  result = picture_buffer->ProcessTexture(picture_color_space, shared_image);
+  result = picture_buffer->ProcessTexture(shared_image);
   if (!result.is_ok()) {
     NotifyError(std::move(result).AddHere());
     return false;
   }
-  // If the output texture is in RGB pixel format, then the color space needs to
-  // be updated using the color space of the output texture.
-  picture_color_space = shared_image->color_space();
 
   scoped_refptr<VideoFrame> frame = VideoFrame::WrapSharedImage(
       texture_selector_->PixelFormat(), shared_image,
@@ -951,15 +964,18 @@ bool D3D11VideoDecoder::OutputResult(const CodecPicture* picture,
   // video. As a result, we should not allow overlay for non-NV12/P010 formats
   // which may cause chroma downsampling when blitting into the back buffer.
   // See https://crbugs.com/331679628 for more details.
+  auto output_si_format = texture_selector_->OutputSharedImageFormat();
   if (!config_.is_encrypted()) {
     frame->metadata().allow_overlay =
-        texture_selector_->OutputDXGIFormat() == DXGI_FORMAT_P010 ||
-        texture_selector_->OutputDXGIFormat() == DXGI_FORMAT_NV12;
+        output_si_format == viz::MultiPlaneFormat::kP010 ||
+        output_si_format == viz::MultiPlaneFormat::kNV12;
   }
   frame->metadata().power_efficient = true;
 
-  frame->set_color_space(picture_color_space);
-  if (picture_color_space.IsHDR()) {
+  // If the output texture is in RGB pixel format, then the color space needs to
+  // be updated using the color space of the output texture.
+  frame->set_color_space(shared_image->color_space());
+  if (shared_image->color_space().IsHDR()) {
     // Some streams may have varying metadata, so bitstream metadata should be
     // preferred over metadata provide by the configuration.
     gfx::HDRMetadata hdr_metadata = picture->hdr_metadata();
@@ -971,7 +987,7 @@ bool D3D11VideoDecoder::OutputResult(const CodecPicture* picture,
 
   frame->metadata().is_webgpu_compatible =
       !(gpu_workarounds_.disable_sharing_nv12_from_d3d11_to_d3d12 &&
-        texture_selector_->OutputDXGIFormat() == DXGI_FORMAT_NV12) &&
+        output_si_format == viz::MultiPlaneFormat::kNV12) &&
       use_shared_handle_;
 
   output_cb_.Run(frame);
@@ -1064,8 +1080,7 @@ void D3D11VideoDecoder::LogDecoderAdapterLUID() {
 
   ComDXGIAdapter dxgi_adapter;
   hr = dxgi_device->GetAdapter(&dxgi_adapter);
-  if (FAILED(hr))
-    return;
+  CHECK_EQ(hr, S_OK);
 
   DXGI_ADAPTER_DESC adapter_desc{};
   hr = dxgi_adapter->GetDesc(&adapter_desc);

@@ -231,6 +231,14 @@ class SigninMetricsTest : public ::testing::Test {
         return "EnterpriseDialogAfterSigninInterception";
       case AccessPoint::kCredentialExchangeImport:
         return "CredentialExchangeImport";
+      case AccessPoint::kSetSyncConsentFromSyncInternals:
+        return "SetSyncConsentFromSyncInternals";
+      case AccessPoint::kIosChromeWebView:
+        return "IosChromeWebView";
+      case AccessPoint::kAshChromeSessionManager:
+        return "AshChromeSessionManager";
+      case AccessPoint::kAshUserSessionManager:
+        return "AshUserSessionManager";
     }
   }
 };
@@ -251,6 +259,13 @@ TEST_F(SigninMetricsTest, RecordSigninImpressionUserAction) {
     EXPECT_EQ(1, user_action_tester.GetActionCount(
                      "Signin_Impression_From" + GetAccessPointDescription(ap)));
   }
+}
+
+TEST_F(SigninMetricsTest, AccessPointFromInt) {
+  EXPECT_EQ(AccessPoint::kStartPage, AccessPointFromInt(0));
+  EXPECT_EQ(std::optional<AccessPoint>(), AccessPointFromInt(-1));
+  // Deprecated access point kNtpLink.
+  EXPECT_EQ(std::optional<AccessPoint>(), AccessPointFromInt(1));
 }
 
 TEST(LogSyncOptInOfferedTest, RecordsHistogram) {

@@ -33,7 +33,7 @@
 #include "base/trace_event/trace_event.h"
 #include "build/build_config.h"
 #include "components/performance_manager/scenario_api/performance_scenario_memory.h"
-#include "content/child/memory_coordinator/child_memory_consumer_registry.h"
+#include "content/child/memory_coordinator/child_memory_coordinator.h"
 #include "content/common/content_constants_internal.h"
 #include "content/common/content_switches_internal.h"
 #include "content/common/features.h"
@@ -227,7 +227,6 @@ int RendererMain(MainFunctionParams parameters) {
   std::unique_ptr<blink::scheduler::WebThreadScheduler> main_thread_scheduler =
       blink::scheduler::WebThreadScheduler::CreateMainThreadScheduler(
           CreateMainThreadMessagePump());
-
   platform.PlatformInitialize();
 
   // Initialize WebRTC before engaging the sandbox.
@@ -237,8 +236,7 @@ int RendererMain(MainFunctionParams parameters) {
   InitializeWebRtcModuleBeforeSandbox();
 
   RendererMemoryCoordinatorPolicy render_memory_coordinator_policy(
-      static_cast<ChildMemoryConsumerRegistry&>(
-          base::MemoryConsumerRegistry::Get()));
+      ChildMemoryCoordinator::Get());
 
   {
     content::ContentRendererClient* client = GetContentClient()->renderer();
@@ -273,10 +271,6 @@ int RendererMain(MainFunctionParams parameters) {
     // which may race with application of the sandbox.
     SandboxedProcessThreadTypeHandler::Create();
 #endif
-    // Consider CrRendererMain a display critical thread. While some Javascript
-    // running on the main thread might not be, experiments demonstrated that
-    // overall this improves user-perceived performance.
-    base::PlatformThread::SetCurrentThreadType(base::ThreadType::kPresentation);
 
     // Startup tracing creates a tracing thread, which is incompatible on
     // platforms that require single-threaded sandbox initialization. In these

@@ -19,7 +19,6 @@
 #import "ios/chrome/browser/shared/public/commands/browser_coordinator_commands.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/credential_provider_promo_commands.h"
-#import "ios/chrome/browser/shared/public/commands/docking_promo_commands.h"
 #import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
 #import "ios/chrome/browser/shared/public/commands/show_signin_command.h"
@@ -73,9 +72,6 @@ void TipsNotificationPresenter::Present(TipsNotificationType type) {
     case TipsNotificationType::kSetUpListContinuation:
       ShowSetUpListContinuation();
       break;
-    case TipsNotificationType::kDocking:
-      ShowDocking();
-      break;
     case TipsNotificationType::kOmniboxPosition:
       ShowOmniboxPosition();
       break;
@@ -94,7 +90,14 @@ void TipsNotificationPresenter::Present(TipsNotificationType type) {
     case TipsNotificationType::kTrustedVaultKeyRetrieval:
       StartTrustedVaultKeyRetrievalFlow();
       break;
+    case TipsNotificationType::kTabGroups:
+      ShowTabGroupsPromo();
+      break;
+    case TipsNotificationType::kPriceTracking:
+      ShowPriceTrackingPromo();
+      break;
     case TipsNotificationType::kIncognitoLock:
+    case TipsNotificationType::kDocking:
     case TipsNotificationType::kError:
       NOTREACHED();
   }
@@ -145,11 +148,6 @@ void TipsNotificationPresenter::ShowSetUpListContinuation() {
   [HandlerForProtocol(browser_->GetCommandDispatcher(),
                       ContentSuggestionsCommands)
       showSetUpListSeeMoreMenuExpanded:YES];
-}
-
-void TipsNotificationPresenter::ShowDocking() {
-  [HandlerForProtocol(browser_->GetCommandDispatcher(), DockingPromoCommands)
-      showDockingPromo:YES];
 }
 
 void TipsNotificationPresenter::ShowOmniboxPosition() {
@@ -209,7 +207,8 @@ void TipsNotificationPresenter::StartTrustedVaultKeyRetrievalFlow() {
   }
   [HandlerForProtocol(browser_->GetCommandDispatcher(), SyncPresenterCommands)
       showTrustedVaultReauthForFetchKeysWithTrigger:
-          trusted_vault::TrustedVaultUserActionTriggerForUMA::kNotification];
+          trusted_vault::TrustedVaultUserActionTriggerForUMA::kNotification
+                                         completion:nil];
   base::UmaHistogramEnumeration(
       metric_name, TrustedVaultNotificationEvents::kKeyRetrievalFlowStarted);
 }
@@ -230,6 +229,16 @@ void TipsNotificationPresenter::ShowCPEPromo() {
 void TipsNotificationPresenter::ShowLensOverlayPromo() {
   [HandlerForProtocol(browser_->GetCommandDispatcher(),
                       BrowserCoordinatorCommands) showSearchWhatYouSeePromo];
+}
+
+void TipsNotificationPresenter::ShowTabGroupsPromo() {
+  // TODO (crbug.com/482042349): Present the Tab Groups promo once it is
+  // created.
+}
+
+void TipsNotificationPresenter::ShowPriceTrackingPromo() {
+  // TODO (crbug.com/485573580): Present the Price Tracking promo once it is
+  // created.
 }
 
 bool TipsNotificationPresenter::HasIdentitiesOnDevice() {

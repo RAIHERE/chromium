@@ -9,8 +9,6 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -29,7 +27,6 @@ import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.robolectric.annotation.Config;
 
 import org.chromium.base.BaseSwitches;
 import org.chromium.base.Callback;
@@ -48,6 +45,7 @@ import org.chromium.chrome.browser.data_sharing.DataSharingServiceFactory;
 import org.chromium.chrome.browser.data_sharing.DataSharingTabManager;
 import org.chromium.chrome.browser.feature_engagement.TrackerFactory;
 import org.chromium.chrome.browser.hub.PaneManager;
+import org.chromium.chrome.browser.incognito.reauth.IncognitoReauthManager;
 import org.chromium.chrome.browser.layouts.LayoutStateProvider;
 import org.chromium.chrome.browser.lifecycle.ActivityLifecycleDispatcher;
 import org.chromium.chrome.browser.lifecycle.LifecycleObserver;
@@ -83,7 +81,6 @@ import org.chromium.components.tab_group_sync.TabGroupUiActionHandler;
 import org.chromium.ui.base.TestActivity;
 import org.chromium.ui.modaldialog.ModalDialogManager;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.function.Supplier;
 
@@ -152,6 +149,7 @@ public class TabSwitcherPaneCoordinatorFactoryUnitTest {
     public void setUp() {
         PriceTrackingFeatures.setPriceAnnotationsEnabledForTesting(true);
         PriceTrackingFeatures.setIsSignedInAndSyncEnabledForTesting(true);
+        IncognitoReauthManager.setIsIncognitoReauthFeatureAvailableForTesting(false);
 
         TrackerFactory.setTrackerForTests(mTracker);
         DataSharingServiceFactory.setForTesting(new TestDataSharingService());
@@ -220,8 +218,6 @@ public class TabSwitcherPaneCoordinatorFactoryUnitTest {
                         /* tabSwitcherDragHandler= */ null);
     }
 
-    // TODO(crbug.com/450954710): This test fails on SDK 36.
-    @Config(sdk = 29)
     @Test
     public void testCreate_NativeAlreadyInitialized() {
         when(mLifecycleDispatcher.isNativeInitializationFinished()).thenReturn(true);
@@ -248,8 +244,6 @@ public class TabSwitcherPaneCoordinatorFactoryUnitTest {
         assertNull(mFactory.getMessageManagerForTesting());
     }
 
-    // TODO(crbug.com/450954710): This test fails on SDK 36.
-    @Config(sdk = 29)
     @Test
     public void testCreateTwoCoordinators_NativeAlreadyInitialized() {
         when(mLifecycleDispatcher.isNativeInitializationFinished()).thenReturn(true);
@@ -293,8 +287,6 @@ public class TabSwitcherPaneCoordinatorFactoryUnitTest {
         assertNull(mFactory.getMessageManagerForTesting());
     }
 
-    // TODO(crbug.com/450954710): This test fails on SDK 36.
-    @Config(sdk = 29)
     @Test
     public void testCreate_NativeNotInitialized() {
         when(mLifecycleDispatcher.isNativeInitializationFinished()).thenReturn(false);
@@ -340,27 +332,10 @@ public class TabSwitcherPaneCoordinatorFactoryUnitTest {
     }
 
     @Test
-    public void testCreateTabGroupModelFilterSupplier_AlreadyCreated() {
+    public void testCreateTabGroupModelFilterSupplier() {
         when(mTabModelSelector.getModels()).thenReturn(List.of(mTabModel));
 
         var supplier = mFactory.createTabGroupModelFilterSupplier(false);
-        verify(mTabModelSelector, never()).addObserver(any());
-        assertEquals(mTabGroupModelFilter, supplier.get());
-    }
-
-    @Test
-    public void testCreateTabGroupModelFilterSupplier_WaitForChange() {
-        when(mTabModelSelector.getModels()).thenReturn(Collections.emptyList());
-
-        var supplier = mFactory.createTabGroupModelFilterSupplier(false);
-        verify(mTabModelSelector).addObserver(mTabModelSelectorObserverCaptor.capture());
-        assertNull(supplier.get());
-
-        TabModelSelectorObserver observer = mTabModelSelectorObserverCaptor.getValue();
-
-        when(mTabModelSelector.getModels()).thenReturn(List.of(mTabModel));
-        observer.onChange();
-        verify(mTabModelSelector).removeObserver(observer);
         assertEquals(mTabGroupModelFilter, supplier.get());
     }
 }

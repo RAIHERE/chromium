@@ -45,6 +45,7 @@
 #include "third_party/blink/renderer/platform/testing/runtime_enabled_features_test_helpers.h"
 #include "third_party/blink/renderer/platform/testing/task_environment.h"
 #include "third_party/blink/renderer/platform/transforms/scale_transform_operation.h"
+#include "third_party/blink/renderer/platform/wtf/text/text_offset_map.h"
 #include "ui/base/ui_base_features.h"
 
 namespace blink {
@@ -94,7 +95,7 @@ class ComputedStyleTest : public testing::Test {
         expected_changes == kCompositingReasonsChanged;
     EXPECT_EQ(expect_compositing_reasons_changed, diff.HasDifference());
     EXPECT_EQ(expect_compositing_reasons_changed,
-              diff.CompositingReasonsChanged());
+              diff.compositing_reasons_changed);
   }
 
  private:
@@ -252,7 +253,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.TransformChanged());
+  EXPECT_TRUE(diff.transform_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -273,8 +274,8 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_FALSE(diff.TransformChanged());
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_FALSE(diff.transform_changed);
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -285,7 +286,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.TransformChanged());
+  EXPECT_TRUE(diff.transform_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -296,7 +297,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.TransformChanged());
+  EXPECT_TRUE(diff.transform_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -307,7 +308,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.TransformChanged());
+  EXPECT_TRUE(diff.transform_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -318,7 +319,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -329,7 +330,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -340,7 +341,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -351,7 +352,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -363,7 +364,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -378,7 +379,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -389,7 +390,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest,
@@ -401,7 +402,7 @@ TEST_F(ComputedStyleTest,
   const ComputedStyle* other = builder.TakeStyle();
 
   StyleDifference diff = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_TRUE(diff.CompositingReasonsChanged());
+  EXPECT_TRUE(diff.compositing_reasons_changed);
 }
 
 TEST_F(ComputedStyleTest, HasOutlineWithCurrentColor) {
@@ -1422,11 +1423,11 @@ TEST_F(ComputedStyleTest,
   EXPECT_EQ(TextDecorationLine::kUnderline, style->TextDecorationsInEffect());
 
   StyleDifference diff1 = style->VisualInvalidationDiff(GetDocument(), *clone);
-  EXPECT_FALSE(diff1.NeedsRecomputeVisualOverflow());
+  EXPECT_FALSE(diff1.needs_recompute_visual_overflow);
 
   // Different color, should not invalidate.
   StyleDifference diff2 = style->VisualInvalidationDiff(GetDocument(), *other);
-  EXPECT_FALSE(diff2.NeedsRecomputeVisualOverflow());
+  EXPECT_FALSE(diff2.needs_recompute_visual_overflow);
 }
 
 TEST_F(ComputedStyleTest, TextDecorationNotEqualRequiresRecomputeInkOverflow) {
@@ -1467,27 +1468,27 @@ TEST_F(ComputedStyleTest, TextDecorationNotEqualRequiresRecomputeInkOverflow) {
   // Change decoration style
   StyleDifference diff_decoration_style =
       style->VisualInvalidationDiff(GetDocument(), *wavy);
-  EXPECT_TRUE(diff_decoration_style.NeedsRecomputeVisualOverflow());
+  EXPECT_TRUE(diff_decoration_style.needs_recompute_visual_overflow);
 
   // Change decoration line
   StyleDifference diff_decoration_line =
       style->VisualInvalidationDiff(GetDocument(), *overline);
-  EXPECT_TRUE(diff_decoration_line.NeedsRecomputeVisualOverflow());
+  EXPECT_TRUE(diff_decoration_line.needs_recompute_visual_overflow);
 
   // Change decoration thickness
   StyleDifference diff_decoration_thickness =
       style->VisualInvalidationDiff(GetDocument(), *thickness);
-  EXPECT_TRUE(diff_decoration_thickness.NeedsRecomputeVisualOverflow());
+  EXPECT_TRUE(diff_decoration_thickness.needs_recompute_visual_overflow);
 
   // Change underline offset
   StyleDifference diff_underline_offset =
       style->VisualInvalidationDiff(GetDocument(), *offset);
-  EXPECT_TRUE(diff_underline_offset.NeedsRecomputeVisualOverflow());
+  EXPECT_TRUE(diff_underline_offset.needs_recompute_visual_overflow);
 
   // Change underline position
   StyleDifference diff_underline_position =
       style->VisualInvalidationDiff(GetDocument(), *position);
-  EXPECT_TRUE(diff_underline_position.NeedsRecomputeVisualOverflow());
+  EXPECT_TRUE(diff_underline_position.needs_recompute_visual_overflow);
 }
 
 // Verify that cloned ComputedStyle is independent from source, i.e.
@@ -2444,6 +2445,61 @@ TEST_F(ComputedStyleTest, SingleAxisScrollContainers) {
 
   EXPECT_TRUE(vertical->IsOverflowValueScrollableInline());
   EXPECT_FALSE(vertical->IsOverflowValueScrollableBlock());
+}
+
+TEST_F(ComputedStyleTest, ApplyTextTransformUpdateOffsetMap) {
+  using Entry = TextOffsetMap::Entry;
+
+  // When we chain together multiple 'text-transform' keywords, each might
+  // independently change the length of the resulting text.
+  // For example, in 'text-transform: uppercase full-size-kana':
+  // - 'uppercase' turns "a" into "A" keeping the length 1, but the German "ß"
+  //   (length 1) becomes "SS" (length 2).
+  // - 'full-size-kana' turns U+3041 (Hiragana small a, length 1) into U+3042
+  //   (Hiragana a, length 1), however U+1B132 (Hiragana small ko, length 2)
+  //   becomes U+3053 (Hiragana ko, length 1).
+  // The offset map must correctly track these combined length changes.
+
+  ComputedStyleBuilder builder = CreateComputedStyleBuilder();
+  builder.SetTextTransform(ETextTransform::kUppercase |
+                           ETextTransform::kFullSizeKana);
+  const ComputedStyle* style = builder.TakeStyle();
+
+  // Neither keyword changes the length.
+  {
+    TextOffsetMap offset_map;
+    String result =
+        style->ApplyTextTransform(String(u"a\u3041"), ' ', &offset_map);
+    EXPECT_EQ(String(u"A\u3042"), result);
+    EXPECT_TRUE(offset_map.IsEmpty());
+  }
+
+  // Only 'uppercase' changes the length.
+  {
+    TextOffsetMap offset_map;
+    String result =
+        style->ApplyTextTransform(String(u"\u00DF\u3041"), ' ', &offset_map);
+    EXPECT_EQ(String(u"SS\u3042"), result);
+    EXPECT_EQ(offset_map.Entries(), Vector<Entry>({{1, 2}}));
+  }
+
+  // Only 'full-size-kana' changes the length.
+  {
+    TextOffsetMap offset_map;
+    String result =
+        style->ApplyTextTransform(String(u"a\xD82C\xDD32"), ' ', &offset_map);
+    EXPECT_EQ(String(u"A\u3053"), result);
+    EXPECT_EQ(offset_map.Entries(), Vector<Entry>({{3, 2}}));
+  }
+
+  // Both keywords change the length.
+  {
+    TextOffsetMap offset_map;
+    String result = style->ApplyTextTransform(String(u"\u00DF\xD82C\xDD32"),
+                                              ' ', &offset_map);
+    EXPECT_EQ(String(u"SS\u3053"), result);
+    EXPECT_EQ(offset_map.Entries(), Vector<Entry>({{1, 2}, {3, 3}}));
+  }
 }
 
 }  // namespace blink

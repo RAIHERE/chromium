@@ -127,9 +127,9 @@ class FormStructure {
     // history of the fields in the form (e.g. information about previous fill
     // operations):
     //
-    // - The `is_autofilled` and similar members of a field are copied from the
-    //   cached form so that a field that was once labeled as autofilled remains
-    //   autofilled.
+    // - The `is_autofilled_according_to_renderer` and similar members of a
+    //   field are copied from the cached form so that a field that was once
+    //   labeled as autofilled remains autofilled.
     //
     // - The `value` of a field is copied from the cache as it represents the
     //   initial value of a field during page load time and must not be updated
@@ -290,6 +290,14 @@ class FormStructure {
 
   FormVersion version() const { return version_; }
 
+  FormVersion last_successfully_queried_version() const {
+    return last_successfully_queried_version_;
+  }
+
+  void set_last_successfully_queried_version(FormVersion version) {
+    last_successfully_queried_version_ = version;
+  }
+
   // The signatures of forms recently submitted on the same origin within a
   // small period of time.
   struct FormAssociations {
@@ -407,6 +415,10 @@ class FormStructure {
   // A monotonically increasing counter that indicates the generation of the
   // form.
   FormVersion version_;
+
+  // The last FormVersion for which ServerPredictions::ApplyTo() ran
+  // successfully.
+  FormVersion last_successfully_queried_version_;
 
   // An identifier of the form that is unique among the forms from the same
   // frame.

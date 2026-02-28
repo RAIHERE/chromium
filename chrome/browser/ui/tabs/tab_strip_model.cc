@@ -39,9 +39,9 @@
 #include "base/types/pass_key.h"
 #include "build/build_config.h"
 #include "chrome/app/chrome_command_ids.h"
-#include "chrome/browser/commerce/browser_utils.h"
 #include "chrome/browser/content_settings/host_content_settings_map_factory.h"
 #include "chrome/browser/extensions/tab_helper.h"
+#include "chrome/browser/glic/public/glic_enabling.h"
 #include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/reading_list/reading_list_model_factory.h"
@@ -49,10 +49,11 @@
 #include "chrome/browser/send_tab_to_self/send_tab_to_self_util.h"
 #include "chrome/browser/ui/bookmarks/bookmark_utils.h"
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_command_controller.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/browser_finder.h"
 #include "chrome/browser/ui/browser_window.h"
-#include "chrome/browser/ui/commerce/ui_utils.h"
+#include "chrome/browser/ui/browser_window/public/browser_window_features.h"
 #include "chrome/browser/ui/send_tab_to_self/send_tab_to_self_bubble.h"
 #include "chrome/browser/ui/tab_ui_helper.h"
 #include "chrome/browser/ui/tabs/features.h"
@@ -71,10 +72,12 @@
 #include "chrome/browser/ui/tabs/tab_strip_model_observer.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/browser/ui/tabs/tab_utils.h"
+#include "chrome/browser/ui/tabs/vertical_tab_strip_state_controller.h"
 #include "chrome/browser/ui/thumbnails/thumbnail_tab_helper.h"
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/user_education/browser_user_education_interface.h"
 #include "chrome/browser/ui/views/tabs/dragging/tab_drag_controller.h"
+#include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_metrics.h"
 #include "chrome/browser/ui/web_applications/web_app_dialog_utils.h"
 #include "chrome/browser/ui/web_applications/web_app_launch_utils.h"
 #include "chrome/browser/ui/web_applications/web_app_tabbed_utils.h"
@@ -115,11 +118,6 @@
 #include "ui/base/models/list_selection_model.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/range/range.h"
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/public/glic_enabling.h"
-#endif
-
 using base::UserMetricsAction;
 using content::WebContents;
 
@@ -196,7 +194,7 @@ DetachedTab::DetachedTab(int index_before_any_removals,
                          int index_at_time_of_removal,
                          bool was_pinned_at_time_of_removal,
                          std::unique_ptr<tabs::TabModel> tab,
-                         TabStripModelChange::RemoveReason remove_reason,
+                         TabRemovedReason remove_reason,
                          tabs::TabInterface::DetachReason tab_detach_reason,
                          std::optional<SessionID> id)
     : tab(std::move(tab)),
@@ -439,15 +437,14 @@ std::unique_ptr<content::WebContents> TabStripModel::DiscardWebContentsAt(
 std::unique_ptr<tabs::TabModel> TabStripModel::DetachTabAtForInsertion(
     int index) {
   auto dt = DetachTabWithReasonAt(
-      index, TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip,
+      index, TabRemovedReason::kInsertedIntoOtherTabStrip,
       tabs::TabInterface::DetachReason::kInsertIntoOtherWindow);
   return std::move(dt->tab);
 }
 
 std::unique_ptr<content::WebContents>
-TabStripModel::DetachWebContentsAtForInsertion(
-    int index,
-    TabStripModelChange::RemoveReason reason) {
+TabStripModel::DetachWebContentsAtForInsertion(int index,
+                                               TabRemovedReason reason) {
   auto dt = DetachTabWithReasonAt(index, reason,
                                   tabs::TabInterface::DetachReason::kDelete);
   return tabs::TabModel::DestroyAndTakeWebContents(std::move(dt->tab));
@@ -455,7 +452,7 @@ TabStripModel::DetachWebContentsAtForInsertion(
 
 void TabStripModel::DetachAndDeleteWebContentsAt(int index) {
   // Drops the returned unique pointer.
-  DetachTabWithReasonAt(index, TabStripModelChange::RemoveReason::kDeleted,
+  DetachTabWithReasonAt(index, TabRemovedReason::kDeleted,
                         tabs::TabInterface::DetachReason::kDelete);
 }
 
@@ -492,7 +489,7 @@ TabStripModel::DetachTabsAndCollectionsForInsertion(
           DetachSplitTabForInsertion(tab_interface->GetSplit().value()));
     } else {
       owned_tabs_and_collections.emplace_back(DetachTabWithReasonAt(
-          index, TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip,
+          index, TabRemovedReason::kInsertedIntoOtherTabStrip,
           tabs::TabInterface::DetachReason::kInsertIntoOtherWindow));
     }
   }
@@ -502,7 +499,7 @@ TabStripModel::DetachTabsAndCollectionsForInsertion(
 
 std::unique_ptr<DetachedTab> TabStripModel::DetachTabWithReasonAt(
     int index,
-    TabStripModelChange::RemoveReason web_contents_remove_reason,
+    TabRemovedReason web_contents_remove_reason,
     tabs::TabInterface::DetachReason tab_detach_reason) {
   ReentrancyCheck reentrancy_check(&reentrancy_guard_);
 
@@ -736,8 +733,7 @@ TabStripModelChange::Remove TabStripModel::ProcessTabsForDetach(
 
     // Record this removal in the `Remove` event payload.
     remove.contents.emplace_back(
-        tab, index,
-        TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip,
+        tab, index, TabRemovedReason::kInsertedIntoOtherTabStrip,
         tabs::TabInterface::DetachReason::kInsertIntoOtherWindow, std::nullopt);
   }
 
@@ -749,6 +745,7 @@ void TabStripModel::UpdateSelectionModelForCollectionDetach(
     int detach_start_index,
     std::optional<int> next_selected_index,
     bool active_tab_removed) {
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
   const bool closed_all_tabs = (count() == 0);
 
   if (closed_all_tabs) {
@@ -859,6 +856,7 @@ gfx::Range TabStripModel::InsertDetachedCollectionImpl(
 
   // Add the collection.
   std::move(execute_insert_detached_tabs_operation).Run();
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 
   int collection_insertion_index =
       GetIndexOfTab(collection->GetTabAtIndexRecursive(0));
@@ -906,13 +904,14 @@ void TabStripModel::InsertDetachedTabGroupImpl(
                             base::PassKey<TabStripModel>());
   contents_data_->InsertTabCollectionAt(std::move(group_collection), index,
                                         false, std::nullopt);
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 }
 
 std::unique_ptr<DetachedTab> TabStripModel::DetachTabImpl(
     int index_before_any_removals,
     int index_at_time_of_removal,
     bool create_historical_tab,
-    TabStripModelChange::RemoveReason web_contents_remove_reason,
+    TabRemovedReason web_contents_remove_reason,
     tabs::TabInterface::DetachReason tab_detach_reason) {
   if (empty()) {
     return nullptr;
@@ -993,7 +992,7 @@ void TabStripModel::SendDetachWebContentsNotifications(
   }
 
   for (auto& dt : notifications->detached_tab) {
-    if (dt->remove_reason == TabStripModelChange::RemoveReason::kDeleted) {
+    if (dt->remove_reason == TabRemovedReason::kDeleted) {
       // This destroys the WebContents, which will also send
       // WebContentsDestroyed notifications.
       dt->tab.reset();
@@ -1018,6 +1017,15 @@ void TabStripModel::ActivateTabAt(int index,
   scrubbing_metrics_.IncrementPressCount(user_gesture);
 
   tabs::TabInterface* tab = GetTabAtIndex(index);
+
+  // If this tab was activated, eg. by an extension, but is not in the focused
+  // group, unfocus the focused group.
+  std::optional<tab_groups::TabGroupId> group_id = tab->GetGroup();
+  std::optional<tab_groups::TabGroupId> focused_group = GetFocusedGroup();
+  if (focused_group.has_value() &&
+      (!group_id.has_value() || group_id.value() != focused_group.value())) {
+    SetFocusedGroup(std::nullopt);
+  }
 
   tabs::TabStripModelSelectionState new_model = selection_model_;
   SetSelectedTab(new_model, tab);
@@ -1237,8 +1245,8 @@ void TabStripModel::UpdateWebContentsStateAt(int index,
 }
 
 void TabStripModel::SetTabNeedsAttentionAt(int index, bool attention) {
-  tabs::TabInterface* tab = GetTabAtIndex(index);
-  TabUIHelper::From(tab)->set_needs_attention(attention);
+  tabs::TabInterface* const tab = GetTabAtIndex(index);
+  TabUIHelper::From(tab)->SetNeedsAttention(attention);
 
   for (auto& observer : observers_) {
     observer.OnTabChangedAt(tab, index, TabChangeType::kAttentionOnly);
@@ -1320,14 +1328,9 @@ tabs::TabInterface* TabStripModel::GetOpenerOfTabAt(const int index) const {
   return tab->opener();
 }
 
-void TabStripModel::SetOpenerOfWebContentsAt(int index, WebContents* opener) {
+void TabStripModel::SetOpenerOfTabAt(int index, tabs::TabInterface* opener) {
   CHECK(ContainsIndex(index));
-  // The TabStripModel only maintains the references to openers that it itself
-  // owns; trying to set an opener to an external WebContents can result in
-  // the opener being used after its freed. See crbug.com/698681.
-  DCHECK(!opener || GetIndexOfWebContents(opener) != kNoTab)
-      << "Cannot set opener to a web contents not owned by this tab strip.";
-  GetTabModelAtIndex(index)->set_opener(GetTabForWebContents(opener));
+  GetTabModelAtIndex(index)->set_opener(opener);
 }
 
 int TabStripModel::GetIndexOfLastWebContentsOpenedBy(const WebContents* opener,
@@ -1378,14 +1381,12 @@ void TabStripModel::TabNavigating(WebContents* contents,
 
 void TabStripModel::SetTabBlocked(int index, bool blocked) {
   CHECK(ContainsIndex(index));
-  tabs::TabModel* tab_model = GetTabModelAtIndex(index);
+  tabs::TabModel* const tab_model = GetTabModelAtIndex(index);
   if (tab_model->IsBlocked() == blocked) {
     return;
   }
   tab_model->set_blocked(blocked);
-  for (auto& observer : observers_) {
-    observer.OnTabBlockedStateChanged(tab_model, index);
-  }
+  NotifyTabChanged(tab_model, TabChangeType::kBlockedOnly);
 }
 
 int TabStripModel::SetTabPinned(int index, bool pinned) {
@@ -1433,7 +1434,7 @@ bool TabStripModel::IsTabInForeground(int index) const {
     return false;
   }
 
-  const tabs::TabInterface *active_tab = GetActiveTab();
+  const tabs::TabInterface* active_tab = GetActiveTab();
   if (!active_tab) {
     return false;
   }
@@ -2528,16 +2529,6 @@ bool TabStripModel::IsContextMenuCommandEnabled(
     case CommandOrganizeTabs:
       return true;
 
-    case CommandCommerceProductSpecifications: {
-      auto selected_web_contents =
-          GetWebContentsesByIndices(GetIndicesForCommand(context_index));
-      return commerce::IsProductSpecsMultiSelectMenuEnabled(
-                 profile_, GetWebContentsAt(context_index)) &&
-             commerce::IsWebContentsListEligibleForProductSpecs(
-                 selected_web_contents);
-    }
-
-#if BUILDFLAG(ENABLE_GLIC)
     case CommandGlicShareLimit:
       return false;
     case CommandGlicStartShare:
@@ -2551,12 +2542,6 @@ bool TabStripModel::IsContextMenuCommandEnabled(
       return true;
     case CommandGlicUnshare:
       return true;
-#endif
-
-    case CommandAddToNewComparisonTable:
-    case CommandAddToExistingComparisonTable:
-      return commerce::IsUrlEligibleForProductSpecs(
-          GetWebContentsAt(context_index)->GetLastCommittedURL());
 
     case CommandCopyURL:
       DCHECK(delegate()->IsForWebApp());
@@ -2569,6 +2554,9 @@ bool TabStripModel::IsContextMenuCommandEnabled(
     case CommandCloseAllTabs:
       DCHECK(delegate()->IsForWebApp());
       DCHECK(web_app::HasPinnedHomeTab(this));
+      return true;
+
+    case CommandToggleVertical:
       return true;
 
     default:
@@ -2940,24 +2928,6 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       break;
     }
 
-    case CommandCommerceProductSpecifications: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.CommerceProductSpecifications.SelectedTabsCount",
-          selection_model_.size());
-      // ProductSpecs can only be triggered on non-incognito profiles.
-      DCHECK(!profile_->IsIncognitoProfile());
-      auto indices = GetIndicesForCommand(context_index);
-      auto selected_web_contents =
-          GetWebContentsesByIndices(GetIndicesForCommand(context_index));
-      auto eligible_urls =
-          commerce::GetListOfProductSpecsEligibleUrls(selected_web_contents);
-      Browser* browser =
-          chrome::FindBrowserWithTab(GetWebContentsAt(context_index));
-      chrome::OpenCommerceProductSpecificationsTab(browser, eligible_urls,
-                                                   indices.back());
-      break;
-    }
-
 #if BUILDFLAG(ENABLE_GLIC)
     case CommandGlicShareLimit:
       base::UmaHistogramCounts1000(
@@ -3005,6 +2975,8 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       break;
     case CommandGlicUnshare: {
       std::vector<int> indices = GetIndicesForCommand(context_index);
+      base::UmaHistogramCounts100("Glic.TabContextMenu.UnpinnedTabs",
+                                  indices.size());
       std::vector<tabs::TabHandle> tab_handles;
       tab_handles.reserve(indices.size());
       std::transform(
@@ -3014,25 +2986,6 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       break;
     }
 #endif
-
-    case CommandAddToNewComparisonTable: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.AddToNewComparisonTable.SelectedTabsCount",
-          selection_model_.size());
-      const auto& tab_url =
-          GetWebContentsAt(context_index)->GetLastCommittedURL();
-      commerce::OpenProductSpecsTabForUrls({tab_url}, this, context_index);
-
-      break;
-    }
-
-    case CommandAddToExistingComparisonTable: {
-      base::UmaHistogramCounts1000(
-          "Tab.ContextMenu.AddToExistingComparisonTable.SelectedTabsCount",
-          selection_model_.size());
-      // Handled by the existing comparison table submenu model.
-      break;
-    }
 
     case CommandCopyURL: {
       base::UmaHistogramCounts1000("Tab.ContextMenu.CopyURL.SelectedTabsCount",
@@ -3074,6 +3027,22 @@ void TabStripModel::ExecuteContextMenuCommand(int context_index,
       // the groups are also deleted.
       ExecuteCloseTabsCommand(get_all_except_pinned_home_tab,
                               /*delete_groups=*/true);
+      break;
+    }
+    case CommandToggleVertical: {
+      base::UmaHistogramCounts1000(
+          "Tab.ContextMenu.ToggleVertical.SelectedTabsCount",
+          selection_model_.size());
+      const Browser* const browser =
+          chrome::FindBrowserWithTab(GetWebContentsAt(context_index));
+      if (auto* controller =
+              tabs::VerticalTabStripStateController::From(browser)) {
+        const bool is_vertical = !controller->ShouldDisplayVerticalTabs();
+        tabs::RecordVerticalTabStripModeChanged(
+            is_vertical, tabs::VerticalTabStripEntryPoint::kTabContextMenu);
+      }
+      browser->GetFeatures().browser_command_controller()->ExecuteCommand(
+          IDC_TOGGLE_VERTICAL_TABS);
       break;
     }
     case CommandAddToNewGroupFromMenuItem: {
@@ -3931,10 +3900,9 @@ bool TabStripModel::CloseWebContentses(
 
     bool create_historical_tab =
         close_types & TabCloseTypes::CLOSE_CREATE_HISTORICAL_TAB;
-    auto dt =
-        DetachTabImpl(original_indices[i], current_index, create_historical_tab,
-                      TabStripModelChange::RemoveReason::kDeleted,
-                      tabs::TabInterface::DetachReason::kDelete);
+    auto dt = DetachTabImpl(original_indices[i], current_index,
+                            create_historical_tab, TabRemovedReason::kDeleted,
+                            tabs::TabInterface::DetachReason::kDelete);
     detached_tab.push_back(std::move(dt));
   }
 
@@ -4010,7 +3978,6 @@ TabStripSelectionChange TabStripModel::SetSelection(
         }
       }
     }
-
 
     TabStripModelChange change;
     OnChange(change, selection);
@@ -4242,6 +4209,7 @@ split_tabs::SplitTabId TabStripModel::AddToSplitImpl(
                                IsTabPinned(pivot_index));
 
   contents_data_->CreateSplit(split_id, tabs, visual_data);
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 
   std::vector<std::pair<tabs::TabInterface*, int>> tabs_with_indices;
   for (tabs::TabInterface* tab : tabs) {
@@ -4285,6 +4253,7 @@ void TabStripModel::RemoveSplitImpl(
       GetTabsAndIndicesInSplit(split_id);
 
   contents_data_->Unsplit(split_id);
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 
   tabs::TabStripModelSelectionState old_selection_model = selection_model_;
 
@@ -4441,6 +4410,7 @@ void TabStripModel::AddToNewGroupImpl(
   group_model_->AddTabGroup(group_collection->GetTabGroup(),
                             base::PassKey<TabStripModel>());
   contents_data_->CreateTabGroup(std::move(group_collection));
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 
   // Find a destination for the first tab that's not pinned or inside another
   // group. We will stack the rest of the tabs up to its right.
@@ -4643,6 +4613,7 @@ std::unique_ptr<tabs::TabModel> TabStripModel::RemoveTabFromIndexImpl(
       base::WrapUnique(static_cast<tabs::TabModel*>(
           contents_data_->RemoveTabAtIndexRecursive(index).release()));
   selection_model_.RemoveTabFromSelection(tab_to_remove);
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
 
   if (empty()) {
     selection_model_.Clear();
@@ -4823,6 +4794,8 @@ void TabStripModel::TabGroupStateChanged(
                                    base::PassKey<TabStripModel>());
       CompleteModelUpdateTransaction();
       contents_data_->CloseDetachedTabGroup(initial_group.value());
+      selection_model_.InvalidateListSelectionModel(
+          base::PassKey<TabStripModel>());
     }
   }
 
@@ -4877,6 +4850,7 @@ void TabStripModel::CompleteModelUpdateTransaction() {
   CHECK(active_tab);
 
   // Check if the selected tab indices are valid.
+  selection_model_.InvalidateListSelectionModel(base::PassKey<TabStripModel>());
   const ui::ListSelectionModel::SelectedIndices selected_indices =
       selection_model_.GetListSelectionModel().selected_indices();
 
@@ -5478,11 +5452,11 @@ std::optional<int> TabStripModel::DetermineNewSelectedIndex(
   // Third preference is the block's opener.
   for (size_t i = block_tabs.start(); i < block_tabs.end(); ++i) {
     tabs::TabInterface* opener = GetTabModelAtIndex(i)->opener();
-    std::optional<int> opener_index =
-        opener ? std::make_optional(GetIndexOfTab(opener)) : std::nullopt;
-    if (opener && !block_tabs.Contains(gfx::Range(opener_index.value())) &&
-        !IsTabCollapsed(opener_index.value())) {
-      return GetTabIndexAfterClosing(opener_index.value(), block_tabs);
+    int opener_index = opener ? GetIndexOfTab(opener) : TabStripModel::kNoTab;
+    if (opener_index != TabStripModel::kNoTab &&
+        !block_tabs.Contains(gfx::Range(opener_index)) &&
+        !IsTabCollapsed(opener_index)) {
+      return GetTabIndexAfterClosing(opener_index, block_tabs);
     }
   }
 

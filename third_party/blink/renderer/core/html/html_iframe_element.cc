@@ -60,6 +60,7 @@
 #include "third_party/blink/renderer/platform/network/content_security_policy_parsers.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
 #include "third_party/blink/renderer/platform/wtf/text/strcat.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
 
 namespace blink {
 
@@ -154,7 +155,7 @@ void HTMLIFrameElement::CollectStyleForPresentationAttribute(
     // LocalFrame border doesn't really match the HTML4 spec definition for
     // iframes. It simply adds a presentational hint that the border should be
     // off if set to zero.
-    if (!value.ToInt()) {
+    if (!StringToIntLoose(value).value_or(0)) {
       // Add a rule that nulls out our border width.
       for (CSSPropertyID property_id :
            {CSSPropertyID::kBorderTopWidth, CSSPropertyID::kBorderBottomWidth,
@@ -188,18 +189,18 @@ void HTMLIFrameElement::ParseAttribute(
       FrameOwnerPropertiesChanged();
       should_call_did_change_attributes = true;
     }
-    if (name_.Contains('\n')) {
+    if (name_.contains('\n')) {
       UseCounter::Count(GetDocument(), WebFeature::kFrameNameContainsNewline);
     }
-    if (name_.Contains('<')) {
+    if (name_.contains('<')) {
       UseCounter::Count(GetDocument(), WebFeature::kFrameNameContainsBrace);
     }
-    if (name_.Contains('\n') && name_.Contains('<')) {
+    if (name_.contains('\n') && name_.contains('<')) {
       UseCounter::Count(GetDocument(), WebFeature::kDanglingMarkupInWindowName);
-      if (!name_.EndsWith('>')) {
+      if (!name_.ends_with('>')) {
         UseCounter::Count(GetDocument(),
                           WebFeature::kDanglingMarkupInWindowNameNotEndsWithGT);
-        if (!name_.EndsWith('\n')) {
+        if (!name_.ends_with('\n')) {
           UseCounter::Count(
               GetDocument(),
               WebFeature::kDanglingMarkupInWindowNameNotEndsWithNewLineOrGT);
@@ -258,7 +259,7 @@ void HTMLIFrameElement::ParseAttribute(
     }
   } else if (name == html_names::kCspAttr) {
     static const size_t kMaxLengthCSPAttribute = 4096;
-    if (value && (value.Contains('\n') || value.Contains('\r') ||
+    if (value && (value.contains('\n') || value.contains('\r') ||
                   !MatchesTheSerializedCSPGrammar(value.GetString()))) {
       // TODO(antoniosartori): It would be safer to block loading iframes with
       // invalid 'csp' attribute.

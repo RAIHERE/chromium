@@ -11,7 +11,7 @@
 #include "chrome/browser/ui/views/frame/browser_widget.h"
 #include "chrome/browser/ui/views/frame/custom_corners_background.h"
 #include "chrome/browser/ui/views/frame/immersive_mode_controller.h"
-#include "chrome/browser/ui/views/frame/top_container_background.h"
+#include "chrome/browser/ui/views/frame/themed_background.h"
 #include "chrome/browser/ui/views/toolbar/toolbar_view.h"
 #include "ui/base/metadata/metadata_impl_macros.h"
 #include "ui/color/color_id.h"
@@ -52,11 +52,13 @@ bool TopContainerView::IsPositionInWindowCaption(
     const gfx::Point& test_point) const {
   const ToolbarView* const toolbar = browser_view_->toolbar();
   for (auto& child : children()) {
-    if (child->bounds().Contains(test_point)) {
+    gfx::Point logical_test_point(GetMirroredXInView(test_point.x()),
+                                  test_point.y());
+    if (child->GetVisible() && child->bounds().Contains(logical_test_point)) {
       if (child == toolbar) {
         const auto in_toolbar =
             views::View::ConvertPointToTarget(this, toolbar, test_point);
-        if (in_toolbar.y() < toolbar->location_bar()->Bounds().y()) {
+        if (toolbar->IsPositionInWindowCaption(in_toolbar)) {
           return true;
         }
       }

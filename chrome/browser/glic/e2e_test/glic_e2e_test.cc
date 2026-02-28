@@ -15,7 +15,6 @@
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
 #include "chrome/browser/actor/actor_keyed_service.h"
-#include "chrome/browser/actor/actor_policy_checker.h"
 #include "chrome/browser/contextual_cueing/contextual_cueing_features.h"
 #include "chrome/browser/glic/fre/fre_util.h"
 #include "chrome/browser/glic/fre/glic_fre_dialog_view.h"
@@ -89,8 +88,7 @@ GlicE2ETest::GlicE2ETest() {
                             features::kGlicKeyboardShortcutNewBadge,
                             features::kGlicRollout,
                             contextual_cueing::kContextualCueing,
-                            mojom::features::kZeroStateSuggestionsV2,
-                            features::kTabstripComboButton},
+                            mojom::features::kZeroStateSuggestionsV2},
       /*disabled_features=*/{
           syncer::kReplaceSyncPromosWithSignInPromos,
           // Don't disable glic based on country/locale.
@@ -165,7 +163,7 @@ void GlicE2ETest::PreRunTestOnMainThread() {
   LiveTest::PreRunTestOnMainThread();
 
   GURL glic_fre_url = glic::GetFreURL(browser()->profile());
-  GURL glic_guest_url = glic::GetGuestURL(browser()->profile());
+  GURL glic_guest_url = glic::GetGuestURL();
   CHECK(glic_fre_url.is_valid() && glic_guest_url.is_valid())
       << "Incorrect GLiC guest or FRE URL in cmd line arguments.";
 

@@ -11,11 +11,11 @@
 // Updates the tab count displayed in the app bar.
 - (void)updateTabCount:(NSUInteger)count;
 
-// Called when the tab grid is about to be shown.
-- (void)willEnterTabGrid;
+// Sets whether the tab grid is visible or not.
+- (void)setTabGridVisible:(BOOL)tabGridVisible;
 
-// Called when the tab grid is about to be hidden.
-- (void)willExitTabGrid;
+// Sets whether the tab groups page in the tab grid is visible.
+- (void)setTabGroupsPageVisible:(BOOL)tabGroupsPageVisible;
 
 @end
 

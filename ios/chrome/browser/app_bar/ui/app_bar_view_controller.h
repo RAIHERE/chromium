@@ -12,6 +12,7 @@
 @protocol AppBarMutator;
 @class LayoutGuideCenter;
 @protocol SceneCommands;
+@protocol TabGridCommands;
 
 // View controller for the app bar.
 @interface AppBarViewController : UIViewController <AppBarConsumer>
@@ -22,6 +23,11 @@
 @property(nonatomic, strong) LayoutGuideCenter* layoutGuideCenter;
 // Command handler for the Scene commands.
 @property(nonatomic, weak) id<SceneCommands> sceneHandler;
+// Tab Grid handler.
+@property(nonatomic, weak) id<TabGridCommands> tabGridHandler;
+
+// Updates the App Bar's subviews for a given rotation angle.
+- (void)updateForAngle:(CGFloat)angle;
 
 @end
 

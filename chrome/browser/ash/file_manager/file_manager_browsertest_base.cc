@@ -781,7 +781,7 @@ class FileManagerTestMessageListener : public extensions::TestApiObserver {
   }
   bool OnTestMessage(extensions::TestSendMessageFunction* function,
                      const std::string& message) override {
-    // crbug.com/668680
+    // crbug.com/41288101
     EXPECT_FALSE(test_complete_) << "LATE MESSAGE: " << message;
     QueueMessage({Message::Completion::kNone, message, function});
     return true;
@@ -1850,8 +1850,9 @@ class DocumentsProviderTestVolume : public TestVolume {
       file_system_instance_->AddRecentDocument(root_document_id_, document);
     }
 
-    std::string canonical_url = base::StrCat(
-        {"content://", authority_, "/document/", EncodeURI(entry.name_text)});
+    std::string canonical_url =
+        base::StrCat({"content://", authority_, "/document/",
+                      url::EncodeUriComponent(entry.name_text)});
     arc::FakeFileSystemInstance::File file(
         canonical_url, GetTestFileContent(entry.source_file_name),
         GetMimeType(entry), arc::FakeFileSystemInstance::File::Seekable::NO);
@@ -1909,12 +1910,6 @@ class DocumentsProviderTestVolume : public TestVolume {
     CHECK(base::ReadFileToString(path, &contents))
         << "failed reading test data file " << test_file_name;
     return contents;
-  }
-
-  std::string EncodeURI(const std::string& component) {
-    url::RawCanonOutputT<char> encoded;
-    url::EncodeURIComponent(component, &encoded);
-    return std::string(encoded.view());
   }
 };
 
@@ -2320,7 +2315,7 @@ void FileManagerBrowserTestBase::SetUpCommandLine(
     base::CommandLine* command_line) {
   const Options options = GetOptions();
 
-  // Use a fake audio stream crbug.com/835626
+  // Use a fake audio stream crbug.com/40572966
   command_line->AppendSwitch(switches::kDisableAudioOutput);
 
   if (!options.browser) {
@@ -2704,11 +2699,12 @@ void FileManagerBrowserTestBase::SetUpOnMainThread() {
 
   content::NetworkConnectionChangeSimulator network_change_simulator;
   network_change_simulator.SetConnectionType(
-      options.offline ? network::mojom::ConnectionType::CONNECTION_NONE
-                      : network::mojom::ConnectionType::CONNECTION_ETHERNET);
+      options.offline
+          ? net::NetworkChangeNotifier::ConnectionType::CONNECTION_NONE
+          : net::NetworkChangeNotifier::ConnectionType::CONNECTION_ETHERNET);
 
   // The test resources are setup: enable and add default ChromeOS component
-  // extensions now and not before: crbug.com/831074, crbug.com/804413
+  // extensions now and not before: crbug.com/41382159, crbug.com/40559198
   test::AddDefaultComponentExtensionsOnMainThread(profile());
 
   // For tablet mode tests, enable the Ash virtual keyboard.
@@ -4015,7 +4011,7 @@ void FileManagerBrowserTestBase::OnCommand(const std::string& name,
   if (name == "setDeviceOffline") {
     ash::ShillServiceClient::Get()->GetTestInterface()->ClearServices();
     content::NetworkConnectionChangeSimulator().SetConnectionType(
-        network::mojom::ConnectionType::CONNECTION_NONE);
+        net::NetworkChangeNotifier::ConnectionType::CONNECTION_NONE);
     return;
   }
 

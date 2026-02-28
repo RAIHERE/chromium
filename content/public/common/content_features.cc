@@ -36,6 +36,10 @@ BASE_FEATURE(kAndroidCaretBrowsing, base::FEATURE_DISABLED_BY_DEFAULT);
 // DevTools frontend for Android.
 BASE_FEATURE(kAndroidDevToolsFrontend, base::FEATURE_DISABLED_BY_DEFAULT);
 
+// Enables media capturing to continue in the background.
+BASE_FEATURE(kAndroidEnableBackgroundMediaCapturing,
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
 // Enables media to continue playing in the background.
 BASE_FEATURE(kAndroidEnableBackgroundMediaLargeFormFactors,
              base::FEATURE_ENABLED_BY_DEFAULT);
@@ -169,11 +173,11 @@ BASE_FEATURE(kBackForwardCacheMemoryControls,
 // Enables getting screenshots as shared images for back forward transitions
 // in cross-document navigations.
 BASE_FEATURE(kBackForwardTransitionsCrossDocSharedImage,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 // Enables getting screenshots as shared images for back forward transitions
 // to native pages.
 BASE_FEATURE(kBackForwardTransitionsNativePageSharedImage,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 #endif  // BUILDFLAG(IS_ANDROID)
 
 // If enabled, makes battery saver request heavy align wake ups.
@@ -193,13 +197,6 @@ BASE_FEATURE(kBypassRedirectChecksPerRequest, base::FEATURE_ENABLED_BY_DEFAULT);
 // restored if cookies change / if HTTPOnly cookies change.
 // TODO(crbug.com/40189625): Remove this feature and clean up.
 BASE_FEATURE(kCacheControlNoStoreEnterBackForwardCache,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
-// This killswitch is distinct from the OT.
-// It allows us to remotely disable the feature, and get it to stop working even
-// on sites that are in possession of a valid token. When that happens, all API
-// calls gated by the killswitch will fail graceully.
-BASE_FEATURE(kCapturedSurfaceControlKillswitch,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Clear the window.name property for the top-level cross-site navigations that
@@ -321,9 +318,6 @@ const base::FeatureParam<content::BtmTriggeringAction> kBtmTriggeringAction{
 const base::FeatureParam<base::TimeDelta> kBtmClientBounceDetectionTimeout{
     &kBtm, "client_bounce_detection_timeout", base::Seconds(10)};
 
-// Enables Bounce Tracking Mitigations for Dual Use sites.
-BASE_FEATURE(kBtmDualUse, base::FEATURE_DISABLED_BY_DEFAULT);
-
 // Enables HW decode acceleration for WebRTC.
 BASE_FEATURE(kWebRtcHWDecoding,
              "webrtc-hw-decoding",
@@ -365,11 +359,6 @@ BASE_FEATURE(kDrawCutoutEdgeToEdge, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Enables canvas 2d methods BeginLayer and EndLayer.
 BASE_FEATURE(kEnableCanvas2DLayers, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Enables javaless renderers.
-BASE_FEATURE(kEnableJavalessRenderers,
-             "JavalessRenderers",
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables service workers on chrome-untrusted:// urls.
 BASE_FEATURE(kEnableServiceWorkersForChromeUntrusted,
@@ -491,6 +480,11 @@ BASE_FEATURE_PARAM(base::TimeDelta,
                    "duplicate_nav_threshold",
                    base::Milliseconds(2000));
 BASE_FEATURE_PARAM(bool,
+                   kSkipIgnoreBrowserInitiatedNavs,
+                   &kIgnoreDuplicateNavs,
+                   "skip_ignore_browser_initiated_navs",
+                   false);
+BASE_FEATURE_PARAM(bool,
                    kSkipIgnoreRendererInitiatedNavs,
                    &kIgnoreDuplicateNavs,
                    "skip_ignore_renderer_initiated_navs",
@@ -574,6 +568,11 @@ BASE_FEATURE(kIsolateFencedFrames, base::FEATURE_DISABLED_BY_DEFAULT);
 // kIsolateOriginsFieldTrialParamName.
 BASE_FEATURE(kIsolateOrigins, base::FEATURE_DISABLED_BY_DEFAULT);
 const char kIsolateOriginsFieldTrialParamName[] = "OriginsList";
+
+#if BUILDFLAG(IS_ANDROID)
+// Enables the ability to specification a renderer that does not use Java.
+BASE_FEATURE(kJavalessRendererExperimentOn, base::FEATURE_DISABLED_BY_DEFAULT);
+#endif
 
 // When enabled, creation of the BrowserInterfaceBroker on RenderFrameHostImpls
 // becomes lazy. i.e. the BrowserInterfaceBroker is constructed only when it is
@@ -837,7 +836,12 @@ BASE_FEATURE_PARAM(base::TimeDelta,
 // sites, with an additional restriction that a process may only be reused while
 // the number of main frames in that process stays below a threshold.
 BASE_FEATURE(kProcessPerSiteUpToMainFrameThreshold,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_ANDROID)
+             base::FEATURE_DISABLED_BY_DEFAULT
+#else
+             base::FEATURE_ENABLED_BY_DEFAULT
+#endif
+);
 
 // Specifies the threshold for `kProcessPerSiteUpToMainFrameThreshold` feature.
 constexpr base::FeatureParam<int> kProcessPerSiteMainFrameThreshold{
@@ -941,7 +945,7 @@ BASE_FEATURE(kUserMediaCaptureOnFocus, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // A feature to enabled updating installed PWAs more predictably by considering
 // changes in icon urls.
-BASE_FEATURE(kWebAppPredictableAppUpdating, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kWebAppPredictableAppUpdating, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // This is intended as a kill switch for the WebOTP Service feature. To enable
 // this feature, the experimental web platform features flag should be set.
@@ -1047,7 +1051,12 @@ const base::FeatureParam<int> kTouchDragMovementThresholdDip{
 // when a new renderer process is needed. Currently, only background renderer
 // processes are considered for reuse.
 BASE_FEATURE(kTrackEmptyRendererProcessesForReuse,
-             base::FEATURE_ENABLED_BY_DEFAULT);
+#if BUILDFLAG(IS_ANDROID)
+             base::FEATURE_DISABLED_BY_DEFAULT
+#else
+             base::FEATURE_ENABLED_BY_DEFAULT
+#endif
+);
 
 // This feature is for a reverse Origin Trial, enabling SharedArrayBuffer for
 // sites as they migrate towards requiring cross-origin isolation for these
@@ -1247,7 +1256,6 @@ BASE_FEATURE(kAccessibilityExtendedSelection,
 // When this feature is enabled, the InputConnection will request
 // formatted text from the TextInputState.
 BASE_FEATURE(kAccessibilityImeGetFormattedText,
-             "AccessibilityImeGetFormattedText",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // When enabled, WINDOW_CONTENT_CHANGED events will be sent for each
@@ -1263,7 +1271,14 @@ BASE_FEATURE(kAccessibilityImproveLiveRegionAnnounce,
 // particular this will be used to determine whether or not a node is clickable
 // or not.
 BASE_FEATURE(kAccessibilityRequestLayoutBasedActions,
-             "AccessibilityRequestLayoutBasedActions",
+             base::FEATURE_DISABLED_BY_DEFAULT);
+
+// When this feature is enabled, the accessibility tree will be requested to
+// signal content changed events next to a boolean value that will determine if
+// this event should cause a nodes's children to be rerendered if there've been
+// structural changes.
+BASE_FEATURE(kAccessibilityRequestScopedContentChangedEvents,
+             "AccessibilityRequestScopedContentChangedEvents",
              base::FEATURE_DISABLED_BY_DEFAULT);
 
 // When enabled, supports atomic announcements, meaning that when
@@ -1307,15 +1322,12 @@ const base::FeatureParam<int> kAndroidDesktopZoomScalingFactor{
 const base::FeatureParam<int> kAndroidMonitorZoomScalingFactor{
     &kAndroidDesktopZoomScaling, "monitor-zoom-scaling-factor", 100};
 
-// A feature to enable launch handler and file handler api for Chrome on Android
-BASE_FEATURE(kAndroidWebAppLaunchHandler, base::FEATURE_ENABLED_BY_DEFAULT);
-
 // Allows the use of "Smart Zoom", an alternative form of page zoom, and
 // enables the associated UI.
 BASE_FEATURE(kSmartZoom, base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Enables setting the importance for subframes in WebContents.
-BASE_FEATURE(kSubframeImportance, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kSubframeImportance, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Skips clearing objects on main document ready. Only has an impact
 // when gin java bridge is enabled.
@@ -1354,7 +1366,7 @@ BASE_FEATURE(kWebauthnDisabledOnAuto,
 
 // Enables Exclusive Access Manager on Android platform
 #if BUILDFLAG(IS_ANDROID)
-BASE_FEATURE(kEnableExclusiveAccessManager, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kEnableExclusiveAccessManager, base::FEATURE_ENABLED_BY_DEFAULT);
 #endif
 
 #if BUILDFLAG(IS_ANDROID)
@@ -1363,10 +1375,6 @@ BASE_FEATURE(kKeyboardLockApiOnAndroid, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Sets IO threads to kInteractive all the time.
 BASE_FEATURE(kIOThreadInteractiveThreadType, base::FEATURE_DISABLED_BY_DEFAULT);
-
-// Boosts IO threads and Browser main to kInteractive during input scenarios.
-BASE_FEATURE(kBoostThreadsPriorityDuringInputScenario,
-             base::FEATURE_DISABLED_BY_DEFAULT);
 
 // Default amount of days after which the global navigation capturing IPH
 // guardrails are cleared from storage.
@@ -1401,13 +1409,13 @@ const base::FeatureParam<std::string> kForcedOffCapturingAppsUserSetting{
 // "delay_seconds" field trial parameter. This allows for experimentation with
 // different timeout values for keeping subframe processes alive for potential
 // reuse.
-BASE_FEATURE(kSubframeProcessShutdownDelay, base::FEATURE_DISABLED_BY_DEFAULT);
+BASE_FEATURE(kSubframeProcessShutdownDelay, base::FEATURE_ENABLED_BY_DEFAULT);
 
 // Specifies the custom shutdown delay in seconds to use when the
 // kSubframeProcessShutdownDelay feature is enabled.
 // Default value, matching the original kSubframeProcessShutdownDelay.
 const base::FeatureParam<int> kSubframeProcessShutdownDelaySeconds{
-    &kSubframeProcessShutdownDelay, "delay_seconds", 2};
+    &kSubframeProcessShutdownDelay, "delay_seconds", 10};
 
 namespace {
 enum class VideoCaptureServiceConfiguration {

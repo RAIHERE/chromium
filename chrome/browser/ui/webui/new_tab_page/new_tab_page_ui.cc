@@ -21,6 +21,7 @@
 #include "base/strings/stringprintf.h"
 #include "base/time/time.h"
 #include "base/values.h"
+#include "build/branding_buildflags.h"
 #include "chrome/browser/autocomplete/aim_eligibility_service_factory.h"
 #include "chrome/browser/browser_features.h"
 #include "chrome/browser/browser_process.h"
@@ -64,6 +65,7 @@
 #include "chrome/browser/ui/webui/favicon_source.h"
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/action_chips_generator.h"
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/action_chips_handler.h"
+#include "chrome/browser/ui/webui/new_tab_page/action_chips/action_chips_metrics.h"
 #include "chrome/browser/ui/webui/new_tab_page/action_chips/tab_id_generator.h"
 #include "chrome/browser/ui/webui/new_tab_page/composebox/variations/composebox_fieldtrial.h"
 #include "chrome/browser/ui/webui/new_tab_page/new_tab_page_handler.h"
@@ -96,6 +98,8 @@
 #include "components/google/core/common/google_util.h"
 #include "components/grit/components_scaled_resources.h"
 #include "components/history_clusters/core/features.h"
+#include "components/lens/lens_overlay_invocation_source.h"
+#include "components/lens/lens_url_utils.h"
 #include "components/ntp_tiles/features.h"
 #include "components/ntp_tiles/most_visited_sites.h"
 #include "components/ntp_tiles/pref_names.h"
@@ -208,6 +212,9 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
       base::NumberToString(omnibox::DESKTOP_CHROME_NTP_THREADS_ENTRY_POINT));
   threads_url =
       net::AppendQueryParameter(threads_url, "atvm", kAIMThreadsVisibilityMode);
+  threads_url = lens::AppendInvocationSourceParamToURL(
+      threads_url, lens::LensOverlayInvocationSource::kNtpContextualQuery,
+      /*is_contextual_tasks=*/true);
   source->AddString("threadsUrl", threads_url.spec());
 
   source->AddInteger(
@@ -283,9 +290,6 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
   source->AddBoolean("searchboxCyclingPlaceholders",
                      ntp_realbox::IsNtpRealboxNextEnabled(profile) &&
                          ntp_realbox::kCyclingPlaceholders.Get());
-  source->AddBoolean("expandedSearchboxShowVoiceSearch",
-                     ntp_realbox::IsNtpRealboxNextEnabled(profile) &&
-                         ntp_realbox::kShowVoiceSearchInExpandedRealbox.Get());
   source->AddBoolean("multiLineEnabled",
                      ntp_realbox::IsNtpRealboxNextEnabled(profile) &&
                          ntp_realbox::kMultiLineEnabled.Get());
@@ -655,8 +659,7 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
                      ntp_composebox::kContextMenuEnableMultiTabSelection.Get());
   source->AddBoolean("searchboxShowComposebox",
                      ntp_composebox::IsNtpComposeboxEnabled(profile));
-  source->AddBoolean("composeboxShowZps",
-                     ntp_composebox::kShowComposeboxZps.Get());
+  source->AddBoolean("composeboxShowZps", true);
   source->AddBoolean("composeboxShowTypedSuggest",
                      ntp_composebox::kShowComposeboxTypedSuggest.Get());
   source->AddBoolean("composeboxShowImageSuggest",
@@ -700,8 +703,6 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
                          composebox_config.is_pdf_upload_enabled();
   source->AddBoolean("composeboxShowPdfUpload", show_pdf_upload);
 
-  source->AddBoolean("composeboxShowSubmit", ntp_composebox::kShowSubmit.Get());
-
   source->AddBoolean("steadyComposeboxShowVoiceSearch",
                      ntp_composebox::kShowVoiceSearchInSteadyComposebox.Get());
 
@@ -724,8 +725,6 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
   // Action Chips LoadTimeData
   bool action_chips_eligible =
       aim_eligibility_service && aim_eligibility_service->IsAimEligible() &&
-      contextual_search::ContextualSearchService::IsContextSharingEnabled(
-          profile->GetPrefs()) &&
       (ntp_features::kNtpNextShowSimplificationUIParam.Get()
            ? (aim_eligibility_service->IsDeepSearchEligible() ||
               aim_eligibility_service->IsCreateImagesEligible())
@@ -734,6 +733,9 @@ content::WebUIDataSource* CreateAndAddNewTabPageUiHtmlSource(Profile* profile) {
   bool show_action_chips =
       action_chips_eligible &&
       profile->GetPrefs()->GetBoolean(prefs::kNtpToolChipsVisible);
+  if (!show_action_chips) {
+    action_chips::RecordActionChipsAnyShown(false);
+  }
   source->AddBoolean("actionChipsEnabled", show_action_chips);
   source->AddBoolean("addTabUploadDelayOnActionChipClick",
                      ntp_features::kAddTabUploadDelayOnActionChipClick.Get());
@@ -801,7 +803,9 @@ constexpr std::string_view kDisabledBrowserPromo = "disabled";
 int NewTabPageUI::instance_count_ = 0;
 
 NewTabPageUI::NewTabPageUI(content::WebUI* web_ui)
-    : ui::MojoWebUIController(web_ui, /*enable_chrome_send=*/true),
+    : ui::MojoWebUIController(web_ui,
+                              /*enable_chrome_send=*/true,
+                              /*enable_chrome_histograms=*/true),
       content::WebContentsObserver(web_ui->GetWebContents()),
       page_factory_receiver_(this),
       customize_buttons_factory_receiver_(this),
@@ -1306,17 +1310,16 @@ void NewTabPageUI::OnColorProviderChanged() {
 
 void NewTabPageUI::OnCustomBackgroundImageUpdated() {
   base::DictValue update;
-  url::RawCanonOutputT<char> encoded_url;
   auto custom_background_url =
       (ntp_custom_background_service_
            ? ntp_custom_background_service_->GetCustomBackground()
            : std::optional<CustomBackground>())
           .value_or(CustomBackground())
           .custom_background_url;
-  url::EncodeURIComponent(custom_background_url.spec(), &encoded_url);
+  url::UriComponentEncoder encoded_url(custom_background_url.spec());
   update.Set(
       "backgroundImageUrl",
-      encoded_url.length() > 0
+      encoded_url.view().length() > 0
           ? base::StrCat(
                 {"chrome-untrusted://new-tab-page/custom_background_image?url=",
                  encoded_url.view()})

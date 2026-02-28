@@ -9,19 +9,18 @@
 
 #include "base/functional/bind.h"
 #include "base/location.h"
+#include "base/notreached.h"
 #include "remoting/protocol/authenticator.h"
-#include "remoting/protocol/content_description.h"
-#include "remoting/protocol/jingle_messages.h"
 #include "remoting/protocol/jingle_session.h"
 #include "remoting/protocol/session_observer.h"
 #include "remoting/protocol/transport.h"
+#include "remoting/signaling/content_description.h"
 #include "remoting/signaling/iq_sender.h"
+#include "remoting/signaling/jingle_data_structures.h"
+#include "remoting/signaling/jingle_message_xml_converter.h"
 #include "remoting/signaling/signal_strategy.h"
 #include "remoting/signaling/xmpp_constants.h"
-#include "third_party/libjingle_xmpp/xmllite/xmlelement.h"
 #include "third_party/webrtc/rtc_base/socket_address.h"
-
-using jingle_xmpp::QName;
 
 namespace remoting::protocol {
 
@@ -76,34 +75,28 @@ void JingleSessionManager::RemoveSessionObserver(SessionObserver* observer) {
 void JingleSessionManager::OnSignalStrategyStateChange(
     SignalStrategy::State state) {}
 
-bool JingleSessionManager::OnSignalStrategyIncomingStanza(
-    const jingle_xmpp::XmlElement* stanza) {
-  if (!JingleMessage::IsJingleMessage(stanza)) {
+bool JingleSessionManager::OnSignalStrategyIncomingMessage(
+    const SignalingAddress& sender_address,
+    const SignalingMessage& signaling_message) {
+  const auto* message = std::get_if<JingleMessage>(&signaling_message);
+  if (!message) {
     return false;
   }
 
-  std::unique_ptr<jingle_xmpp::XmlElement> stanza_copy(
-      new jingle_xmpp::XmlElement(*stanza));
-  std::unique_ptr<JingleMessage> message(new JingleMessage());
-  std::string error_msg;
-  if (!message->ParseXml(stanza, &error_msg)) {
-    SendReply(std::move(stanza_copy), JingleMessageReply::BAD_REQUEST);
-    return true;
-  }
-
-  if (message->action == JingleMessage::SESSION_INITIATE) {
+  // TODO: joedow - Use std::visit(absl::Overload(...), message->payload()) here
+  // once the JingleMessage payload is being populated for incoming messages.
+  if (message->action() == JingleMessage::ActionType::kSessionInitiate) {
     // Description must be present in session-initiate messages.
     DCHECK(message->description.get());
 
-    SendReply(std::move(stanza_copy), JingleMessageReply::NONE);
+    SendReply(*message);
 
     std::unique_ptr<Authenticator> authenticator =
         authenticator_factory_->CreateAuthenticator(
             signal_strategy_->GetLocalAddress().id(), message->from.id());
 
     JingleSession* session = new JingleSession(this);
-    session->InitializeIncomingConnection(stanza->Attr(kQNameId), *message,
-                                          std::move(authenticator));
+    session->InitializeIncomingConnection(*message, std::move(authenticator));
     sessions_[session->session_id_] = session;
 
     // Destroy the session if it was rejected due to incompatible protocol.
@@ -148,22 +141,31 @@ bool JingleSessionManager::OnSignalStrategyIncomingStanza(
 
   auto it = sessions_.find(message->sid);
   if (it == sessions_.end()) {
-    SendReply(std::move(stanza_copy), JingleMessageReply::INVALID_SID);
+    SendReply(*message, JingleMessageReply::INVALID_SID);
     return true;
   }
 
+  // TODO: joedow - Consider whether OnIncomingMessage can be modified to take a
+  // const& instead and move the copy operation there (or eliminate it).
   it->second->OnIncomingMessage(
-      stanza->Attr(kQNameId), std::move(message),
-      base::BindOnce(&JingleSessionManager::SendReply, base::Unretained(this),
-                     std::move(stanza_copy)));
+      std::make_unique<JingleMessage>(*message),
+      base::BindOnce(&JingleSessionManager::SendReply, base::Unretained(this)));
   return true;
 }
 
 void JingleSessionManager::SendReply(
-    std::unique_ptr<jingle_xmpp::XmlElement> original_stanza,
-    JingleMessageReply::ErrorType error) {
-  signal_strategy_->SendStanza(
-      JingleMessageReply(error).ToXml(original_stanza.get()));
+    const JingleMessage& original_message,
+    std::optional<JingleMessageReply::ErrorType> error) {
+  JingleMessageReply reply;
+  if (error.has_value()) {
+    reply = JingleMessageReply(*error);
+  }
+  reply.message_id = original_message.message_id;
+  reply.to = original_message.from;
+  // TODO: joedow - Add overload for SendMessage which accepts a JingleMessage
+  // or JingleMessageReply since those types contain the to address.
+  signal_strategy_->SendMessage(original_message.from,
+                                SignalingMessage(std::move(reply)));
 }
 
 void JingleSessionManager::SessionDestroyed(JingleSession* session) {

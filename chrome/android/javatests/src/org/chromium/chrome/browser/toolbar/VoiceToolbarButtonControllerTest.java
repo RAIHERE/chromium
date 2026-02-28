@@ -13,7 +13,9 @@ import static androidx.test.espresso.matcher.ViewMatchers.withId;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.not;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.eq;
 import static org.mockito.Mockito.verify;
 
 import static org.chromium.base.test.transit.ViewFinder.waitForNoView;
@@ -37,7 +39,6 @@ import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.ThreadUtils;
 import org.chromium.base.test.util.Batch;
-import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.Restriction;
 import org.chromium.chrome.browser.ChromeTabbedActivity;
@@ -151,7 +152,6 @@ public final class VoiceToolbarButtonControllerTest {
     @Test
     @MediumTest
     @Restriction(RESTRICTION_TYPE_NON_LOW_END_DEVICE)
-    @DisabledTest(message = "https://crbug.com/475928040")
     public void testVoiceButtonDisabledOnIncognito() {
         // Ensure the button starts visible.
         ViewUtils.waitForVisibleView(
@@ -237,6 +237,7 @@ public final class VoiceToolbarButtonControllerTest {
                                 withContentDescription(mButtonString)))
                 .perform(click());
 
-        verify(mVoiceRecognitionHandler).startVoiceRecognition(VoiceInteractionSource.TOOLBAR);
+        verify(mVoiceRecognitionHandler)
+                .startVoiceRecognition(eq(VoiceInteractionSource.TOOLBAR), any());
     }
 }

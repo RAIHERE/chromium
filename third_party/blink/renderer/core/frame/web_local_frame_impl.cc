@@ -1434,7 +1434,7 @@ void WebLocalFrameImpl::RemoveSpellingMarkers() {
 void WebLocalFrameImpl::RemoveSpellingMarkersUnderWords(
     const std::vector<WebString>& words) {
   Vector<String> converted_words;
-  converted_words.AppendSpan(base::span(words));
+  converted_words.append_range(words);
   GetFrame()->RemoveSpellingMarkersUnderWords(converted_words);
 }
 
@@ -2688,6 +2688,15 @@ void WebLocalFrameImpl::SetAutofillClient(WebAutofillClient* autofill_client) {
 
 WebAutofillClient* WebLocalFrameImpl::AutofillClient() {
   return autofill_client_;
+}
+
+void WebLocalFrameImpl::SetRecordReplayClient(
+    WebRecordReplayClient* record_replay_client) {
+  record_replay_client_ = record_replay_client;
+}
+
+WebRecordReplayClient* WebLocalFrameImpl::RecordReplayClient() {
+  return record_replay_client_;
 }
 
 void WebLocalFrameImpl::SetContentCaptureClient(

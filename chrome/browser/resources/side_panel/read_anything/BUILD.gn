@@ -18,8 +18,6 @@ build_webui("build") {
     "app/app.html.ts",
     "app/app.ts",
     "app/app_style_updater.ts",
-    "app/immersive_mode_header.html.ts",
-    "app/immersive_mode_header.ts",
     "app/read_anything_toolbar.html.ts",
     "app/read_anything_toolbar.ts",
     "content/content_controller.ts",
@@ -33,8 +31,6 @@ build_webui("build") {
     "menus/color_menu.ts",
     "menus/font_menu.html.ts",
     "menus/font_menu.ts",
-    "menus/font_select.html.ts",
-    "menus/font_select.ts",
     "menus/highlight_menu.html.ts",
     "menus/highlight_menu.ts",
     "menus/letter_spacing_menu.html.ts",
@@ -84,10 +80,8 @@ build_webui("build") {
   ]
   css_files = [
     "app/app.css",
-    "app/immersive_mode_header.css",
     "app/read_anything_toolbar.css",
     "app/toolbar_styles_shared.css",
-    "menus/font_select.css",
     "menus/settings_menu.css",
     "menus/simple_action_menu.css",
     "read_aloud/language_menu.css",

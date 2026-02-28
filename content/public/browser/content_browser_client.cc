@@ -1078,6 +1078,13 @@ bool ContentBrowserClient::ShouldRestrictCoreSharingOnRenderer() {
   return false;
 }
 
+std::optional<std::wstring>
+ContentBrowserClient::GetWindowsSecurityAttributeName() const {
+  // Embedders should override this method and return the name of the security
+  // attribute previously assigned to the browser's process token.
+  return std::nullopt;
+}
+
 #endif  // BUILDFLAG(IS_WIN)
 
 std::vector<std::unique_ptr<blink::URLLoaderThrottle>>
@@ -1965,6 +1972,7 @@ std::vector<std::unique_ptr<KeepAliveRequestTracker>>
 ContentBrowserClient::MaybeCreateKeepAliveRequestTracker(
     const network::ResourceRequest& request,
     std::optional<ukm::SourceId> ukm_source_id,
+    content::BrowserContext* browser_context,
     KeepAliveRequestTracker::IsContextDetachedCallback
         is_context_detached_callback) {
   return {};
@@ -1977,10 +1985,6 @@ ContentBrowserClient::GetClipboardTypesIfPolicyApplied(
 }
 
 bool ContentBrowserClient::UsePrefetchPrerenderIntegration() {
-  return false;
-}
-
-bool ContentBrowserClient::UsePreloadServingMetrics() {
   return false;
 }
 
@@ -2011,6 +2015,27 @@ std::optional<bool> ContentBrowserClient::GetOverrideValueForStaticStorageQuota(
 }
 std::string ContentBrowserClient::GetDnsTxtResolverUrlPrefix() {
   return std::string();
+}
+
+bool ContentBrowserClient::ShouldAllowPrefetchRedirection(
+    content::BrowserContext& browser_context,
+    const GURL& url,
+    const std::string& embedder_histogram_suffix) {
+  return true;
+}
+
+void ContentBrowserClient::ModifyRequestHeadersForPrefetch(
+    const GURL& url,
+    std::vector<std::string>& removed_headers,
+    net::HttpRequestHeaders& modified_headers,
+    net::HttpRequestHeaders& modified_cors_exempt_headers) {}
+
+void ContentBrowserClient::UpdateCorsExemptHeaderForPrefetch(
+    network::mojom::NetworkContextParams* params) {}
+
+bool ContentBrowserClient::OriginSupportsConcreteCrossOriginIsolation(
+    const url::Origin& origin) {
+  return true;
 }
 
 }  // namespace content

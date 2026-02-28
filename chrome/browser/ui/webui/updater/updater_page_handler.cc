@@ -16,31 +16,41 @@
 #include "base/containers/flat_map.h"
 #include "base/files/file_path.h"
 #include "base/files/file_util.h"
+#include "base/functional/bind.h"
 #include "base/functional/callback.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
 #include "base/memory/scoped_refptr.h"
 #include "base/sequence_checker.h"
 #include "base/strings/string_split.h"
+#include "base/strings/string_util.h"
+#include "base/task/bind_post_task.h"
 #include "base/task/sequenced_task_runner.h"
 #include "base/task/task_traits.h"
 #include "base/task/thread_pool.h"
 #include "chrome/browser/platform_util.h"
 #include "chrome/browser/profiles/profile.h"
-#include "chrome/browser/ui/webui/updater/updater_ui.mojom-shared.h"
 #include "chrome/browser/ui/webui/updater/updater_ui.mojom.h"
 #include "chrome/browser/updater/updater.h"
+#include "chrome/enterprise_companion/global_constants.h"
+#include "chrome/enterprise_companion/installer_paths.h"
 #include "chrome/updater/mojom/updater_service.mojom.h"
 #include "chrome/updater/updater_scope.h"
 #include "chrome/updater/util/util.h"
 
 namespace {
 
-class DefaultUpdaterPageHandlerDelegate : public UpdaterPageHandler::Delegate {
+class DefaultUpdaterPageHandlerDelegate final
+    : public UpdaterPageHandler::Delegate {
  public:
-  std::optional<base::FilePath> GetInstallDirectory(
+  std::optional<base::FilePath> GetUpdaterInstallDirectory(
       updater::UpdaterScope scope) const override {
     return updater::GetInstallDirectory(scope);
+  }
+
+  std::optional<base::FilePath> GetEnterpriseCompanionInstallDirectory()
+      const override {
+    return enterprise_companion::GetInstallDirectory();
   }
 
   void GetSystemUpdaterState(
@@ -65,6 +75,18 @@ class DefaultUpdaterPageHandlerDelegate : public UpdaterPageHandler::Delegate {
     updater::GetUserPoliciesJson(std::move(callback));
   }
 
+  void GetSystemUpdaterAppStates(
+      base::OnceCallback<void(const std::vector<updater::mojom::AppState>&)>
+          callback) const override {
+    updater::GetSystemUpdaterAppStates(std::move(callback));
+  }
+
+  void GetUserUpdaterAppStates(
+      base::OnceCallback<void(const std::vector<updater::mojom::AppState>&)>
+          callback) const override {
+    updater::GetUserUpdaterAppStates(std::move(callback));
+  }
+
  private:
   ~DefaultUpdaterPageHandlerDelegate() override = default;
 };
@@ -77,7 +99,7 @@ std::vector<base::FilePath> GetUpdaterDirectories(
   for (updater::UpdaterScope scope :
        {updater::UpdaterScope::kSystem, updater::UpdaterScope::kUser}) {
     std::optional<base::FilePath> install_path =
-        delegate->GetInstallDirectory(scope);
+        delegate->GetUpdaterInstallDirectory(scope);
     if (install_path) {
       paths.push_back(*std::move(install_path));
     }
@@ -166,14 +188,18 @@ updater_ui::mojom::UpdaterStatePtr ToUpdaterState(
   return state;
 }
 
-[[nodiscard]] constexpr updater::UpdaterScope UpdaterScopeFromMojo(
-    updater_ui::mojom::UpdaterScope mojom_scope) {
-  switch (mojom_scope) {
-    case updater_ui::mojom::UpdaterScope::kSystem:
-      return updater::UpdaterScope::kSystem;
-    case updater_ui::mojom::UpdaterScope::kUser:
-      return updater::UpdaterScope::kUser;
-  }
+void PopulateUiAppStates(
+    std::back_insert_iterator<std::vector<updater_ui::mojom::AppStatePtr>>
+        output_iter,
+    const std::vector<updater::mojom::AppState>& in_app_states) {
+  std::ranges::transform(in_app_states, output_iter,
+                         [](const updater::mojom::AppState& app_state) {
+                           return updater_ui::mojom::AppState::New(
+                               app_state.app_id, app_state.version,
+                               app_state.cohort && !app_state.cohort->empty()
+                                   ? app_state.cohort
+                                   : std::nullopt);
+                         });
 }
 
 }  // namespace
@@ -222,9 +248,9 @@ void UpdaterPageHandler::GetUpdaterStates(GetUpdaterStatesCallback callback) {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   std::optional<base::FilePath> system_install_dir =
-      delegate_->GetInstallDirectory(updater::UpdaterScope::kSystem);
+      delegate_->GetUpdaterInstallDirectory(updater::UpdaterScope::kSystem);
   std::optional<base::FilePath> user_install_dir =
-      delegate_->GetInstallDirectory(updater::UpdaterScope::kUser);
+      delegate_->GetUpdaterInstallDirectory(updater::UpdaterScope::kUser);
   if (!system_install_dir || !user_install_dir) {
     base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
         FROM_HERE,
@@ -306,12 +332,80 @@ void UpdaterPageHandler::GetUpdaterStates(GetUpdaterStatesCallback callback) {
           *user_install_dir));
 }
 
-void UpdaterPageHandler::ShowUpdaterDirectory(
-    updater_ui::mojom::UpdaterScope scope) {
+void UpdaterPageHandler::GetEnterpriseCompanionState(
+    GetEnterpriseCompanionStateCallback callback) {
+  using updater_ui::mojom::EnterpriseCompanionState;
+  using updater_ui::mojom::GetEnterpriseCompanionStateError;
+  using updater_ui::mojom::GetEnterpriseCompanionStateResponse;
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
-  std::optional<base::FilePath> install_dir =
-      delegate_->GetInstallDirectory(UpdaterScopeFromMojo(scope));
+  delegate_->GetSystemUpdaterAppStates(
+      base::BindOnce(
+          [](scoped_refptr<Delegate> delegate,
+             const std::vector<updater::mojom::AppState>& app_states)
+              -> GetEnterpriseCompanionStateResult {
+            auto it = std::ranges::find_if(
+                app_states, [](const updater::mojom::AppState& app_state) {
+                  return base::CompareCaseInsensitiveASCII(
+                             app_state.app_id,
+                             enterprise_companion::kCompanionAppId) == 0;
+                });
+            if (it == app_states.end()) {
+              return GetEnterpriseCompanionStateResponse::New();
+            }
+
+            std::optional<base::FilePath> install_dir =
+                delegate->GetEnterpriseCompanionInstallDirectory();
+            if (!install_dir) {
+              return base::unexpected(GetEnterpriseCompanionStateError::New());
+            }
+
+            return GetEnterpriseCompanionStateResponse::New(
+                EnterpriseCompanionState::New(
+                    /*version=*/it->version, *std::move(install_dir)));
+          },
+          delegate_)
+          .Then(base::BindPostTaskToCurrentDefault(std::move(callback))));
+}
+
+void UpdaterPageHandler::GetAppStates(GetAppStatesCallback callback) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  updater_ui::mojom::GetAppStatesResponsePtr response =
+      updater_ui::mojom::GetAppStatesResponse::New();
+  updater_ui::mojom::GetAppStatesResponse* response_ptr = response.get();
+  base::RepeatingClosure barrier_closure = base::BarrierClosure(
+      2, base::BindOnce(base::BindPostTaskToCurrentDefault(std::move(callback)),
+                        std::move(response)));
+
+  delegate_->GetSystemUpdaterAppStates(
+      base::BindOnce(&PopulateUiAppStates,
+                     std::back_inserter(response_ptr->system_apps))
+          .Then(barrier_closure));
+  delegate_->GetUserUpdaterAppStates(
+      base::BindOnce(&PopulateUiAppStates,
+                     std::back_inserter(response_ptr->user_apps))
+          .Then(barrier_closure));
+}
+
+void UpdaterPageHandler::ShowDirectory(
+    updater_ui::mojom::ShowDirectoryTarget target) {
+  DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
+
+  std::optional<base::FilePath> install_dir;
+  switch (target) {
+    case updater_ui::mojom::ShowDirectoryTarget::kSystemUpdater:
+      install_dir =
+          delegate_->GetUpdaterInstallDirectory(updater::UpdaterScope::kSystem);
+      break;
+    case updater_ui::mojom::ShowDirectoryTarget::kUserUpdater:
+      install_dir =
+          delegate_->GetUpdaterInstallDirectory(updater::UpdaterScope::kUser);
+      break;
+    case updater_ui::mojom::ShowDirectoryTarget::kEnterpriseCompanionApp:
+      install_dir = delegate_->GetEnterpriseCompanionInstallDirectory();
+      break;
+  }
   if (!install_dir) {
     return;
   }

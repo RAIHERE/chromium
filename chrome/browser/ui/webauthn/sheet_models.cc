@@ -354,6 +354,37 @@ std::u16string AuthenticatorNoPasskeysErrorModel::GetStepDescription() const {
       GetRelyingPartyIdStringLabel(dialog_model()));
 }
 
+// AuthenticatorGpmDisabledErrorModel ------------------------------------------
+
+AuthenticatorGpmDisabledErrorModel::AuthenticatorGpmDisabledErrorModel(
+    AuthenticatorRequestDialogModel* dialog_model)
+    : AuthenticatorSheetModelBase(dialog_model) {
+  vector_illustrations_.emplace(kPasskeyErrorIcon, kPasskeyErrorDarkIcon);
+}
+
+std::u16string AuthenticatorGpmDisabledErrorModel::GetCancelButtonLabel()
+    const {
+  return l10n_util::GetStringUTF16(IDS_CLOSE);
+}
+
+std::u16string AuthenticatorGpmDisabledErrorModel::GetStepTitle() const {
+  return l10n_util::GetStringUTF16(IDS_WEBAUTHN_ERROR_GPM_DISABLED_TITLE);
+}
+
+std::u16string AuthenticatorGpmDisabledErrorModel::GetStepDescription() const {
+  return l10n_util::GetStringFUTF16(
+      IDS_WEBAUTHN_ERROR_GPM_DISABLED_DESCRIPTION,
+      GetRelyingPartyIdStringLabel(dialog_model()));
+}
+
+bool AuthenticatorGpmDisabledErrorModel::IsGpmSettingsButtonVisible() const {
+  return true;
+}
+
+void AuthenticatorGpmDisabledErrorModel::OnOpenGpmSettingsButtonPressed() {
+  dialog_model()->OpenGpmSettings();
+}
+
 // AuthenticatorNotRegisteredErrorModel ---------------------------------------
 
 AuthenticatorNotRegisteredErrorModel::AuthenticatorNotRegisteredErrorModel(
@@ -1567,7 +1598,7 @@ std::u16string AuthenticatorGpmPinSheetModelBase::GetGpmAccountEmail() const {
   if (!account_info) {
     return std::u16string();
   }
-  return base::UTF8ToUTF16(account_info->email);
+  return base::UTF8ToUTF16(account_info->GetEmail());
 }
 
 std::u16string AuthenticatorGpmPinSheetModelBase::GetGpmAccountName() const {
@@ -1575,7 +1606,7 @@ std::u16string AuthenticatorGpmPinSheetModelBase::GetGpmAccountName() const {
   if (!account_info) {
     return std::u16string();
   }
-  return base::UTF8ToUTF16(account_info->full_name);
+  return base::UTF8ToUTF16(account_info->GetFullName().value_or(""));
 }
 
 gfx::Image AuthenticatorGpmPinSheetModelBase::GetGpmAccountImage() const {
@@ -1583,11 +1614,9 @@ gfx::Image AuthenticatorGpmPinSheetModelBase::GetGpmAccountImage() const {
   if (!account_info) {
     return gfx::Image();
   }
-  gfx::Image account_image = account_info->account_image;
-  if (account_image.IsEmpty()) {
-    account_image = ui::ResourceBundle::GetSharedInstance().GetImageNamed(
-        profiles::GetPlaceholderAvatarIconResourceID());
-  }
+  gfx::Image account_image = account_info->GetAvatarImage().value_or(
+      ui::ResourceBundle::GetSharedInstance().GetImageNamed(
+          profiles::GetPlaceholderAvatarIconResourceID()));
   constexpr int kAvatarIconSize = 32;
   return profiles::GetSizedAvatarIcon(account_image,
                                       /*width=*/kAvatarIconSize,

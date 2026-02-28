@@ -6,7 +6,7 @@
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/web_ui_mocha_browser_test.h"
 #include "components/history_clusters/core/features.h"
-#include "components/history_embeddings/history_embeddings_features.h"
+#include "components/history_embeddings/core/history_embeddings_features.h"
 #include "content/public/test/browser_test.h"
 
 typedef WebUIMochaBrowserTest CrComponentsTest;
@@ -90,15 +90,16 @@ IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxMatchTest) {
   RunTest("cr_components/searchbox/searchbox_match_test.js", "mocha.run()");
 }
 
-// TODO(crbug.com/453570027): Test is flaky.
-#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_CHROMEOS)
-#define MAYBE_RealboxTest DISABLED_RealboxTest
-#else
-#define MAYBE_RealboxTest RealboxTest
-#endif
-IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, MAYBE_RealboxTest) {
+IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxTest) {
   set_test_loader_host(chrome::kChromeUINewTabPageHost);
-  RunTest("cr_components/searchbox/searchbox_test.js", "mocha.run()");
+  RunTest("cr_components/searchbox/searchbox_test.js",
+          "runMochaSuite('SearchboxTest');");
+}
+
+IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxPlaceholderTest) {
+  set_test_loader_host(chrome::kChromeUINewTabPageHost);
+  RunTest("cr_components/searchbox/placeholder_text_cycler_test.js",
+          "runMochaSuite('PlaceholderTextCyclerTest');");
 }
 
 IN_PROC_BROWSER_TEST_F(CrComponentsSearchboxTest, RealboxLensTest) {
@@ -282,6 +283,11 @@ IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ContextualEntrypointButton) {
           "mocha.run()");
 }
 
+IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ContextualEntrypointAndMenu) {
+  RunTest("cr_components/composebox/contextual_entrypoint_and_menu_test.js",
+          "mocha.run()");
+}
+
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ContextualActionMenu) {
   RunTest("cr_components/composebox/contextual_action_menu_test.js",
           "mocha.run()");
@@ -313,5 +319,10 @@ IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxFileCarousel) {
 IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest,
                        ComposeboxAudioWaveAnimation) {
   RunTest("cr_components/composebox/composebox_audio_animation_test.js",
+          "mocha.run()");
+}
+
+IN_PROC_BROWSER_TEST_F(CrComponentsComposeboxTest, ComposeboxInputPlaceholder) {
+  RunTest("cr_components/composebox/composebox_input_placeholder_test.js",
           "mocha.run()");
 }

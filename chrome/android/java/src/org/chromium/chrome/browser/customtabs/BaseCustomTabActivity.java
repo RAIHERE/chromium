@@ -393,6 +393,7 @@ public abstract class BaseCustomTabActivity extends ChromeActivity {
                         getTabModelSelectorSupplier(),
                         getBrowserControlsManager(),
                         getWindowAndroid(),
+                        getActivityResultTracker(),
                         getChromeAndroidTaskSupplier(),
                         getLifecycleDispatcher(),
                         getLayoutManagerSupplier(),
@@ -406,7 +407,7 @@ public abstract class BaseCustomTabActivity extends ChromeActivity {
                         getFullscreenManager(),
                         getCompositorViewHolderSupplier(),
                         getTabContentManagerSupplier(),
-                        this::getSnackbarManager,
+                        getSnackbarManagerSupplier(),
                         mEdgeToEdgeControllerSupplier,
                         getActivityType(),
                         this::isInOverviewMode,
@@ -1653,7 +1654,8 @@ public abstract class BaseCustomTabActivity extends ChromeActivity {
                         getLifecycleDispatcher(),
                         getSavedInstanceState(),
                         null,
-                        getEdgeToEdgeManager().getEdgeToEdgeStateProvider());
+                        getEdgeToEdgeManager().getEdgeToEdgeStateProvider(),
+                        null);
 
         return mAppHeaderCoordinator;
     }
@@ -1714,12 +1716,15 @@ public abstract class BaseCustomTabActivity extends ChromeActivity {
     @Nullable
     @BrowserWindowType
     Integer getSupportedBrowserWindowType() {
-        if (mIntentDataProvider.getUiType() == CustomTabsUiType.POPUP) {
-            return BrowserWindowType.POPUP;
-        }
+        // TODO (crbug.com/486858979): Temporarily removed TWA and PWA support to avoid crashes.
 
-        if (mIntentDataProvider.getActivityType() == ActivityType.WEBAPP) {
-            return BrowserWindowType.APP_POPUP;
+        @CustomTabsUiType int type = mIntentDataProvider.getUiType();
+        switch (type) {
+            // Popups
+            case CustomTabsUiType.POPUP:
+                return BrowserWindowType.POPUP;
+            default:
+                break;
         }
 
         return null;

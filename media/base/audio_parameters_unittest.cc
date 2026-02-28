@@ -162,25 +162,6 @@ TEST(AudioParameters, Constructor_ValidChannelCounts) {
   EXPECT_TRUE(params.IsValid());
 }
 
-TEST(AudioParameters, Constructor_ValidChannelCountsFor514Downmix) {
-  int expected_channels = 7;
-  constexpr ChannelLayout expected_layout = CHANNEL_LAYOUT_5_1_4_DOWNMIX;
-  ChannelLayoutConfig channel_layout_config(expected_layout, expected_channels);
-
-  AudioParameters params(AudioParameters::AUDIO_PCM_LOW_LATENCY,
-                         channel_layout_config, 44100, 880);
-  EXPECT_EQ(expected_channels, params.channels());
-  EXPECT_EQ(expected_layout, params.channel_layout());
-  EXPECT_TRUE(params.IsValid());
-
-  // We do not have to explicitly set the channels for this layout.
-  params.Reset(AudioParameters::AUDIO_PCM_LOW_LATENCY,
-               ChannelLayoutConfig::FromLayout<expected_layout>(), 44100, 880);
-  EXPECT_EQ(6, params.channels());
-  EXPECT_EQ(expected_layout, params.channel_layout());
-  EXPECT_TRUE(params.IsValid());
-}
-
 TEST(AudioParameters, Constructor_CopyChannelLayoutConfig) {
   int expected_channels = 8;
   ChannelLayout expected_layout = CHANNEL_LAYOUT_DISCRETE;
@@ -195,34 +176,6 @@ TEST(AudioParameters, Constructor_CopyChannelLayoutConfig) {
   EXPECT_EQ(expected_channels, params2.channels());
   EXPECT_EQ(expected_layout, params2.channel_layout());
   EXPECT_TRUE(params2.IsValid());
-}
-
-TEST(AudioParameters, ShouldCheckDiscreteWithNoChannels) {
-  ASSERT_DEATH_IF_SUPPORTED(
-      {
-        ChannelLayoutConfig channel_layout_config(CHANNEL_LAYOUT_DISCRETE, 0);
-      },
-      "");
-}
-
-TEST(AudioParameters, ChannelLayoutConfig_Guess) {
-  ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Guess(2);
-  EXPECT_EQ(CHANNEL_LAYOUT_STEREO, channel_layout_config.channel_layout());
-  EXPECT_EQ(2, channel_layout_config.channels());
-}
-
-TEST(AudioParameters, ChannelLayoutConfig_GuessUnsupported) {
-  ChannelLayoutConfig channel_layout_config = ChannelLayoutConfig::Guess(100);
-  EXPECT_EQ(CHANNEL_LAYOUT_UNSUPPORTED, channel_layout_config.channel_layout());
-  EXPECT_EQ(0, channel_layout_config.channels());
-}
-
-TEST(AudioParameters, ChannelLayoutConfig_GuessDiscrete) {
-  constexpr int kNumChannels = 12;
-  ChannelLayoutConfig channel_layout_config =
-      ChannelLayoutConfig::Guess(kNumChannels);
-  EXPECT_EQ(CHANNEL_LAYOUT_DISCRETE, channel_layout_config.channel_layout());
-  EXPECT_EQ(kNumChannels, channel_layout_config.channels());
 }
 
 TEST(AudioOutputBufferParametersHelperTest, LoadAndWriteGlitchInfo) {

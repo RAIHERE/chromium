@@ -329,6 +329,8 @@ void TaskQueueImpl::UnregisterTaskQueue() {
     any_thread_.on_task_posted_handlers.swap(on_task_posted_handlers);
   }
 
+  main_thread_only().unregistered = true;
+
   if (main_thread_only().wake_up_queue) {
     main_thread_only().wake_up_queue->UnregisterQueue(this);
   }
@@ -373,15 +375,6 @@ void TaskQueueImpl::PostTask(PostedTask task) {
           ? TaskQueueImpl::CurrentThread::kMainThread
           : TaskQueueImpl::CurrentThread::kNotMainThread;
 
-#if DCHECK_IS_ON()
-  TimeDelta delay = GetTaskDelayAdjustment(current_thread);
-  if (std::holds_alternative<base::TimeTicks>(task.delay_or_delayed_run_time)) {
-    std::get<base::TimeTicks>(task.delay_or_delayed_run_time) += delay;
-  } else {
-    std::get<base::TimeDelta>(task.delay_or_delayed_run_time) += delay;
-  }
-#endif  // DCHECK_IS_ON()
-
   if (!task.is_delayed()) {
     PostImmediateTaskImpl(std::move(task), current_thread);
   } else {
@@ -392,6 +385,12 @@ void TaskQueueImpl::PostTask(PostedTask task) {
 void TaskQueueImpl::RemoveCancelableTask(HeapHandle heap_handle) {
   associated_thread_->AssertInSequenceWithCurrentThread();
   DCHECK(heap_handle.IsValid());
+
+  if (main_thread_only().unregistered) {
+    // During shutdown, UnregisterQueue() swaps the tasks to the stack for safe
+    // destruction. Return early as the member queue is now empty.
+    return;
+  }
 
   main_thread_only().delayed_incoming_queue.remove(heap_handle);
 
@@ -404,26 +403,6 @@ void TaskQueueImpl::RemoveCancelableTask(HeapHandle heap_handle) {
     LazyNow lazy_now(sequence_manager_->main_thread_clock());
     UpdateWakeUp(&lazy_now);
   }
-}
-
-TimeDelta TaskQueueImpl::GetTaskDelayAdjustment(CurrentThread current_thread) {
-#if DCHECK_IS_ON()
-  if (current_thread == TaskQueueImpl::CurrentThread::kNotMainThread) {
-    base::internal::CheckedAutoLock lock(any_thread_lock_);
-    // Add a per-priority delay to cross thread tasks. This can help diagnose
-    // scheduler induced flakiness by making things flake most of the time.
-    return sequence_manager_->settings()
-        .priority_settings
-        .per_priority_cross_thread_task_delay()[any_thread_.queue_set_index];
-  } else {
-    return sequence_manager_->settings()
-        .priority_settings.per_priority_same_thread_task_delay()
-            [main_thread_only().immediate_work_queue->work_queue_set_index()];
-  }
-#else
-  // No delay adjustment.
-  return TimeDelta();
-#endif  // DCHECK_IS_ON()
 }
 
 void TaskQueueImpl::PostImmediateTaskImpl(PostedTask task,
@@ -456,11 +435,6 @@ void TaskQueueImpl::PostImmediateTaskImpl(PostedTask task,
         any_thread_.immediate_incoming_queue.empty();
     any_thread_.immediate_incoming_queue.push_back(
         Task(std::move(task), sequence_number, sequence_number, queue_time));
-
-#if DCHECK_IS_ON()
-    any_thread_.immediate_incoming_queue.back().cross_thread_ =
-        (current_thread == TaskQueueImpl::CurrentThread::kNotMainThread);
-#endif
 
     sequence_manager_->WillQueueTask(
         &any_thread_.immediate_incoming_queue.back());
@@ -527,10 +501,6 @@ void TaskQueueImpl::PushOntoDelayedIncomingQueueFromMainThread(
     Task pending_task,
     LazyNow* lazy_now,
     bool notify_task_annotator) {
-#if DCHECK_IS_ON()
-  pending_task.cross_thread_ = false;
-#endif
-
   if (notify_task_annotator) {
     sequence_manager_->WillQueueTask(&pending_task);
     MaybeReportIpcTaskQueuedFromMainThread(pending_task);
@@ -544,10 +514,6 @@ void TaskQueueImpl::PushOntoDelayedIncomingQueueFromMainThread(
 void TaskQueueImpl::PushOntoDelayedIncomingQueue(Task pending_task) {
   sequence_manager_->WillQueueTask(&pending_task);
   MaybeReportIpcTaskQueuedFromAnyThreadUnlocked(pending_task);
-
-#if DCHECK_IS_ON()
-  pending_task.cross_thread_ = true;
-#endif
 
   // TODO(altimin): Add a copy method to Task to capture metadata here.
   auto task_runner = pending_task.task_runner;
@@ -744,12 +710,6 @@ void TaskQueueImpl::MoveReadyDelayedTasksToWorkQueue(
     }
 
     // The top task is ready to run. Move it to the delayed work queue.
-#if DCHECK_IS_ON()
-    if (sequence_manager_->settings().log_task_delay_expiry) {
-      VLOG(0) << GetName() << " Delay expired for "
-              << ready_task.posted_from.ToString();
-    }
-#endif  // DCHECK_IS_ON()
     DCHECK(!ready_task.delayed_run_time.is_null());
     DCHECK(!ready_task.enqueue_order_set());
     ready_task.set_enqueue_order(enqueue_order);

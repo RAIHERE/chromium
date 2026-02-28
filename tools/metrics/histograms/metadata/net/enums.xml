@@ -384,8 +384,8 @@ chromium-metrics-reviews@google.com.
   <int value="24" label="P-384"/>
   <int value="25" label="P-521"/>
   <int value="29" label="X25519"/>
+  <int value="514" label="ML-KEM-1024"/>
   <int value="4588" label="ML-KEM-768+X25519"/>
-  <int value="16696" label="CECPQ2"/>
   <int value="25497" label="Kyber+X25519"/>
 </enum>
 
@@ -687,7 +687,7 @@ chromium-metrics-reviews@google.com.
   <int value="5" label="kResumption"/>
 </enum>
 
-<!-- LINT.ThenChange(//net/quic/quic_chromium_client_session.cc:MTCResult) -->
+<!-- LINT.ThenChange(//net/quic/quic_chromium_client_session.h:MTCResult) -->
 
 <!-- LINT.IfChange(MultiplexedSessionCreationInitiator) -->
 
@@ -3071,9 +3071,11 @@ Called by update_net_trust_anchors.py.-->
   <int value="3" label="StartEviction"/>
   <int value="4" label="DeleteLiveEntry"/>
   <int value="5" label="DeleteLiveEntriesBetween"/>
+  <int value="6" label="WriteEntryDataAndMetadata"/>
+  <int value="7" label="WriteEntryData"/>
 </enum>
 
-<!-- LINT.ThenChange(//net/disk_cache/sql/sql_persistent_store_backend_shard.cc:IndexMismatchLocation) -->
+<!-- LINT.ThenChange(//net/disk_cache/sql/sql_persistent_store_backend_shard.h:IndexMismatchLocation) -->
 
 <!-- LINT.IfChange(SqlDiskCacheStoreError) -->
 
@@ -3323,6 +3325,7 @@ Called by update_net_trust_anchors.py.-->
   <int value="6" label="Key not ready"/>
   <int value="7" label="Verify signature failed"/>
   <int value="8" label="Operation not supported"/>
+  <int value="9" label="Operation cancelled"/>
 </enum>
 
 <!-- LINT.ThenChange(

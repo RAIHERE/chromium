@@ -17,8 +17,10 @@
 #include "components/lens/lens_overlay_invocation_source.h"
 #include "components/lens/lens_overlay_mime_type.h"
 #include "components/search_engines/keyword_web_data_service.h"
+#include "components/search_engines/template_url_prepopulate_data_resolver.h"
 #include "components/search_engines/template_url_service.h"
 #include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
+#include "third_party/omnibox_proto/model_mode.pb.h"
 
 class KeywordWebDataService;
 class PrefService;
@@ -46,6 +48,7 @@ TemplateURL* FindURLByPrepopulateID(
 enum class TemplateURLMergeOption {
   kDefault,
   kOverwriteUserEdits,
+  kSplitPrepopulatedEntry,
 };
 
 // Modifies `url_to_update` so that it contains user-modified fields from
@@ -105,6 +108,7 @@ void MergeEnginesFromPrepopulateData(
     std::vector<std::unique_ptr<TemplateURLData>>* prepopulated_urls,
     TemplateURLService::OwnedTemplateURLVector* template_urls,
     TemplateURL* default_search_provider,
+    const TemplateURLPrepopulateData::Resolver& template_url_data_resolver,
     std::set<std::string>* removed_keyword_guids);
 
 // Given the user's current URLs and the current set of prepopulated URLs,
@@ -116,7 +120,8 @@ void MergeEnginesFromPrepopulateData(
 ActionsFromCurrentData CreateActionsFromCurrentPrepopulateData(
     std::vector<std::unique_ptr<TemplateURLData>>* prepopulated_urls,
     const TemplateURLService::OwnedTemplateURLVector& existing_urls,
-    const TemplateURL* default_search_provider);
+    const TemplateURL* default_search_provider,
+    const TemplateURLPrepopulateData::Resolver& template_url_data_resolver);
 
 // MergeEnginesFromStarterPackData merges search engines from the built-in
 // `template_url_starter_pack_data` class into `template_urls`. Calls
@@ -244,7 +249,6 @@ GURL GetUrlForAim(
 // info.
 // `request_id` (vsrid) is the visual search request id used by lens to obtain
 // the uploaded context.
-// `mime_type` (vit) is the type of the file that has been uploaded.
 // TODO(crbug.com/430070871): Make `lns_surface` a required parameter when
 // the server supports it.
 // TODO(crbug.com/446972028): Remove this method in favor of the one below that
@@ -256,7 +260,6 @@ GURL GetUrlForMultimodalSearch(
     const base::Time& query_start_time,
     const std::string& search_session_id,
     const std::unique_ptr<lens::LensOverlayRequestId> request_id,
-    const lens::MimeType mime_type,
     const std::optional<lens::LensOverlayInvocationSource> invocation_source =
         std::nullopt,
     const std::string& lns_surface = std::string(),

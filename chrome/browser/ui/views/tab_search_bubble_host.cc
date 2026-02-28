@@ -30,7 +30,6 @@
 #include "chrome/browser/ui/views/tabs/tab_strip_controller.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search_prefs.h"
 #include "chrome/browser/ui/webui/tab_search/tab_search_ui.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/grit/generated_resources.h"
 #include "components/feature_engagement/public/event_constants.h"
@@ -69,6 +68,7 @@ TabSearchBubbleHost::TabSearchBubbleHost(
     BrowserWindowInterface* browser_window_interface)
     : button_(button),
       profile_(browser_window_interface->GetProfile()),
+      browser_window_interface_(browser_window_interface),
       webui_bubble_manager_(WebUIBubbleManager::Create<TabSearchUI>(
           button,
           browser_window_interface,
@@ -95,7 +95,11 @@ TabSearchBubbleHost::TabSearchBubbleHost(
   webui_bubble_manager_observer_.Observe(webui_bubble_manager_.get());
 }
 
-TabSearchBubbleHost::~TabSearchBubbleHost() = default;
+TabSearchBubbleHost::~TabSearchBubbleHost() {
+  for (auto& observer : observers_) {
+    observer.OnHostDestroying();
+  }
+}
 
 void TabSearchBubbleHost::OnWidgetVisibilityChanged(views::Widget* widget,
                                                     bool visible) {
@@ -230,13 +234,6 @@ bool TabSearchBubbleHost::ShowTabSearchBubble(
     observer.OnBubbleInitializing();
   }
 
-  if (auto* const browser = GetBrowser()) {
-    // Close the Tab Search IPH if it is showing.
-    BrowserUserEducationInterface::From(browser)->NotifyFeaturePromoFeatureUsed(
-        feature_engagement::kIPHTabSearchFeature,
-        FeaturePromoFeatureUsedAction::kClosePromoIfPresent);
-  }
-
   bubble_created_time_ = base::TimeTicks::Now();
   webui_bubble_manager_->set_widget_initialization_callback(base::BindOnce(
       [](base::TimeTicks bubble_init_start_time) {
@@ -246,7 +243,8 @@ bool TabSearchBubbleHost::ShowTabSearchBubble(
       },
       *bubble_created_time_));
 
-  const tabs::TabSearchPosition position = tabs::GetTabSearchPosition(profile_);
+  const tabs::TabSearchPosition position =
+      tabs::GetTabSearchPosition(browser_window_interface_);
   webui_bubble_manager_->ShowBubble(
       std::nullopt,
       (position == tabs::TabSearchPosition::kLeadingHorizontalTabstrip ||

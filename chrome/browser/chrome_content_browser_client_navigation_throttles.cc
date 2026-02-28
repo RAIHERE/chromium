@@ -8,6 +8,8 @@
 #include "base/feature_list.h"
 #include "build/build_config.h"
 #include "build/buildflag.h"
+#include "chrome/browser/actor/actor_navigation_throttle.h"
+#include "chrome/browser/autocomplete/aim_eligibility_refresh_navigation_throttle.h"
 #include "chrome/browser/browser_process.h"
 #include "chrome/browser/custom_handlers/chrome_protocol_handler_navigation_throttle.h"
 #include "chrome/browser/custom_handlers/protocol_handler_registry_factory.h"
@@ -41,6 +43,9 @@
 #include "components/contextual_tasks/public/features.h"
 #include "components/custom_handlers/protocol_handler_navigation_throttle.h"
 #include "components/dom_distiller/content/browser/distiller_page_web_contents.h"
+#include "components/dom_distiller/content/browser/distiller_referrer_throttle.h"
+#include "components/dom_distiller/core/url_constants.h"
+#include "components/dom_distiller/core/url_utils.h"
 #include "components/error_page/content/browser/net_error_auto_reloader.h"
 #include "components/guest_view/buildflags/buildflags.h"
 #include "components/history/content/browser/visited_link_navigation_throttle.h"
@@ -66,7 +71,9 @@
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_features.h"
 #include "pdf/buildflags.h"
+#include "services/network/public/mojom/referrer_policy.mojom.h"
 #include "third_party/blink/public/common/features.h"
+#include "third_party/blink/public/mojom/loader/referrer.mojom.h"
 #include "url/gurl.h"
 
 #if BUILDFLAG(IS_ANDROID)
@@ -79,7 +86,6 @@
 #endif  // BUILDFLAG(DFMIFY_DEV_UI)
 
 #else  // BUILDFLAG(IS_ANDROID)
-#include "chrome/browser/actor/actor_navigation_throttle.h"
 #include "chrome/browser/apps/link_capturing/link_capturing_navigation_throttle.h"
 #include "chrome/browser/apps/link_capturing/web_app_link_capturing_delegate.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_navigation_throttle.h"
@@ -92,6 +98,7 @@
 #include "chrome/browser/ui/search/new_tab_page_navigation_throttle.h"
 #include "chrome/browser/ui/web_applications/tabbed_web_app_navigation_throttle.h"
 #include "chrome/browser/ui/web_applications/webui_web_app_navigation_throttle.h"
+#include "chrome/browser/ui/webui/image/image_navigation_throttle.h"
 #include "chrome/browser/ui/webui/ntp_microsoft_auth/ntp_microsoft_auth_response_capture_navigation_throttle.h"
 #include "chrome/browser/web_applications/isolated_web_apps/isolated_web_app_throttle.h"
 #endif  // BUILDFLAG(IS_ANDROID)
@@ -170,6 +177,10 @@
 #include "extensions/browser/extension_navigation_throttle.h"
 #include "extensions/browser/extensions_browser_client.h"
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS_CORE)
+
+#if BUILDFLAG(ENABLE_GLIC)
+#include "chrome/browser/glic/glic_navigation_throttle.h"
+#endif  // BUILDFLAG(ENABLE_GLIC)
 
 namespace {
 
@@ -279,7 +290,7 @@ void CreateAndAddChromeThrottlesForNavigation(
 
 #if BUILDFLAG(IS_ANDROID)
   // TODO(davidben): This is insufficient to integrate with prerender properly.
-  // https://crbug.com/370595
+  // https://crbug.com/40364296
   prerender::NoStatePrefetchContents* no_state_prefetch_contents =
       prerender::ChromeNoStatePrefetchContentsDelegate::FromWebContents(
           handle.GetWebContents());
@@ -448,8 +459,15 @@ void CreateAndAddChromeThrottlesForNavigation(
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) ||
         // BUILDFLAG(IS_CHROMEOS)
 
+  // AimEligibilityRefreshNavigationThrottle must be registered before
+  // ContextualTasksNavigationThrottle so it can detect AIM URL navigations
+  // before ContextualTasksNavigationThrottle intercepts them.
+  AimEligibilityRefreshNavigationThrottle::MaybeCreateAndAdd(registry);
+
 #if !BUILDFLAG(IS_ANDROID)
-  if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks)) {
+  if (base::FeatureList::IsEnabled(contextual_tasks::kContextualTasks) ||
+      base::FeatureList::IsEnabled(
+          contextual_tasks::kContextualTasksUrlRedirectToAimUrl)) {
     contextual_tasks::ContextualTasksNavigationThrottle::MaybeCreateAndAdd(
         registry);
   }
@@ -461,6 +479,8 @@ void CreateAndAddChromeThrottlesForNavigation(
   web_app::TabbedWebAppNavigationThrottle::MaybeCreateAndAdd(registry);
 
   web_app::WebUIWebAppNavigationThrottle::MaybeCreateAndAdd(registry);
+
+  ImageNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(SAFE_BROWSING_AVAILABLE)
@@ -585,9 +605,16 @@ void CreateAndAddChromeThrottlesForNavigation(
 #if !BUILDFLAG(IS_ANDROID)
   web_app::IsolatedWebAppThrottle::MaybeCreateAndAdd(registry);
 
-  actor::ActorNavigationThrottle::MaybeCreateAndAdd(registry);
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+  actor::ActorNavigationThrottle::MaybeCreateAndAdd(registry);
 
   dom_distiller::DistillerPageWebContents::MaybeCreateAndAddNavigationThrottle(
       registry);
+
+  dom_distiller::DistillerReferrerThrottle::MaybeCreateAndAdd(registry);
+
+#if BUILDFLAG(ENABLE_GLIC)
+  glic::GlicNavigationThrottle::MaybeCreateAndAdd(registry);
+#endif  // BUILDFLAG(ENABLE_GLIC)
 }

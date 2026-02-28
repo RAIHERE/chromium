@@ -37,7 +37,6 @@
 #include "chrome/grit/side_panel_customize_chrome_resources_map.h"
 #include "chrome/grit/side_panel_shared_resources.h"
 #include "chrome/grit/side_panel_shared_resources_map.h"
-#include "components/contextual_search/contextual_search_service.h"
 #include "components/ntp_tiles/features.h"
 #include "components/omnibox/browser/aim_eligibility_service.h"
 #include "components/search/ntp_features.h"
@@ -46,6 +45,7 @@
 #include "content/public/browser/web_contents.h"
 #include "content/public/browser/web_ui.h"
 #include "content/public/browser/web_ui_data_source.h"
+#include "extensions/strings/grit/extensions_strings.h"
 #include "ui/base/webui/web_ui_util.h"
 #include "ui/strings/grit/ui_strings.h"
 #include "ui/webui/color_change_listener/color_change_handler.h"
@@ -308,8 +308,6 @@ CustomizeChromeUI::CustomizeChromeUI(content::WebUI* web_ui)
       AimEligibilityServiceFactory::GetForProfile(profile_);
   bool action_chips_eligible =
       aim_eligibility_service && aim_eligibility_service->IsAimEligible() &&
-      contextual_search::ContextualSearchService::IsContextSharingEnabled(
-          profile_->GetPrefs()) &&
       (ntp_features::kNtpNextShowSimplificationUIParam.Get()
            ? (aim_eligibility_service->IsDeepSearchEligible() ||
               aim_eligibility_service->IsCreateImagesEligible())

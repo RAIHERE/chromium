@@ -874,7 +874,14 @@ void MockClientSocketFactory::AddSSLSocketDataProvider(
 
 void MockClientSocketFactory::ResetNextMockIndexes() {
   mock_data_.ResetNextIndex();
+  mock_tcp_data_.ResetNextIndex();
   mock_ssl_data_.ResetNextIndex();
+}
+
+bool MockClientSocketFactory::AllDataProvidersUsed() const {
+  return mock_data_.no_more_data_providers() &&
+         mock_tcp_data_.no_more_data_providers() &&
+         mock_ssl_data_.no_more_data_providers();
 }
 
 std::unique_ptr<DatagramClientSocket>
@@ -1611,8 +1618,8 @@ std::vector<uint8_t> MockSSLClientSocket::GetECHRetryConfigs() {
 }
 
 std::vector<std::vector<uint8_t>>
-MockSSLClientSocket::GetServerTrustAnchorIDsForRetry() {
-  return data_->server_trust_anchor_ids_for_retry;
+MockSSLClientSocket::GetServerTrustAnchorIDs() {
+  return data_->server_trust_anchor_ids;
 }
 
 void MockSSLClientSocket::RunCallbackAsync(CompletionOnceCallback callback,

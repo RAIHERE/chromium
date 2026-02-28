@@ -13,7 +13,6 @@
 #include "chrome/browser/extensions/chrome_extension_test_notification_observer.h"
 #include "chrome/browser/extensions/chrome_test_extension_loader.h"
 #include "chrome/browser/extensions/component_loader.h"
-#include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/extension_browser_test_util.h"
 #include "chrome/browser/extensions/extension_install_prompt.h"
 #include "chrome/browser/extensions/extension_service.h"
@@ -22,10 +21,10 @@
 #include "chrome/browser/extensions/window_controller.h"
 #include "chrome/browser/notifications/notification_display_service_tester.h"
 #include "chrome/browser/profiles/profile.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/browser_window/public/browser_window_interface_iterator.h"
 #include "chrome/browser/ui/browser_window/public/create_browser_window.h"
-#include "chrome/browser/ui/tabs/tab_list_interface.h"
 #include "chrome/common/chrome_paths.h"
 #include "chrome/test/base/chrome_test_utils.h"
 #include "components/crx_file/crx_verifier.h"
@@ -34,6 +33,7 @@
 #include "content/public/test/browser_test_utils.h"
 #include "content/public/test/test_navigation_observer.h"
 #include "extensions/browser/browsertest_util.h"
+#include "extensions/browser/crx_installer.h"
 #include "extensions/browser/extension_dialog_auto_confirm.h"
 #include "extensions/browser/extension_host.h"
 #include "extensions/browser/extension_registrar.h"
@@ -194,12 +194,7 @@ ExtensionBrowserTest::ExtensionBrowserTest(ContextType context_type)
 #if BUILDFLAG(IS_ANDROID)
   feature_list_.InitWithFeatures(
       /*enabled_features=*/
-      {// Disable ChromeTabbedActivity instance limit so that the total number
-       // of windows created by the entire test suite won't be limited. See Java
-       // MultiWindowUtils#getMaxInstances() for details.
-       chrome::android::kDisableInstanceLimit,
-
-       // Enable incognito windows on Android.
+      {// Enable incognito windows on Android.
        feed::kAndroidOpenIncognitoAsWindow},
       /*disabled_features=*/{});
 #endif
@@ -280,12 +275,6 @@ void ExtensionBrowserTest::SetUpCommandLine(base::CommandLine* command_line) {
   // test launches an Intent for ChromeTabbedActivity, ChromeTabbedActivity
   // will be shown instead of FirstRunActivity.
   command_line->AppendSwitch("disable-fre");
-
-  // Force DeviceInfo#isDesktop() to be true so that the kDisableInstanceLimit
-  // flag in the constructor can be effective when running tests on an emulator
-  // without "--force-desktop-android". See Java
-  // MultiWindowUtils#getMaxInstances() for details.
-  command_line->AppendSwitch(switches::kForceDesktopAndroid);
 #endif
 }
 

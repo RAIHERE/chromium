@@ -12,11 +12,7 @@ namespace blink {
 
 const GapGeometry* FlexGapAccumulator::BuildGapGeometry(
     const BoxFragmentBuilder& container_builder) {
-  const bool has_valid_main_axis_gaps =
-      !main_gaps_.empty() && gap_between_lines_ > LayoutUnit();
-  const bool has_valid_cross_axis_gaps =
-      !cross_gaps_.empty() && gap_between_items_ > LayoutUnit();
-  if (!has_valid_main_axis_gaps && !has_valid_cross_axis_gaps) {
+  if (main_gaps_.empty() && cross_gaps_.empty()) {
     // `GapGeometry` requires at least one axis to be valid.
     return nullptr;
   }
@@ -31,21 +27,12 @@ const GapGeometry* FlexGapAccumulator::BuildGapGeometry(
   if (is_column_) {
     // In a column flex container, the main axis gaps become the "columns" and
     // the cross axis gaps become the "rows".
-    if (gap_between_lines_ > LayoutUnit()) {
       gap_geometry->SetInlineGapSize(gap_between_lines_);
-    }
-    if (gap_between_items_ > LayoutUnit()) {
       gap_geometry->SetBlockGapSize(gap_between_items_);
-    }
-
-    gap_geometry->SetMainDirection(kForColumns);
+      gap_geometry->SetMainDirection(kForColumns);
   } else {
-    if (gap_between_lines_ > LayoutUnit()) {
       gap_geometry->SetBlockGapSize(gap_between_lines_);
-    }
-    if (gap_between_items_ > LayoutUnit()) {
       gap_geometry->SetInlineGapSize(gap_between_items_);
-    }
   }
 
   // TODO(crbug.com/440123087): Risky since they could in theory be used after
@@ -56,6 +43,10 @@ const GapGeometry* FlexGapAccumulator::BuildGapGeometry(
 
   if (!main_gaps_.empty()) {
     gap_geometry->SetMainGaps(std::move(main_gaps_));
+  }
+
+  if (!cross_gap_sizes_.empty()) {
+    gap_geometry->SetFlexCrossGapSizes(std::move(cross_gap_sizes_));
   }
 
   LayoutUnit content_inline_start =
@@ -118,6 +109,19 @@ void FlexGapAccumulator::BuildGapsForCurrentItem(
     }
   }
 
+  // Track the per-line effective gap size (one entry per line, indexed by
+  // fragment-relative line index). We push back on the second item (the first
+  // time we know the effective gap), or on the only item for single-item
+  // lines. Single-item lines will have `effective_gap_between_items` == 0
+  // since it's never set, but that's fine since they don't produce
+  // `CrossGap`s — the entry only exists to keep the vector properly indexed.
+  const bool should_add_cross_gap_size =
+      (!is_first_item || is_last_item) &&
+      cross_gap_sizes_.size() <= fragment_relative_line_index;
+  if (should_add_cross_gap_size) {
+    cross_gap_sizes_.push_back(flex_line.effective_gap_between_items);
+  }
+
   // The first item in any line doesn't have any `CrossGap` associated with
   // it, so we return early.
   if (is_first_item) {
@@ -127,7 +131,7 @@ void FlexGapAccumulator::BuildGapsForCurrentItem(
   const LayoutUnit main_offset =
       is_column_ ? item_offset.block_offset : item_offset.inline_offset;
   const LayoutUnit main_intersection_offset =
-      main_offset - (gap_between_items_ / 2);
+      main_offset - (flex_line.effective_gap_between_items / 2);
 
   PopulateCrossGapForCurrentItem(flex_line, fragment_relative_line_index,
                                  is_first_line, is_last_line, single_line,

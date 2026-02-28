@@ -72,10 +72,38 @@ class LocalStorageSqlite : public DomStorageDatabase {
   DbStatus PutVersionForTesting(int64_t version) override;
 
  private:
+  // Looks up the `map_id` (which is the `row_id` in the `maps` table) for the
+  // given `storage_key`. Returns `std::nullopt` if no map exists for
+  // `storage_key`.
+  StatusOr<std::optional<int64_t>> FindMapId(
+      const blink::StorageKey& storage_key);
+
+  // Inserts or updates the metadata for the map identified by `storage_key` in
+  // the `maps` table. If a row for `storage_key` already exists, only non-null
+  // parameters are updated (existing values are preserved for null parameters).
+  // If no row exists, a new row is inserted with all provided values.  The
+  // caller must begin a database transaction before calling this function.
+  DbStatus PutMapMetadata(const blink::StorageKey& storage_key,
+                          std::optional<base::Time> last_accessed,
+                          std::optional<base::Time> last_modified,
+                          std::optional<base::ByteSize> total_size);
+
+  // Deletes the metadata rows from the `maps` table for each storage key in
+  // `metadata_to_delete`. The caller must begin a database transaction before
+  // calling this function.
+  DbStatus DeleteMapMetadata(
+      const std::vector<blink::StorageKey>& metadata_to_delete);
+
   // `Open()` creates `database_`, `meta_table_` and `map_entries_table_`.
   std::unique_ptr<sql::Database> database_;
   std::unique_ptr<sql::MetaTable> meta_table_;
   std::unique_ptr<MapEntriesTable> map_entries_table_;
+
+  // Simulates I/O failure in `PutMetadata()` and `UpdateMaps()` by force
+  // returning an IOError. Set to true by `MakeAllCommitsFailForTesting()`.
+  bool should_fail_commits_for_testing_ = false;
+
+  base::OnceClosure destruction_callback_for_testing_;
 };
 
 }  // namespace storage

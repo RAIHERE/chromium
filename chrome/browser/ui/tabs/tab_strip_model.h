@@ -24,12 +24,12 @@
 #include "base/scoped_multi_source_observation.h"
 #include "base/scoped_observation.h"
 #include "build/build_config.h"
+#include "chrome/browser/tab_list/tab_removed_reason.h"
 #include "chrome/browser/ui/tabs/tab_model.h"
 #include "chrome/browser/ui/tabs/tab_strip_model_selection_state.h"
 #include "chrome/browser/ui/tabs/tab_strip_scrubbing_metrics.h"
 #include "chrome/browser/ui/tabs/tab_strip_user_gesture_details.h"
 #include "chrome/common/buildflags.h"
-#include "chrome/common/chrome_features.h"
 #include "components/sessions/core/session_id.h"
 #include "components/tab_groups/tab_group_id.h"
 #include "components/tab_groups/tab_group_visual_data.h"
@@ -62,13 +62,13 @@ class SplitTabData;
 class SplitTabVisualData;
 enum class SplitTabLayout;
 enum class SplitTabCreatedSource;
-}
+}  // namespace split_tabs
 
 namespace tabs {
 class SplitTabCollection;
 class TabStripCollection;
 class TabGroupTabCollection;
-}
+}  // namespace tabs
 
 namespace tabs_api {
 class TabStripModelAdapterImpl;
@@ -111,7 +111,7 @@ struct DetachedTab {
               int index_at_time_of_removal,
               bool was_pinned_at_time_of_removal,
               std::unique_ptr<tabs::TabModel> tab,
-              TabStripModelChange::RemoveReason remove_reason,
+              TabRemovedReason remove_reason,
               tabs::TabInterface::DetachReason tab_detach_reason,
               std::optional<SessionID> id);
   DetachedTab(const DetachedTab&) = delete;
@@ -138,7 +138,7 @@ struct DetachedTab {
   // tab is detached for re-insertion into a browser of different type,
   // in which case the TabInterface is destroyed but the WebContents is
   // retained.
-  TabStripModelChange::RemoveReason remove_reason;
+  TabRemovedReason remove_reason;
   tabs::TabInterface::DetachReason tab_detach_reason;
 
   // The |contents| associated optional SessionID, used as key for
@@ -351,8 +351,7 @@ class TabStripModel {
   // or TabModel.
   std::unique_ptr<content::WebContents> DetachWebContentsAtForInsertion(
       int index,
-      TabStripModelChange::RemoveReason reason =
-          TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip);
+      TabRemovedReason reason = TabRemovedReason::kInsertedIntoOtherTabStrip);
 
   // Detaches the WebContents at the specified index and immediately deletes it.
   void DetachAndDeleteWebContentsAt(int index);
@@ -467,10 +466,9 @@ class TabStripModel {
   // there is no opener on record.
   tabs::TabInterface* GetOpenerOfTabAt(const int index) const;
 
-  // Changes the |opener| of the WebContents at |index|.
-  // Note: |opener| must be in this tab strip. Also a tab must not be its own
-  // opener.
-  void SetOpenerOfWebContentsAt(int index, content::WebContents* opener);
+  // Changes the |opener| of the tab at |index|.
+  // Note: A tab must not be its own opener.
+  void SetOpenerOfTabAt(int index, tabs::TabInterface* opener);
 
   // Returns the index of the last WebContents in the model opened by the
   // specified opener, starting at |start_index|.
@@ -762,8 +760,6 @@ class TabStripModel {
     CommandAddToNewGroup,
     CommandAddToExistingGroup,
     CommandAddToNewGroupFromMenuItem,
-    CommandAddToNewComparisonTable,
-    CommandAddToExistingComparisonTable,
     CommandAddToSplit,
     CommandSwapWithActiveSplit,
     CommandArrangeSplit,
@@ -774,8 +770,7 @@ class TabStripModel {
     CommandCopyURL,
     CommandGoBack,
     CommandCloseAllTabs,
-    CommandCommerceProductSpecifications,
-#if BUILDFLAG(ENABLE_GLIC)
+    CommandToggleVertical,
     CommandGlicShareLimit,
     CommandGlicStartShare,
     CommandGlicStopShare,
@@ -783,7 +778,6 @@ class TabStripModel {
     CommandGlicCreateNewChat,
     CommandGlicSwitchToRecentConversation,
     CommandGlicUnshare,
-#endif
     CommandLast
   };
   // LINT.ThenChange(//tools/metrics/histograms/metadata/tab/histograms.xml:TabContextMenuCommand)
@@ -1010,7 +1004,7 @@ class TabStripModel {
   // owning TabModel may be destroyed).
   std::unique_ptr<DetachedTab> DetachTabWithReasonAt(
       int index,
-      TabStripModelChange::RemoveReason web_contents_remove_reason,
+      TabRemovedReason web_contents_remove_reason,
       tabs::TabInterface::DetachReason tab_detach_reason);
 
   // Performs all the work to detach a TabModel instance but avoids sending
@@ -1021,7 +1015,7 @@ class TabStripModel {
       int index_before_any_removals,
       int index_at_time_of_removal,
       bool create_historical_tab,
-      TabStripModelChange::RemoveReason web_contents_remove_reason,
+      TabRemovedReason web_contents_remove_reason,
       tabs::TabInterface::DetachReason tab_detach_reason);
 
   // Removes a tab collection from `contents_data_` using
@@ -1436,8 +1430,12 @@ class TabStripModel {
 
   bool tab_strip_ui_was_set_ = false;
 
-  base::ObserverList<TabStripModelObserver>::UncheckedAndDanglingUntriaged
-      observers_;
+  // TODO(crbug.com/483152816): Investigate if this can be made non-reentrant.
+  base::ObserverList<
+      TabStripModelObserver,
+      /*check_empty=*/false,
+      base::ObserverListReentrancyPolicy::kAllowReentrancyUntriaged>::
+      UncheckedAndDanglingUntriaged observers_;
 
   // A profile associated with this TabStripModel.
   raw_ptr<Profile, AcrossTasksDanglingUntriaged> profile_;

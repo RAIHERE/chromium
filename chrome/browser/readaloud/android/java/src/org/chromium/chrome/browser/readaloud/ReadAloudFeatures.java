@@ -4,6 +4,8 @@
 
 package org.chromium.chrome.browser.readaloud;
 
+import com.google.common.collect.ImmutableList;
+
 import org.jni_zero.JNINamespace;
 import org.jni_zero.NativeMethods;
 
@@ -19,6 +21,8 @@ import org.chromium.chrome.browser.signin.services.UnifiedConsentServiceBridge;
 import org.chromium.components.search_engines.TemplateUrl;
 import org.chromium.components.search_engines.TemplateUrlService;
 import org.chromium.components.user_prefs.UserPrefs;
+
+import java.util.List;
 
 /** Functions for reading feature flags and params and checking eligibility. */
 @JNINamespace("readaloud")
@@ -115,11 +119,6 @@ public final class ReadAloudFeatures {
         return ChromeFeatureList.isEnabled(ChromeFeatureList.READALOUD_PLAYBACK);
     }
 
-    public static boolean shouldSkipAudioOverviewsDisclaimerWhenPossible() {
-        return ChromeFeatureList.isEnabled(
-                ChromeFeatureList.READALOUD_AUDIO_OVERVIEWS_SKIP_DISCLAIMER_WHEN_POSSIBLE);
-    }
-
     /** Returns true if the ReadAloud CCT IPH should highlight the menu button. */
     public static boolean isIPHMenuButtonHighlightCctEnabled() {
         return ChromeFeatureList.isEnabled(
@@ -157,6 +156,20 @@ public final class ReadAloudFeatures {
      */
     public static String getServerExperimentFlag() {
         return ReadAloudFeaturesJni.get().getServerExperimentFlag();
+    }
+
+    public static List<String> getSupportedLanguagesForOverview() {
+        ImmutableList.Builder<String> result = ImmutableList.builder();
+        for (String language :
+                ChromeFeatureList.sReadAloudAudioOverviewsSupportedLanguages
+                        .getValue()
+                        .split(",")) {
+            String trimmed = language.trim();
+            if (!trimmed.isEmpty()) {
+                result.add(trimmed);
+            }
+      }
+      return result.build();
     }
 
     @NativeMethods

@@ -8,7 +8,8 @@
 #import "base/memory/weak_ptr.h"
 #import "components/webauthn/ios/ios_passkey_client.h"
 
-class PasskeyKeychainProvider;
+@class PasskeyKeychainProviderBridge;
+@protocol PasskeyKeychainProviderBridgeDelegate;
 class ProfileIOS;
 
 namespace web {
@@ -29,13 +30,16 @@ class IOSChromePasskeyClient : public webauthn::IOSPasskeyClient {
                  webauthn::KeysFetchedCallback callback) override;
   void ShowSuggestionBottomSheet(RequestInfo request_info) override;
   void ShowCreationBottomSheet(RequestInfo request_info) override;
+  void ShowInterstitial(InterstitialCallback callback) override;
   void AllowPasskeyCreationInfobar(bool allowed) override;
   password_manager::WebAuthnCredentialsDelegate*
   GetWebAuthnCredentialsDelegateForDriver(
       IOSPasswordManagerDriver* driver) override;
 
+  id<IOSPasskeyClientCommands> GetCommandHandler() const;
+
  private:
-  PasskeyKeychainProvider* GetPasskeyKeychainProvider();
+  PasskeyKeychainProviderBridge* GetPasskeyKeychainProviderBridge();
 
   // Pointer to the associated ProfileIOS. Must outlive
   // IOSChromePasskeyClient.
@@ -44,8 +48,9 @@ class IOSChromePasskeyClient : public webauthn::IOSPasskeyClient {
   // Command handler for the browser.
   id<IOSPasskeyClientCommands> command_handler_;
 
-  // Provider that manages passkey vault keys.
-  std::unique_ptr<PasskeyKeychainProvider> passkey_keychain_provider_;
+  // Bridge to the PasskeyKeychainProvider and its delegate.
+  PasskeyKeychainProviderBridge* passkey_keychain_provider_bridge_;
+  id<PasskeyKeychainProviderBridgeDelegate> bridge_delegate_;
 
   // Weak WebState.
   base::WeakPtr<web::WebState> web_state_;

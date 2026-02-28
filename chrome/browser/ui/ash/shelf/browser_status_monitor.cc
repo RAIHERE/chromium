@@ -21,7 +21,6 @@
 #include "chrome/browser/ui/tabs/tab_strip_model.h"
 #include "chrome/browser/web_applications/web_app_helpers.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
-#include "chrome/common/chrome_features.h"
 #include "components/user_manager/user_manager.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/navigation_entry.h"
@@ -280,14 +279,14 @@ void BrowserStatusMonitor::OnTabStripModelChanged(
     auto* remove = change.GetRemove();
     for (const auto& contents : remove->contents) {
       switch (contents.remove_reason) {
-        case TabStripModelChange::RemoveReason::kDeleted:
-        case TabStripModelChange::RemoveReason::kInsertedIntoSidePanel:
+        case TabRemovedReason::kDeleted:
+        case TabRemovedReason::kInsertedIntoSidePanel:
 #if DCHECK_IS_ON()
           DCHECK(!tabs_in_transit_.contains(contents.contents));
 #endif
           OnTabClosing(contents.contents);
           break;
-        case TabStripModelChange::RemoveReason::kInsertedIntoOtherTabStrip:
+        case TabRemovedReason::kInsertedIntoOtherTabStrip:
           // The tab will be reinserted immediately into another browser, so
           // this event is ignored.
           if (browser->GetType() == BrowserWindowInterface::TYPE_DEVTOOLS) {

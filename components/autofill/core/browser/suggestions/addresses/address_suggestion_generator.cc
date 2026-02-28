@@ -21,6 +21,7 @@
 #include "base/i18n/case_conversion.h"
 #include "base/memory/raw_ptr.h"
 #include "base/metrics/histogram_functions.h"
+#include "base/metrics/histogram_macros.h"
 #include "base/notreached.h"
 #include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
@@ -177,11 +178,10 @@ std::u16string GetFormattedPhoneNumber(const AutofillProfile& profile,
 std::u16string GetFullSuggestionText(const Suggestion& suggestion) {
   std::vector<Suggestion::Text> all_text_parts;
   all_text_parts.push_back(suggestion.main_text);
-  all_text_parts.insert(all_text_parts.end(), suggestion.minor_texts.begin(),
-                        suggestion.minor_texts.end());
+  base::Extend(all_text_parts, suggestion.minor_texts);
 
   for (const std::vector<Suggestion::Text>& label : suggestion.labels) {
-    all_text_parts.insert(all_text_parts.end(), label.begin(), label.end());
+    base::Extend(all_text_parts, label);
   }
 
   return base::CollapseWhitespace(
@@ -332,6 +332,8 @@ std::vector<ProfileWithText> DeduplicatedProfilesForSuggestions(
     const std::vector<ProfileWithText>& matched_profiles,
     const FieldTypeSet& field_types,
     const AutofillProfileComparator& comparator) {
+  SCOPED_UMA_HISTOGRAM_TIMER(
+      "Autofill.Timing.DeduplicatedProfilesForSuggestions");
   std::vector<ProfileWithText> unique_matched_profiles;
   // Limit number of unique profiles as having too many makes the
   // browser hang due to drawing calculations (and is also not
@@ -477,7 +479,9 @@ std::vector<AutofillProfile> GetProfilesToSuggest(
   // Similarly, prefix matching is disabled for <select> fields. Select fields
   // are only used as trigger fields during actor flows, in which the initial
   // value is likely irrelevant.
-  if (!trigger_field.is_autofilled() &&
+  // TODO(crbug.com/393114125): Change to use `AutofillField::field_modifiers_`
+  // after launching `kAutofillFixIsAutofilled`.
+  if (!trigger_field.is_autofilled_according_to_renderer() &&
       trigger_field.form_control_type() != FormControlType::kSelectOne) {
     profiles_to_suggest = GetPrefixMatchedProfiles(
         profiles_to_suggest, trigger_field_type, normalized_field_contents);
@@ -509,7 +513,10 @@ std::vector<AutofillProfile> GetProfilesToSuggest(
   // filtering logic after it, this case is fine since for field-by-field
   // filling suggestions, deduplication is rather trivial and the problem
   // explained above wouldn't apply.
-  if (trigger_field.is_autofilled() && profiles_to_suggest.size() > 1 &&
+  // TODO(crbug.com/393114125): Change to use `AutofillField::field_modifiers_`
+  // after launching `kAutofillFixIsAutofilled`.
+  if (trigger_field.is_autofilled_according_to_renderer() &&
+      profiles_to_suggest.size() > 1 &&
       base::FeatureList::IsEnabled(
           features::kAutofillImproveAddressFieldSwapping)) {
     std::erase_if(profiles_to_suggest, [&](const ProfileWithText& profile) {
@@ -517,7 +524,10 @@ std::vector<AutofillProfile> GetProfilesToSuggest(
     });
     CHECK(!profiles_to_suggest.empty());
   }
-  if (trigger_field.is_autofilled() && profiles_to_suggest.size() > 1) {
+  // TODO(crbug.com/393114125): Change to use `AutofillField::field_modifiers_`
+  // after launching `kAutofillFixIsAutofilled`.
+  if (trigger_field.is_autofilled_according_to_renderer() &&
+      profiles_to_suggest.size() > 1) {
     // This is just a simulation of the logic behind the feature flag in order
     // to understand the reason behind the CHECK failure. Profiles are copied so
     // that the ones used for suggestions are not modified and the branch
@@ -599,20 +609,11 @@ std::vector<Suggestion> CreateSuggestionsFromProfiles(
       profiles, field_types, trigger_field_type, app_locale);
   FieldTypeGroup trigger_field_type_group =
       GroupTypeOfFieldType(trigger_field_type);
-  // If `features::kAutofillImprovedLabels` is enabled, name fields should have
-  // `NAME_FULL` as main text, unless in field by field filling mode.
-  FieldType main_text_field_type =
-      GroupTypeOfFieldType(trigger_field_type) == FieldTypeGroup::kName &&
-              !IsAlternativeNameType(trigger_field_type) &&
-              suggestion_type != SuggestionType::kAddressFieldByFieldFilling &&
-              base::FeatureList::IsEnabled(features::kAutofillImprovedLabels)
-          ? NAME_FULL
-          : trigger_field_type;
   for (size_t i = 0; i < profiles.size(); ++i) {
     const AutofillProfile& profile = profiles[i];
     // Compute the main text to be displayed in the suggestion bubble.
     std::u16string main_text = GetProfileSuggestionMainText(
-        profile, app_locale, trigger_field, main_text_field_type);
+        profile, app_locale, trigger_field, trigger_field_type);
     if (trigger_field_type_group == FieldTypeGroup::kPhone) {
       main_text = GetFormattedPhoneNumber(
           profile, app_locale,
@@ -693,7 +694,9 @@ SuggestionType GetSuggestionType(FormFieldData trigger_field) {
   // If the user triggers suggestions on an autofilled field, field-by-field
   // filling suggestions should be shown so that the user could easily correct
   // values to something present in different stored addresses.
-  return trigger_field.is_autofilled()
+  // TODO(crbug.com/393114125): Change to use `AutofillField::field_modifiers_`
+  // after launching `kAutofillFixIsAutofilled`.
+  return trigger_field.is_autofilled_according_to_renderer()
              ? SuggestionType::kAddressFieldByFieldFilling
              : SuggestionType::kAddressEntry;
 }
@@ -1191,7 +1194,11 @@ std::vector<Suggestion> AddressSuggestionGenerator::GenerateAddressSuggestions(
     return {};
   }
   base::Extend(suggestions,
-               GetAddressFooterSuggestions(trigger_field.is_autofilled()));
+               // TODO(crbug.com/393114125): Change to use
+               // `AutofillField::field_modifiers_` after launching
+               // `kAutofillFixIsAutofilled`.
+               GetAddressFooterSuggestions(
+                   trigger_field.is_autofilled_according_to_renderer()));
   return suggestions;
 }
 

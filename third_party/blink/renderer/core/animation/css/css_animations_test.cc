@@ -12,6 +12,7 @@
 #include "third_party/blink/renderer/core/animation/animation_test_helpers.h"
 #include "third_party/blink/renderer/core/animation/css/css_animation.h"
 #include "third_party/blink/renderer/core/animation/deferred_timeline.h"
+#include "third_party/blink/renderer/core/animation/document_animations.h"
 #include "third_party/blink/renderer/core/animation/document_timeline.h"
 #include "third_party/blink/renderer/core/animation/element_animations.h"
 #include "third_party/blink/renderer/core/animation/timeline_trigger.h"
@@ -19,6 +20,7 @@
 #include "third_party/blink/renderer/core/css/cssom/css_numeric_value.h"
 #include "third_party/blink/renderer/core/dom/dom_token_list.h"
 #include "third_party/blink/renderer/core/dom/pseudo_element.h"
+#include "third_party/blink/renderer/core/frame/local_dom_window.h"
 #include "third_party/blink/renderer/core/html_names.h"
 #include "third_party/blink/renderer/core/layout/layout_object.h"
 #include "third_party/blink/renderer/core/layout/layout_object_inlines.h"
@@ -135,6 +137,11 @@ class CSSAnimationsTest : public RenderingTest, public PaintTestConfigurations {
 
   bool HasDeferredTimeline(Element* element, const char* name) const {
     return GetDeferredTimeline(element, name) != nullptr;
+  }
+
+  DeferredTimeline& GetGlobalDeferredTimeline(const char* name) const {
+    return GetDocument().GetDocumentAnimations().GetGlobalDeferredTimeline(
+        AtomicString(name));
   }
 
  private:
@@ -1455,6 +1462,107 @@ TEST_P(CSSAnimationsTest, DeferredTimelineAttachment_Insert_Remove) {
   }
 }
 
+TEST_P(CSSAnimationsTest, DeferredTimelineGlobal) {
+  ScopedCSSTimelineScopeGlobalForTest scoped_feature(true);
+
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      /* No timeline-scope here. */
+      #scroll1 {
+        scroll-timeline: --t;
+      }
+      @keyframes anim {
+        from { width: 100px; }
+        to { width: 200px; }
+      }
+      #target {
+        animation: 1000s linear anim;
+        animation-timeline: --t
+      }
+    </style>
+    <div>
+      <div id=target></div>
+      <div id=scroll1></div>
+    </div>
+  )HTML");
+
+  Element* target = GetElementById("target");
+  ASSERT_TRUE(target);
+  Element* scroll1 = GetElementById("scroll1");
+  ASSERT_TRUE(scroll1);
+
+  ScrollTimeline* scroll_timeline = GetScrollTimeline(scroll1, "--t");
+  EXPECT_TRUE(scroll_timeline);
+  DeferredTimeline& deferred_timeline = GetGlobalDeferredTimeline("--t");
+  EXPECT_EQ(scroll_timeline, deferred_timeline.ExposedTimeline());
+
+  ElementAnimations* animations = target->GetElementAnimations();
+  ASSERT_EQ(1u, animations->Animations().size());
+  Animation* animation = (*animations->Animations().begin()).key;
+  ASSERT_TRUE(animation);
+
+  // The animation should be attached to the global deferred timeline,
+  // which in turn is attached to the scroll timeline.
+  EXPECT_EQ(&deferred_timeline, animation->TimelineInternal());
+  EXPECT_EQ(scroll_timeline, animation->timeline());
+}
+
+TEST_P(CSSAnimationsTest, DeferredTimelineGlobalVsRoot) {
+  ScopedCSSTimelineScopeGlobalForTest scoped_feature(true);
+
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      :root {
+        timeline-scope: all;
+      }
+      #scroll1 {
+        scroll-timeline: --t;
+      }
+      @keyframes anim {
+        from { width: 100px; }
+        to { width: 200px; }
+      }
+      #target {
+        animation: 1000s linear anim;
+        animation-timeline: --t
+      }
+    </style>
+    <div>
+      <div id=target></div>
+      <div id=scroll1></div>
+    </div>
+  )HTML");
+
+  Element* root = GetDocument().documentElement();
+  ASSERT_TRUE(root);
+  Element* target = GetElementById("target");
+  ASSERT_TRUE(target);
+  Element* scroll1 = GetElementById("scroll1");
+  ASSERT_TRUE(scroll1);
+
+  // There should be nothing attached to the document-global timeline;
+  // `--t` should be attached to a deferred timeline on `root` instead.
+  DeferredTimeline& global_deferred_timeline = GetGlobalDeferredTimeline("--t");
+  EXPECT_EQ(nullptr, global_deferred_timeline.ExposedTimeline());
+
+  ScrollTimeline* scroll_timeline = GetScrollTimeline(scroll1, "--t");
+  EXPECT_TRUE(scroll_timeline);
+  DeferredTimeline* root_timeline = GetDeferredTimeline(root, "--t");
+  ASSERT_TRUE(root_timeline);
+  EXPECT_EQ(scroll_timeline, root_timeline->ExposedTimeline());
+
+  ElementAnimations* animations = target->GetElementAnimations();
+  ASSERT_EQ(1u, animations->Animations().size());
+  Animation* animation = (*animations->Animations().begin()).key;
+  ASSERT_TRUE(animation);
+
+  // The animation should be attached to the root deferred timeline
+  // (not the document-global one), which in turn is attached
+  // to the scroll timeline.
+  EXPECT_EQ(root_timeline, animation->TimelineInternal());
+  EXPECT_EQ(scroll_timeline, animation->timeline());
+}
+
 TEST_P(CSSAnimationsTest, OpacityUnchangedWhileDeferred) {
   SetBodyInnerHTML(R"HTML(
     <style>
@@ -1566,12 +1674,13 @@ void VerifyTriggerRangeBoundary(
 
 class CSSAnimationsTriggerTest : public CSSAnimationsTest {
  public:
-  void TestTimelineTrigger(TimelineTrigger* trigger,
-                           std::optional<bool> expect_view_timeline,
-                           TimelineTrigger::RangeBoundary* expected_start,
-                           TimelineTrigger::RangeBoundary* expected_end,
-                           TimelineTrigger::RangeBoundary* expected_exit_start,
-                           TimelineTrigger::RangeBoundary* expected_exit_end);
+  void TestTimelineTrigger(
+      TimelineTrigger* trigger,
+      std::optional<bool> expect_view_timeline,
+      TimelineTrigger::RangeBoundary* expected_activation_start,
+      TimelineTrigger::RangeBoundary* expected_activation_end,
+      TimelineTrigger::RangeBoundary* expected_exit_start,
+      TimelineTrigger::RangeBoundary* expected_exit_end);
 
   void TestRangeStartChange(
       Element* target,
@@ -1664,8 +1773,8 @@ INSTANTIATE_PAINT_TEST_SUITE_P(CSSAnimationsTriggerTest);
 void CSSAnimationsTriggerTest::TestTimelineTrigger(
     TimelineTrigger* trigger,
     std::optional<bool> expect_view_timeline,
-    TimelineTrigger::RangeBoundary* expected_start,
-    TimelineTrigger::RangeBoundary* expected_end,
+    TimelineTrigger::RangeBoundary* expected_activation_start,
+    TimelineTrigger::RangeBoundary* expected_activation_end,
     TimelineTrigger::RangeBoundary* expected_exit_start,
     TimelineTrigger::RangeBoundary* expected_exit_end) {
   EXPECT_NE(trigger, nullptr);
@@ -1679,20 +1788,21 @@ void CSSAnimationsTriggerTest::TestTimelineTrigger(
     EXPECT_TRUE(timeline->IsViewTimeline());
   }
 
-  const TimelineTrigger::RangeBoundary* range_start =
-      trigger->EntryRangeStart();
-  VerifyTriggerRangeBoundary(range_start, expected_start);
+  const TimelineTrigger::RangeBoundary* activation_range_start =
+      trigger->ActivationRangeStart();
+  VerifyTriggerRangeBoundary(activation_range_start, expected_activation_start);
 
-  const TimelineTrigger::RangeBoundary* range_end = trigger->EntryRangeEnd();
-  VerifyTriggerRangeBoundary(range_end, expected_end);
+  const TimelineTrigger::RangeBoundary* activation_range_end =
+      trigger->ActivationRangeEnd();
+  VerifyTriggerRangeBoundary(activation_range_end, expected_activation_end);
 
-  const TimelineTrigger::RangeBoundary* exit_range_start =
+  const TimelineTrigger::RangeBoundary* exit_activation_range_start =
       trigger->ActiveRangeStart();
-  VerifyTriggerRangeBoundary(exit_range_start, expected_exit_start);
+  VerifyTriggerRangeBoundary(exit_activation_range_start, expected_exit_start);
 
-  const TimelineTrigger::RangeBoundary* exit_range_end =
+  const TimelineTrigger::RangeBoundary* exit_activation_range_end =
       trigger->ActiveRangeEnd();
-  VerifyTriggerRangeBoundary(exit_range_end, expected_exit_end);
+  VerifyTriggerRangeBoundary(exit_activation_range_end, expected_exit_end);
 }
 
 TEST_P(CSSAnimationsTriggerTest, TimelineTriggerOnceOnly) {
@@ -2080,7 +2190,8 @@ void CSSAnimationsTriggerTest::TestRangeStartChange(
   } else {
     EXPECT_NE(old_trigger, new_trigger);
   }
-  VerifyTriggerRangeBoundary(new_trigger->EntryRangeStart(), expected_boundary);
+  VerifyTriggerRangeBoundary(new_trigger->ActivationRangeStart(),
+                             expected_boundary);
 }
 
 TEST_P(CSSAnimationsTriggerTest, TimelineTriggerChangeRangeStart) {
@@ -2288,14 +2399,16 @@ TEST_P(CSSAnimationsTriggerTest, DeviceScaleFactor) {
   Element* target = GetDocument().getElementById(AtomicString("target"));
 
   TimelineTrigger* trigger = DynamicTo<TimelineTrigger>(GetTrigger(*target));
-  const RangeBoundary* range_start = trigger->EntryRangeStart();
-  const RangeBoundary* range_end = trigger->EntryRangeEnd();
+  const RangeBoundary* activation_range_start = trigger->ActivationRangeStart();
+  const RangeBoundary* activation_range_end = trigger->ActivationRangeEnd();
 
-  EXPECT_TRUE(range_start->IsTimelineRangeOffset());
-  EXPECT_TRUE(range_end->IsTimelineRangeOffset());
+  EXPECT_TRUE(activation_range_start->IsTimelineRangeOffset());
+  EXPECT_TRUE(activation_range_end->IsTimelineRangeOffset());
 
-  TimelineRangeOffset* start_offset = range_start->GetAsTimelineRangeOffset();
-  TimelineRangeOffset* end_offset = range_end->GetAsTimelineRangeOffset();
+  TimelineRangeOffset* start_offset =
+      activation_range_start->GetAsTimelineRangeOffset();
+  TimelineRangeOffset* end_offset =
+      activation_range_end->GetAsTimelineRangeOffset();
 
   CSSPrimitiveValue* value_100px =
       CSSNumericLiteralValue::Create(100, CSSPrimitiveValue::UnitType::kPixels);
@@ -2663,6 +2776,105 @@ TEST_P(CSSAnimationsTriggerTest, UnequalAnimationAttachments) {
   EXPECT_EQ(animations.size(), 1);
 
   test_attachments(animations, transform_property);
+}
+
+TEST_P(CSSAnimationsTriggerTest, CoordinatedTimelineTriggerDeclarations) {
+  SetBodyInnerHTML(R"HTML(
+    <style>
+      .view {
+        timeline-trigger-name: --trigger1, --trigger2;
+        timeline-trigger-source: view();
+      }
+      .view_auto {
+        timeline-trigger-name: --trigger1, --trigger2;
+        timeline-trigger-source: view(), auto;
+      }
+      .auto_view {
+        timeline-trigger-name: --trigger1, --trigger2;
+        timeline-trigger-source: auto, view();
+      }
+
+      #source {
+        height: 50px;
+        width: 50px;
+      }
+
+      #space {
+        width: 50px;
+        height: 600px;
+      }
+      .scroller {
+        overflow-y: scroll;
+        height: 500px;
+        width: 500px;
+        border: solid 1px;
+        position: relative;
+      }
+    </style>
+    <div id="scroller" class="scroller">
+      <div id="space"></div>
+      <div id="source" class="source"></div>
+      <div id="space"></div>
+    </div>
+  )HTML");
+
+  Element* source = GetDocument().getElementById(AtomicString("source"));
+
+  const auto test_timeline_type = [&](TimelineTrigger* trigger, bool is_view,
+                                      bool is_scroll, bool is_document) {
+    EXPECT_EQ(source->NamedTriggers()->size(), 2);
+
+    EXPECT_EQ(trigger->Timeline()->IsViewTimeline(), is_view);
+    EXPECT_EQ(trigger->Timeline()->IsScrollTimeline(), is_scroll);
+    EXPECT_EQ(trigger->Timeline()->IsDocumentTimeline(), is_document);
+  };
+
+  const auto get_trigger = [&](AtomicString name) {
+    // To get the same hash in the NamedTriggers map, we need the same tree
+    // scope in the ScopedCSSName keys of the map.
+    const ScopedCSSName* scoped_name = MakeGarbageCollected<ScopedCSSName>(
+        name, source->NamedTriggers()->begin()->key->GetTreeScope());
+    return To<TimelineTrigger>(source->NamedTrigger(scoped_name));
+  };
+
+  LocalDOMWindow* window = GetFrame().DomWindow();
+  source->classList().Add(AtomicString("view"));
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(
+      window->getComputedStyle(source)->getPropertyValue("timeline-trigger"),
+      String("--trigger1 view(), --trigger2 view()"));
+  test_timeline_type(get_trigger(AtomicString("--trigger1")),
+                     /*is_view=*/true, /*is_scroll=*/true,
+                     /*is_document=*/false);
+  test_timeline_type(get_trigger(AtomicString("--trigger2")),
+                     /*is_view=*/true, /*is_scroll=*/true,
+                     /*is_document=*/false);
+
+  source->classList().Remove(AtomicString("view"));
+  source->classList().Add(AtomicString("view_auto"));
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(
+      window->getComputedStyle(source)->getPropertyValue("timeline-trigger"),
+      String("--trigger1 view(), --trigger2"));
+  test_timeline_type(get_trigger(AtomicString("--trigger1")),
+                     /*is_view=*/true,
+                     /*is_scroll=*/true, /*is_document=*/false);
+  test_timeline_type(get_trigger(AtomicString("--trigger2")),
+                     /*is_view=*/false,
+                     /*is_scroll=*/false, /*is_document=*/true);
+
+  source->classList().Remove(AtomicString("view_auto"));
+  source->classList().Add(AtomicString("auto_view"));
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(
+      window->getComputedStyle(source)->getPropertyValue("timeline-trigger"),
+      String("--trigger1, --trigger2 view()"));
+  test_timeline_type(get_trigger(AtomicString("--trigger1")),
+                     /*is_view=*/false,
+                     /*is_scroll=*/false, /*is_document=*/true);
+  test_timeline_type(get_trigger(AtomicString("--trigger2")),
+                     /*is_view=*/true,
+                     /*is_scroll=*/true, /*is_document=*/false);
 }
 
 }  // namespace blink

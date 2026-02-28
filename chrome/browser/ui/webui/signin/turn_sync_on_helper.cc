@@ -20,6 +20,7 @@
 #include "base/no_destructor.h"
 #include "base/supports_user_data.h"
 #include "base/task/sequenced_task_runner.h"
+#include "base/time/time.h"
 #include "base/timer/elapsed_timer.h"
 #include "chrome/browser/enterprise/browser_management/management_service_factory.h"
 #include "chrome/browser/enterprise/util/managed_browser_utils.h"
@@ -488,6 +489,10 @@ void TurnSyncOnHelper::SigninAndShowSyncConfirmationUI() {
     sync_startup_state_observer_ = SyncServiceStartupStateObserver::
         MaybeCreateSyncServiceStateObserverForAccountWithClouldPolicies(
             sync_service, profile_, account_info_,
+            // Note that `startup_delay` is not taken into account, as
+            // this call will produce a legacy observer implementation which
+            // does not uses this argument.
+            /*startup_delay=*/base::Seconds(0),
             base::BindOnce(&TurnSyncOnHelper::ShowSyncConfirmationUI,
                            weak_pointer_factory_.GetWeakPtr()));
     if (sync_startup_state_observer_) {
@@ -651,7 +656,8 @@ void TurnSyncOnHelper::AbortAndDelete() {
   if (!initial_primary_account_.empty() &&
       identity_manager_->HasAccountWithRefreshToken(initial_primary_account_)) {
     identity_manager_->GetPrimaryAccountMutator()->SetPrimaryAccount(
-        initial_primary_account_, signin::ConsentLevel::kSignin);
+        initial_primary_account_, signin::ConsentLevel::kSignin,
+        signin_metrics::AccessPoint::kUnknown);
   }
 
   switch (signin_aborted_mode_) {

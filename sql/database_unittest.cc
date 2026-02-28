@@ -18,11 +18,13 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <tuple>
 #include <utility>
 #include <vector>
 
 #include "base/check.h"
+#include "base/check_op.h"
 #include "base/containers/span.h"
 #include "base/files/file.h"
 #include "base/files/file_util.h"
@@ -34,6 +36,8 @@
 #include "base/memory/scoped_refptr.h"
 #include "base/run_loop.h"
 #include "base/sequence_checker.h"
+#include "base/strings/cstring_view.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_number_conversions.h"
 #include "base/strings/string_view_util.h"
 #include "base/strings/stringprintf.h"
@@ -51,25 +55,36 @@
 #include "sql/database_memory_dump_provider.h"
 #include "sql/meta_table.h"
 #include "sql/recovery.h"
+#include "sql/sqlite_result_code.h"
 #include "sql/statement.h"
 #include "sql/statement_id.h"
 #include "sql/test/scoped_error_expecter.h"
 #include "sql/test/test_helpers.h"
+#include "sql/test/test_vfs.h"
 #include "sql/transaction.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
 #include "third_party/abseil-cpp/absl/cleanup/cleanup.h"
 #include "third_party/sqlite/sqlite3.h"
 
-#if BUILDFLAG(IS_WIN)
-#include "base/strings/strcat.h"
-#endif
-
 namespace sql {
 
 namespace {
 
-using sql::test::ExecuteWithResult;
+using ::sql::test::ExecuteWithResult;
+using ::sql::test::TestVfs;
+using ::testing::Bool;
+using ::testing::Combine;
+using ::testing::Contains;
+using ::testing::ElementsAre;
+using ::testing::Eq;
+using ::testing::Field;
+using ::testing::IsEmpty;
+using ::testing::Not;
+using ::testing::Optional;
+using ::testing::Test;
+using ::testing::Values;
+using ::testing::WithParamInterface;
 
 // Helper to return the count of items in sqlite_schema.  Return -1 in
 // case of error.
@@ -120,8 +135,7 @@ int64_t CheckedGetFileSize(const base::FilePath& file_path) {
 }  // namespace
 
 // We use the parameter to run all tests with WAL mode on and off.
-class SQLDatabaseTest : public testing::Test,
-                        public testing::WithParamInterface<bool> {
+class SQLDatabaseTest : public Test, public WithParamInterface<bool> {
  public:
   enum class OverwriteType {
     kTruncate,
@@ -150,16 +164,7 @@ class SQLDatabaseTest : public testing::Test,
   }
 
   DatabaseOptions GetDBOptions() {
-    return DatabaseOptions()
-        .set_wal_mode(IsWALEnabled())
-    // TODO(crbug.com/40146017): Remove after switching to exclusive mode on by
-    // default.
-#if BUILDFLAG(IS_FUCHSIA)  // Exclusive mode needs to be enabled to enter WAL
-        .set_exclusive_locking(IsWALEnabled())
-#else
-        .set_exclusive_locking(false)
-#endif  // BUILDFLAG(IS_FUCHSIA)
-        ;
+    return DatabaseOptions().set_wal_mode(IsWALEnabled());
   }
 
   bool IsWALEnabled() { return GetParam(); }
@@ -182,6 +187,12 @@ class SQLDatabaseTest : public testing::Test,
                                      "Now is the winter of our discontent."));
   }
 
+  void RecreateWithSharedLocking() {
+    db_.reset();
+    db_ = std::make_unique<Database>(
+        GetDBOptions().set_exclusive_locking(false), test::kTestTag);
+  }
+
  protected:
   base::ScopedTempDir temp_dir_;
   base::FilePath db_path_;
@@ -191,6 +202,35 @@ class SQLDatabaseTest : public testing::Test,
 TEST_P(SQLDatabaseTest, Execute_ValidStatement) {
   ASSERT_TRUE(db_->Execute("CREATE TABLE data(contents TEXT)"));
   EXPECT_EQ(SQLITE_OK, db_->GetErrorCode());
+}
+
+TEST_P(SQLDatabaseTest, ReleaseCacheMemoryIfNeeded) {
+  db_.reset();
+  ASSERT_TRUE(base::DeleteFile(db_path_));
+
+  auto run_test = [&](bool release_memory) -> int {
+    DatabaseOptions options = GetDBOptions();
+    options.set_release_memory_after_writes(release_memory);
+    Database db(options, test::kTestTag);
+    EXPECT_TRUE(db.Open(db_path_));
+    EXPECT_TRUE(db.Execute("CREATE TABLE data(contents TEXT)"));
+    for (int i = 0; i < 1000; ++i) {
+      EXPECT_TRUE(db.Execute("INSERT INTO data VALUES('Hello world')"));
+    }
+    int current_memory_usage = 0;
+    int highwater = 0;
+    CHECK_EQ(ToSqliteResultCode(sqlite3_status(
+                 SQLITE_STATUS_MEMORY_USED, &current_memory_usage, &highwater,
+                 /*resetFlag=*/0)),
+             SqliteResultCode::kOk);
+    return current_memory_usage;
+  };
+
+  const int memory_usage_without_release = run_test(false);
+  ASSERT_TRUE(base::DeleteFile(db_path_));
+  const int memory_usage_with_release = run_test(true);
+
+  EXPECT_LT(memory_usage_with_release, memory_usage_without_release);
 }
 
 TEST_P(SQLDatabaseTest, Execute_InvalidStatement) {
@@ -513,7 +553,7 @@ TEST_P(SQLDatabaseTest, ResetErrorCallback) {
 // Regression test for https://crbug.com/1522873
 TEST_P(SQLDatabaseTest, ErrorCallbackThatClosesDb) {
   for (const bool reopen_db : {false, true}) {
-    SCOPED_TRACE(::testing::Message() << "reopen_db: " << reopen_db);
+    SCOPED_TRACE(testing::Message() << "reopen_db: " << reopen_db);
     // Ensure that `db_` is fresh in this iteration.
     CreateFreshDB();
     static constexpr char kCreateSql[] =
@@ -1117,11 +1157,20 @@ TEST_P(SQLDatabaseTest, RazePageSize) {
 
 // Test that Raze() results are seen in other connections.
 TEST_P(SQLDatabaseTest, RazeMultiple) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + non exclusive locking";
+  }
+#endif
+  RecreateWithSharedLocking();
+  EXPECT_TRUE(db_->Open(db_path_));
+
   static constexpr char kCreateSql[] =
       "CREATE TABLE foo (id INTEGER PRIMARY KEY, value)";
   ASSERT_TRUE(db_->Execute(kCreateSql));
 
-  Database other_db(GetDBOptions(), test::kTestTag);
+  Database other_db(GetDBOptions().set_exclusive_locking(false),
+                    test::kTestTag);
   ASSERT_TRUE(other_db.Open(db_path_));
 
   // Check that the second connection sees the table.
@@ -1134,9 +1183,18 @@ TEST_P(SQLDatabaseTest, RazeMultiple) {
 }
 
 TEST_P(SQLDatabaseTest, Raze_OtherConnectionHasWriteLock) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + non exclusive locking";
+  }
+#endif
+  RecreateWithSharedLocking();
+  EXPECT_TRUE(db_->Open(db_path_));
+
   ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id INTEGER PRIMARY KEY)"));
 
-  Database other_db(GetDBOptions(), test::kTestTag);
+  Database other_db(GetDBOptions().set_exclusive_locking(false),
+                    test::kTestTag);
   ASSERT_TRUE(other_db.Open(db_path_));
 
   Transaction other_db_transaction(&other_db);
@@ -1152,6 +1210,14 @@ TEST_P(SQLDatabaseTest, Raze_OtherConnectionHasWriteLock) {
 }
 
 TEST_P(SQLDatabaseTest, Raze_OtherConnectionHasReadLock) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + non exclusive locking";
+  }
+#endif
+  RecreateWithSharedLocking();
+  EXPECT_TRUE(db_->Open(db_path_));
+
   ASSERT_TRUE(db_->Execute("CREATE TABLE rows(id INTEGER PRIMARY KEY)"));
   ASSERT_TRUE(db_->Execute("INSERT INTO rows(id) VALUES(1)"));
 
@@ -1161,7 +1227,8 @@ TEST_P(SQLDatabaseTest, Raze_OtherConnectionHasReadLock) {
     return;
   }
 
-  Database other_db(GetDBOptions(), test::kTestTag);
+  Database other_db(GetDBOptions().set_exclusive_locking(false),
+                    test::kTestTag);
   ASSERT_TRUE(other_db.Open(db_path_));
 
   Statement select(other_db.GetUniqueStatement("SELECT id FROM rows"));
@@ -1191,15 +1258,23 @@ TEST_P(SQLDatabaseTest, Raze_EmptyDatabaseFile) {
 }
 
 // Verify that Raze() can handle a file of junk.
-// Need exclusive mode off here as there are some subtleties (by design) around
-// how the cache is used with it on which causes the test to fail.
 TEST_P(SQLDatabaseTest, RazeNOTADB) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + non exclusive locking";
+  }
+#endif
+
   db_->Close();
   Database::Delete(db_path_);
   ASSERT_FALSE(base::PathExists(db_path_));
 
   ASSERT_TRUE(OverwriteDatabaseHeader(OverwriteType::kTruncate));
   ASSERT_TRUE(base::PathExists(db_path_));
+
+  // Need exclusive mode off here as there are some subtleties (by design)
+  // around how the cache is used with it on which causes the test to fail.
+  RecreateWithSharedLocking();
 
   // SQLite will successfully open the handle, but fail when running PRAGMA
   // statements that access the database.
@@ -1220,6 +1295,12 @@ TEST_P(SQLDatabaseTest, RazeNOTADB) {
 
 // Verify that Raze() can handle a database overwritten with garbage.
 TEST_P(SQLDatabaseTest, RazeNOTADB2) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + non exclusive locking";
+  }
+#endif
+
   static constexpr char kCreateSql[] =
       "CREATE TABLE foo (id INTEGER PRIMARY KEY, value)";
   ASSERT_TRUE(db_->Execute(kCreateSql));
@@ -1227,6 +1308,10 @@ TEST_P(SQLDatabaseTest, RazeNOTADB2) {
   db_->Close();
 
   ASSERT_TRUE(OverwriteDatabaseHeader(OverwriteType::kOverwrite));
+
+  // Need exclusive mode off here as there are some subtleties (by design)
+  // around how the cache is used with it on which causes the test to fail.
+  RecreateWithSharedLocking();
 
   // SQLite will successfully open the handle, but will fail with
   // SQLITE_NOTADB on pragma statemenets which attempt to read the
@@ -1800,7 +1885,7 @@ TEST_P(SQLDatabaseTest, FullIntegrityCheck) {
     std::vector<std::string> messages;
     EXPECT_TRUE(db_->FullIntegrityCheck(&messages))
         << "FullIntegrityCheck() failed before database was corrupted";
-    EXPECT_THAT(messages, testing::ElementsAre("ok"))
+    EXPECT_THAT(messages, ElementsAre("ok"))
         << "FullIntegrityCheck() should report ok before database is corrupted";
   }
 
@@ -1812,7 +1897,7 @@ TEST_P(SQLDatabaseTest, FullIntegrityCheck) {
     std::vector<std::string> messages;
     EXPECT_TRUE(db_->FullIntegrityCheck(&messages))
         << "FullIntegrityCheck() failed on corrupted database";
-    EXPECT_THAT(messages, testing::Not(testing::ElementsAre("ok")))
+    EXPECT_THAT(messages, Not(ElementsAre("ok")))
         << "FullIntegrityCheck() should not report ok for a corrupted database";
   }
 }
@@ -2102,18 +2187,11 @@ TEST_P(SQLDatabaseTest, ReOpenWithDifferentJournalMode) {
     // The Rollback journal should have a zero size when pending operations
     // are completed.
     std::optional<int64_t> journal_size = GetFileSize(journal_path);
-    EXPECT_THAT(journal_size, testing::Optional(0));
+    EXPECT_THAT(journal_size, Optional(0));
   }
 
   // Re-open the database with a different mode (Rollback vs WAL).
-  DatabaseOptions options =
-      GetDBOptions()
-          .set_wal_mode(!is_wal)
-#if BUILDFLAG(IS_FUCHSIA)
-          // Exclusive mode needs to be enabled to enter WAL mode on Fuchsia.
-          .set_exclusive_locking(!is_wal)
-#endif  // BUILDFLAG(IS_FUCHSIA)
-      ;
+  DatabaseOptions options = GetDBOptions().set_wal_mode(!is_wal);
 
   db_ = std::make_unique<Database>(options, test::kTestTag);
   ASSERT_TRUE(db_->Open(db_path_));
@@ -2134,8 +2212,8 @@ TEST_P(SQLDatabaseTest, ReOpenWithDifferentJournalMode) {
 #if BUILDFLAG(IS_WIN)
 
 class SQLDatabaseTestExclusiveFileLockMode
-    : public testing::Test,
-      public testing::WithParamInterface<::testing::tuple<bool, bool>> {
+    : public Test,
+      public WithParamInterface<std::tuple<bool, bool>> {
  public:
   ~SQLDatabaseTestExclusiveFileLockMode() override = default;
 
@@ -2149,7 +2227,6 @@ class SQLDatabaseTestExclusiveFileLockMode
   DatabaseOptions GetDBOptions() {
     return DatabaseOptions()
         .set_wal_mode(IsWALEnabled())
-        .set_exclusive_locking(true)
         .set_exclusive_database_file_lock(IsExclusivelockEnabled());
   }
 
@@ -2178,7 +2255,7 @@ TEST_P(SQLDatabaseTestExclusiveFileLockMode, BasicStatement) {
 INSTANTIATE_TEST_SUITE_P(
     All,
     SQLDatabaseTestExclusiveFileLockMode,
-    ::testing::Combine(::testing::Bool(), ::testing::Bool()),
+    Combine(Bool(), Bool()),
     [](const auto& info) {
       return base::StrCat(
           {std::get<0>(info.param) ? "WALEnabled" : "WALDisabled",
@@ -2186,8 +2263,8 @@ INSTANTIATE_TEST_SUITE_P(
     });
 
 class SQLDatabaseTestExclusiveFileLockWithSpecialChars
-    : public testing::Test,
-      public testing::WithParamInterface<base::FilePath::StringViewType> {
+    : public Test,
+      public WithParamInterface<base::FilePath::StringViewType> {
  public:
   ~SQLDatabaseTestExclusiveFileLockWithSpecialChars() override = default;
 
@@ -2213,24 +2290,24 @@ TEST_P(SQLDatabaseTestExclusiveFileLockWithSpecialChars, OpenDb) {
 
 INSTANTIATE_TEST_SUITE_P(All,
                          SQLDatabaseTestExclusiveFileLockWithSpecialChars,
-                         ::testing::Values(FILE_PATH_LITERAL("!"),
-                                           FILE_PATH_LITERAL("#"),
-                                           FILE_PATH_LITERAL("$"),
-                                           FILE_PATH_LITERAL("&"),
-                                           FILE_PATH_LITERAL("'"),
-                                           FILE_PATH_LITERAL("()"),
-                                           FILE_PATH_LITERAL("+"),
-                                           FILE_PATH_LITERAL(","),
-                                           FILE_PATH_LITERAL(";"),
-                                           FILE_PATH_LITERAL("="),
-                                           FILE_PATH_LITERAL("@"),
-                                           FILE_PATH_LITERAL("[]"),
-                                           FILE_PATH_LITERAL("%"),
-                                           FILE_PATH_LITERAL("%21"),
-                                           FILE_PATH_LITERAL("%23"),
-                                           FILE_PATH_LITERAL("%3f"),
-                                           FILE_PATH_LITERAL("_"),
-                                           FILE_PATH_LITERAL(" ")));
+                         Values(FILE_PATH_LITERAL("!"),
+                                FILE_PATH_LITERAL("#"),
+                                FILE_PATH_LITERAL("$"),
+                                FILE_PATH_LITERAL("&"),
+                                FILE_PATH_LITERAL("'"),
+                                FILE_PATH_LITERAL("()"),
+                                FILE_PATH_LITERAL("+"),
+                                FILE_PATH_LITERAL(","),
+                                FILE_PATH_LITERAL(";"),
+                                FILE_PATH_LITERAL("="),
+                                FILE_PATH_LITERAL("@"),
+                                FILE_PATH_LITERAL("[]"),
+                                FILE_PATH_LITERAL("%"),
+                                FILE_PATH_LITERAL("%21"),
+                                FILE_PATH_LITERAL("%23"),
+                                FILE_PATH_LITERAL("%3f"),
+                                FILE_PATH_LITERAL("_"),
+                                FILE_PATH_LITERAL(" ")));
 #else
 
 TEST(SQLInvalidDatabaseFlagsDeathTest, ExclusiveDatabaseLock) {
@@ -2248,38 +2325,20 @@ TEST(SQLInvalidDatabaseFlagsDeathTest, ExclusiveDatabaseLock) {
 
 #endif  // BUILDFLAG(IS_WIN)
 
-class SQLDatabaseTestExclusiveMode : public testing::Test,
-                                     public testing::WithParamInterface<bool> {
- public:
-  ~SQLDatabaseTestExclusiveMode() override = default;
-
-  void SetUp() override {
-    db_ = std::make_unique<Database>(GetDBOptions(), test::kTestTag);
-    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
-    db_path_ = temp_dir_.GetPath().AppendASCII("recovery_test.sqlite");
-    ASSERT_TRUE(db_->Open(db_path_));
+TEST_P(SQLDatabaseTest, NonExclusiveLockingMode) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support WAL + normal locking";
   }
+#endif
 
-  DatabaseOptions GetDBOptions() {
-    return DatabaseOptions()
-        .set_wal_mode(IsWALEnabled())
-        .set_exclusive_locking(true);
-  }
-
-  bool IsWALEnabled() { return GetParam(); }
-
- protected:
-  base::ScopedTempDir temp_dir_;
-  base::FilePath db_path_;
-  std::unique_ptr<Database> db_;
-};
-
-TEST_P(SQLDatabaseTestExclusiveMode, LockingModeExclusive) {
-  EXPECT_EQ(ExecuteWithResult(db_.get(), "PRAGMA locking_mode"), "exclusive");
+  RecreateWithSharedLocking();
+  EXPECT_TRUE(db_->Open(db_path_));
+  EXPECT_EQ(ExecuteWithResult(db_.get(), "PRAGMA locking_mode"), "normal");
 }
 
-TEST_P(SQLDatabaseTest, LockingModeNormal) {
-  EXPECT_EQ(ExecuteWithResult(db_.get(), "PRAGMA locking_mode"), "normal");
+TEST_P(SQLDatabaseTest, DefaultLockingMode) {
+  EXPECT_EQ(ExecuteWithResult(db_.get(), "PRAGMA locking_mode"), "exclusive");
 }
 
 TEST_P(SQLDatabaseTest, OpenedInCorrectMode) {
@@ -2287,8 +2346,9 @@ TEST_P(SQLDatabaseTest, OpenedInCorrectMode) {
 }
 
 TEST_P(SQLDatabaseTest, CheckpointDatabase) {
-  if (!IsWALEnabled())
-    return;
+  if (!IsWALEnabled()) {
+    GTEST_SKIP();
+  }
 
   // WAL file initially not present until there are modifications to the db.
   base::FilePath wal_path = Database::WriteAheadLogPath(db_path_);
@@ -2318,6 +2378,14 @@ TEST_P(SQLDatabaseTest, CheckpointDatabase) {
             "1");
   EXPECT_EQ(ExecuteWithResult(db_.get(), "SELECT value FROM foo where id=2"),
             "2");
+
+  // Checkpointing doesn't normally reduce the WAL file size, unless used with
+  // `truncate`.
+  std::optional<int64_t> post_checkpoint_wal_size = GetFileSize(wal_path);
+  EXPECT_EQ(post_checkpoint_wal_size, wal_size);
+  EXPECT_TRUE(db_->CheckpointDatabase(/*truncate=*/true));
+  std::optional<int64_t> post_truncate_wal_size = GetFileSize(wal_path);
+  EXPECT_EQ(post_truncate_wal_size, 0);
 }
 
 TEST_P(SQLDatabaseTest, WALCommitCallback) {
@@ -2444,14 +2512,13 @@ TEST_P(SQLDatabaseTest, WalAutocheckpoint) {
   }
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Sql.Database.AutoCheckpoint.Time.Test"),
-      testing::Not(testing::IsEmpty()));
+      Not(IsEmpty()));
   EXPECT_THAT(
       histogram_tester.GetAllSamples("Sql.Database.AutoCheckpoint.Result.Test"),
-      testing::Contains(
-          testing::Field(&base::Bucket::min, testing::Eq(SQLITE_OK))));
+      Contains(Field(&base::Bucket::min, Eq(SQLITE_OK))));
   EXPECT_THAT(histogram_tester.GetAllSamples(
                   "Sql.Database.AutoCheckpoint.FrameCount.Test"),
-              testing::Not(testing::IsEmpty()));
+              Not(IsEmpty()));
 }
 
 #if BUILDFLAG(IS_WIN)
@@ -2552,8 +2619,14 @@ TEST_P(SQLDatabaseTest, OpenFailsAfterCorruptSizeInHeader) {
 }
 
 TEST_P(SQLDatabaseTest, OpenWithRecoveryHandlesCorruption) {
+#if BUILDFLAG(IS_FUCHSIA)
+  if (IsWALEnabled()) {
+    GTEST_SKIP() << "Fuchsia doesn't support recovery in WAL mode";
+  }
+#endif
+
   for (const bool corrupt_after_recovery : {false, true}) {
-    SCOPED_TRACE(::testing::Message()
+    SCOPED_TRACE(testing::Message()
                  << "corrupt_after_recovery: " << corrupt_after_recovery);
     // Ensure that `db_` is fresh in this iteration.
     CreateFreshDB();
@@ -2684,22 +2757,16 @@ TEST(SQLEmptyPathDatabaseTest, EmptyPathTest) {
   EXPECT_TRUE(db.DbPath().empty());
 }
 
-// WAL mode is currently not supported on Fuchsia.
-#if !BUILDFLAG(IS_FUCHSIA)
-INSTANTIATE_TEST_SUITE_P(JournalMode, SQLDatabaseTest, testing::Bool());
 INSTANTIATE_TEST_SUITE_P(JournalMode,
-                         SQLDatabaseTestExclusiveMode,
-                         testing::Bool());
-#else
-INSTANTIATE_TEST_SUITE_P(JournalMode, SQLDatabaseTest, testing::Values(false));
-INSTANTIATE_TEST_SUITE_P(JournalMode,
-                         SQLDatabaseTestExclusiveMode,
-                         testing::Values(false));
-#endif
+                         SQLDatabaseTest,
+                         Bool(),
+                         [](const auto& info) {
+                           return info.param ? "Wal" : "RollbackJournal";
+                         });
 
 class ReadOnlySQLDatabaseTest
-    : public testing::Test,
-      public testing::WithParamInterface<std::tuple<bool, bool, bool>> {
+    : public Test,
+      public WithParamInterface<std::tuple<bool, bool, bool>> {
  protected:
   void SetUp() override {
     ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
@@ -2804,10 +2871,74 @@ TEST_P(ReadOnlySQLDatabaseTest, CreateAndSelect) {
   ASSERT_NO_FATAL_FAILURE(Select());
 }
 
-INSTANTIATE_TEST_SUITE_P(LockingMode,
-                         ReadOnlySQLDatabaseTest,
-                         testing::Combine(testing::Bool(),
-                                          testing::Bool(),
-                                          testing::Bool()));
+INSTANTIATE_TEST_SUITE_P(
+    LockingMode,
+    ReadOnlySQLDatabaseTest,
+    Combine(Bool(), Bool(), Bool()),
+    [](const auto& info) {
+      return base::StrCat(
+          {std::get<0>(info.param) ? "Wal" : "RollbackJournal",
+           std::get<1>(info.param) ? "Exclusive" : "NonExclusive",
+           std::get<2>(info.param) ? "ReadOnly" : "ReadWrite"});
+    });
+
+// An SQLite VFS for testing the Database class.
+class DatabaseTestVfs : public TestVfs {
+ public:
+  int Write(sqlite3_file* file,
+            const void* buffer,
+            int size,
+            sqlite3_int64 offset) override {
+    if (drive_full_) {
+      return SQLITE_FULL;
+    }
+    return TestVfs::Write(file, buffer, size, offset);
+  }
+
+  void set_drive_full(bool drive_full) { drive_full_ = drive_full; }
+
+ private:
+  bool drive_full_ = false;
+};
+
+std::optional<std::vector<int>> ReadInts(Database& db,
+                                         base::cstring_view query) {
+  std::vector<int> result;
+  Statement statement(db.GetUniqueStatement(query));
+  while (statement.Step()) {
+    result.push_back(statement.ColumnInt(0));
+  }
+  if (!statement.Succeeded()) {
+    return std::nullopt;
+  }
+  return result;
+}
+
+class DatabaseDiskFullTest : public Test {
+ public:
+  void SetUp() override {
+    ASSERT_TRUE(temp_dir_.CreateUniqueTempDir());
+    db_path_ = temp_dir_.GetPath().AppendASCII("main.db");
+  }
+
+ protected:
+  DatabaseTestVfs vfs_;
+  base::ScopedTempDir temp_dir_;
+  base::FilePath db_path_;
+};
+
+// Checks that `Database::Raze()` is a no-op when the disk is full.
+TEST_F(DatabaseDiskFullTest, RazeFailsWhenDiskIsFull) {
+  Database db(test::kTestTag);
+  ASSERT_TRUE(db.Open(db_path_));
+  ASSERT_TRUE(db.Execute("CREATE TABLE foo(i)"));
+  ASSERT_TRUE(db.Execute("INSERT INTO foo(i) VALUES(42)"));
+
+  // Force any further writes to fail.
+  vfs_.set_drive_full(true);
+
+  EXPECT_FALSE(db.Raze());
+  EXPECT_THAT(ReadInts(db, "SELECT i FROM foo"), Optional(ElementsAre(42)));
+}
 
 }  // namespace sql

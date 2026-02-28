@@ -13,8 +13,8 @@
 #include "base/android/scoped_java_ref.h"
 #include "base/memory/raw_ref.h"
 #include "base/observer_list.h"
+#include "chrome/browser/tab_list/tab_list_interface_observer.h"
 #include "chrome/browser/ui/android/tab_model/tab_model_observer.h"
-#include "chrome/browser/ui/tabs/tab_list_interface_observer.h"
 
 class TabAndroid;
 class TabModel;
@@ -73,6 +73,8 @@ class TabModelObserverJniBridge {
   void TabClosureCommitted(JNIEnv* env, TabAndroid* tab);
 
   void AllTabsClosureCommitted(JNIEnv* env);
+
+  void AllTabsAreClosing(JNIEnv* env);
 
   void TabRemoved(JNIEnv* env, TabAndroid* tab);
 

@@ -1692,9 +1692,10 @@ class FakeExtractionServiceObserver
  public:
   void OnPageContentExtracted(
       content::Page& page,
-      const optimization_guide::proto::AnnotatedPageContent& page_content)
-      override {
-    page_content_future_.SetValue(page_content);
+      scoped_refptr<
+          const page_content_annotations::RefCountedAnnotatedPageContent>
+          page_content) override {
+    page_content_future_.SetValue(page_content->data);
   }
   void Wait() { EXPECT_TRUE(page_content_future_.Wait()); }
   base::test::TestFuture<optimization_guide::proto::AnnotatedPageContent>
@@ -1722,6 +1723,8 @@ IN_PROC_BROWSER_TEST_F(
   // Should have cached data for page since there was an observer registered.
   ASSERT_TRUE(service->GetExtractedPageContentAndEligibilityForPage(
       web_contents->GetPrimaryPage()));
+  ASSERT_TRUE(service->GetServerUploadEligibilityForPage(
+      web_contents->GetPrimaryPage()));
 
   service->RemoveObserver(&observer);
 
@@ -1731,6 +1734,8 @@ IN_PROC_BROWSER_TEST_F(
 
   // Make sure cached content is cleared with a new navigation.
   ASSERT_FALSE(service->GetExtractedPageContentAndEligibilityForPage(
+      web_contents->GetPrimaryPage()));
+  ASSERT_FALSE(service->GetServerUploadEligibilityForPage(
       web_contents->GetPrimaryPage()));
 }
 

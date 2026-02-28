@@ -168,12 +168,16 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabUtilBrowserTest, NavigateToURLNormal) {
 IN_PROC_BROWSER_TEST_F(ExtensionTabUtilBrowserTest, NavigateToURLCheckFailure) {
 #if BUILDFLAG(ENABLE_EXTENSIONS)
   content::WebContents* web_contents = GetActiveWebContents();
+
+  ui_test_utils::BrowserCreatedObserver browser_created_observer;
+
   ExtensionTabUtil::NavigateToURL(WindowOpenDisposition::NEW_WINDOW,
                                   web_contents, GURL("chrome://version"));
-  // After opening a new window, the last active browser should be the new
-  // one.
-  BrowserWindowInterface* const new_browser =
-      GetLastActiveBrowserWindowInterfaceWithAnyProfile();
+
+  // Wait for the new browser to be created and get its pointer.
+  BrowserWindowInterface* const new_browser = browser_created_observer.Wait();
+  ASSERT_TRUE(new_browser);
+
   // Ensure it's not the same as the original browser.
   ASSERT_NE(browser(), new_browser);
   auto url = new_browser->GetTabStripModel()->GetActiveWebContents()->GetURL();
@@ -262,7 +266,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabUtilBrowserTest,
   // Navigate the tab to a different extension URL, and call OpenOptionsPage().
   // We should not reuse the current tab since it's opened to a page that isn't
   // the options page, and we don't want to arbitrarily close extension content.
-  // Regression test for crbug.com/587581.
+  // Regression test for crbug.com/41239902.
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
       browser(), options_in_tab->GetResourceURL("other.html")));
   EXPECT_TRUE(ExtensionTabUtil::OpenOptionsPage(options_in_tab, browser()));
@@ -298,7 +302,7 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabUtilBrowserTest,
   EXPECT_EQ(options_url, GetActiveUrl(browser()));
 
   // Navigate to chrome://extensions (no options). Calling OpenOptionsPage()
-  // should override that tab rather than opening a new tab. crbug.com/595253.
+  // should override that tab rather than opening a new tab. crbug.com/41244380.
   ASSERT_TRUE(ui_test_utils::NavigateToURL(
       browser(), GURL(chrome::kChromeUIExtensionsURL)));
   EXPECT_TRUE(ExtensionTabUtil::OpenOptionsPage(options_in_view, browser()));
@@ -487,8 +491,12 @@ IN_PROC_BROWSER_TEST_F(ExtensionTabUtilBrowserTest,
   regular = browser_created_observer->Wait();
   // There should be two browser windows open, regular and incognito.
   EXPECT_EQ(2u, chrome::GetTotalBrowserCount());
+
   // Ensure that the regular browser is the foreground browser.
+  ui_test_utils::WaitForBrowserSetLastActive(regular);
+  EXPECT_EQ(2u, chrome::GetTotalBrowserCount());
   EXPECT_EQ(regular, GetLastActiveBrowserWindowInterfaceWithAnyProfile());
+
   EXPECT_EQ(1, regular->tab_strip_model()->count());
   EXPECT_TRUE(content::WaitForLoadStop(
       regular->tab_strip_model()->GetActiveWebContents()));

@@ -65,6 +65,17 @@ TEST(FacilitatedPaymentsMetricsTest, LogPixCodeCopied) {
                                       /*expected_bucket_count=*/1);
 }
 
+TEST(FacilitatedPaymentsMetricsTest, LogPixCodeCopiedInIframe) {
+  base::HistogramTester histogram_tester;
+
+  LogPixCodeCopiedInIframe();
+
+  histogram_tester.ExpectUniqueSample(
+      "FacilitatedPayments.Pix.PixCodeCopied.Iframe",
+      /*sample=*/true,
+      /*expected_bucket_count=*/1);
+}
+
 TEST(FacilitatedPaymentsMetricsTest, LogEwalletPaymentLinkDetected) {
   base::HistogramTester histogram_tester;
 
@@ -503,7 +514,10 @@ INSTANTIATE_TEST_SUITE_P(
                     PixFlowExitedReason::kAutofillPaymentMethodsDisabled,
                     PixFlowExitedReason::kMerchantNotAllowlisted,
                     PixFlowExitedReason::kPixCodeInIFrame,
-                    PixFlowExitedReason::kFrameNotActive));
+                    PixFlowExitedReason::kFrameNotActive,
+                    PixFlowExitedReason::kCctWithGboardAsDefaultIme,
+                    PixFlowExitedReason::kStaticCode,
+                    PixFlowExitedReason::kIframeUrlNotAllowlisted));
 
 class FacilitatedPaymentsMetricsUkmTest : public testing::Test {
  public:

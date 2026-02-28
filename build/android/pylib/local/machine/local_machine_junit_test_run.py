@@ -74,6 +74,8 @@ class LocalMachineJunitTestRun(test_run.TestRun):
     ret = []
     for test_filter in self._test_instance.test_filters:
       ret += ['--gtest-filter', test_filter]
+    for test_filter_file in self._test_instance.test_filter_files:
+      ret += ['--test-launcher-filter-file', test_filter_file]
 
     if self._test_instance.package_filter:
       ret += ['--package-filter', self._test_instance.package_filter]
@@ -88,20 +90,34 @@ class LocalMachineJunitTestRun(test_run.TestRun):
     properties_jar_path = os.path.join(temp_dir, 'properties.jar')
     resource_apk = self._test_instance.resource_apk
     with zipfile.ZipFile(properties_jar_path, 'w') as z:
-      z.writestr('com/android/tools/test_config.properties',
-                 'android_resource_apk=%s\n' % resource_apk)
+      if resource_apk:
+        z.writestr('com/android/tools/test_config.properties',
+                   'android_resource_apk=%s\n' % resource_apk)
       props = [
           'application = android.app.Application',
-          'sdk = 29,36',
+          'sdk = %s' %
+          ('36' if self._test_instance.single_variant else '29,36'),
           ('shadows = org.chromium.testing.local.'
            'CustomShadowApplicationPackageManager'),
       ]
+
+      if not resource_apk:
+        # Setting manifest = NONE improves performance by avoiding Robolectric
+        # having to scan for and parse a dummy manifest.
+        props.append('manifest = NONE')
+
       z.writestr('robolectric.properties', '\n'.join(props))
     return properties_jar_path
 
   def _CreateJvmArgsList(self, for_listing=False, allow_debugging=True):
     # Creates a list of jvm_args (robolectric, code coverage, etc...)
     jvm_args = [
+        # JDK 17+ requires explicit opens for Robolectric reflection on
+        # internal fields:
+        # https://docs.oracle.com/en/java/javase/17/migrate/migrating-jdk-8-later-jdk-releases.html
+        '--add-opens=java.base/java.io=ALL-UNNAMED',
+        '--add-opens=java.base/java.lang=ALL-UNNAMED',
+        '--add-opens=java.base/java.util=ALL-UNNAMED',
         # Disable warning about mockito/bytebuddy dynamically adding an agent.
         '-XX:+EnableDynamicAgentLoading',
         '-Drobolectric.dependency.dir=%s' %

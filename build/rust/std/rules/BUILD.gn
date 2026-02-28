@@ -6,6 +6,14 @@
 
 import("//build/rust/cargo_crate.gni")
 
+config("max_codegen_units") {
+  # Force one CGU per module (it won't actually be 10,000). This is useful for
+  # compiler-builtins, which should have one intrinsic defined per object file.
+  # We put this in a config to override is_official_build's setting of
+  # -Ccodegen-units=1.
+  rustflags = [ "-Ccodegen-units=10000" ]
+}
+
 cargo_crate("addr2line") {
   crate_type = "rlib"
   crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/addr2line-0.25.1/src/lib.rs"
@@ -72,6 +80,19 @@ cargo_crate("addr2line") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "addr2line_bindings"
+    cpp_namespace = "rs_addr2line"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [
+        ":gimli_bindings",
+        ":rustc_std_workspace_alloc_bindings",
+        ":rustc_std_workspace_core_bindings",
+      ]
+    }
+  }
 }
 cargo_crate("adler2") {
   crate_type = "rlib"
@@ -128,6 +149,15 @@ cargo_crate("adler2") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "adler2_bindings"
+    cpp_namespace = "rs_adler2"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [ ":rustc_std_workspace_core_bindings" ]
+    }
+  }
 }
 cargo_crate("alloc") {
   crate_type = "rlib"
@@ -179,6 +209,7 @@ cargo_crate("alloc") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/ffi/c_str.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/ffi/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/fmt.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/intrinsics.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/lib.miri.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/lib.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/alloc/src/macros.rs",
@@ -246,6 +277,15 @@ cargo_crate("alloc") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "alloc_bindings"
+    cpp_namespace = "rs_alloc"
+    deps = []
+    deps += [
+      ":compiler_builtins_bindings",
+      ":core_bindings",
+    ]
+  }
 }
 cargo_crate("cfg_if") {
   crate_type = "rlib"
@@ -295,6 +335,12 @@ cargo_crate("cfg_if") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "cfg_if_bindings"
+    cpp_namespace = "rs_cfg_if"
+    deps = []
+    deps += [ ":rustc_std_workspace_core_bindings" ]
+  }
 }
 cargo_crate("compiler_builtins") {
   crate_type = "rlib"
@@ -303,7 +349,6 @@ cargo_crate("compiler_builtins") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/aarch64.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/aarch64_outline_atomics.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/arm.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/arm_linux.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/avr.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/float/add.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/float/cmp.rs",
@@ -343,6 +388,10 @@ cargo_crate("compiler_builtins") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/mem/x86_64.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/probestack.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/riscv.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/sync/arm_linux.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/sync/arm_thumb_shared.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/sync/mod.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/sync/thumbv6k.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/x86.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/compiler-builtins/compiler-builtins/src/x86_64.rs",
   ]
@@ -509,7 +558,10 @@ cargo_crate("compiler_builtins") {
     "//build/config/compiler:disallow_unstable_features",
     "//build/config/coverage:default_coverage",
   ]
-  library_configs += [ "//build/config/compiler:no_chromium_code" ]
+  library_configs += [
+    "//build/config/compiler:no_chromium_code",
+    ":max_codegen_units",
+  ]
   executable_configs -= [
     "//build/config/compiler:chromium_code",
     "//build/config/compiler:disallow_unstable_features",
@@ -538,6 +590,12 @@ cargo_crate("compiler_builtins") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "compiler_builtins_bindings"
+    cpp_namespace = "rs_compiler_builtins"
+    deps = []
+    deps += [ ":core_bindings" ]
+  }
 }
 cargo_crate("core") {
   crate_type = "rlib"
@@ -817,10 +875,7 @@ cargo_crate("core") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/core_simd_docs.md",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/fmt.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/iter.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/lane_count.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/lib.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/masks/bitmask.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/masks/full_masks.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/masks.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../portable-simd/crates/core_simd/src/ops/assign.rs",
@@ -913,6 +968,9 @@ cargo_crate("core") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/arm_shared/neon/table_lookup_tests.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/arm_shared/test_support.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/core_arch_docs.md",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/hexagon/mod.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/hexagon/v128.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/hexagon/v64.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/lib.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/loongarch32/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/core/src/../../stdarch/crates/core_arch/src/loongarch64/lasx/generated.rs",
@@ -1086,6 +1144,11 @@ cargo_crate("core") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "core_bindings"
+    cpp_namespace = "rs_core"
+    deps = []
+  }
 }
 cargo_crate("getopts") {
   crate_type = "rlib"
@@ -1141,6 +1204,15 @@ cargo_crate("getopts") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "getopts_bindings"
+    cpp_namespace = "rs_getopts"
+    deps = []
+    deps += [
+      ":rustc_std_workspace_core_bindings",
+      ":rustc_std_workspace_std_bindings",
+    ]
+  }
 }
 cargo_crate("gimli") {
   crate_type = "rlib"
@@ -1244,6 +1316,18 @@ cargo_crate("gimli") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "gimli_bindings"
+    cpp_namespace = "rs_gimli"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [
+        ":rustc_std_workspace_alloc_bindings",
+        ":rustc_std_workspace_core_bindings",
+      ]
+    }
+  }
 }
 cargo_crate("hashbrown") {
   crate_type = "rlib"
@@ -1327,6 +1411,15 @@ cargo_crate("hashbrown") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "hashbrown_bindings"
+    cpp_namespace = "rs_hashbrown"
+    deps = []
+    deps += [
+      ":rustc_std_workspace_alloc_bindings",
+      ":rustc_std_workspace_core_bindings",
+    ]
+  }
 }
 cargo_crate("libc") {
   crate_type = "rlib"
@@ -1689,6 +1782,15 @@ cargo_crate("libc") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "libc_bindings"
+    cpp_namespace = "rs_libc"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [ ":rustc_std_workspace_core_bindings" ]
+    }
+  }
 }
 cargo_crate("memchr") {
   crate_type = "rlib"
@@ -1787,6 +1889,15 @@ cargo_crate("memchr") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "memchr_bindings"
+    cpp_namespace = "rs_memchr"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [ ":rustc_std_workspace_core_bindings" ]
+    }
+  }
 }
 cargo_crate("miniz_oxide") {
   crate_type = "rlib"
@@ -1861,6 +1972,19 @@ cargo_crate("miniz_oxide") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "miniz_oxide_bindings"
+    cpp_namespace = "rs_miniz_oxide"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [
+        ":adler2_bindings",
+        ":rustc_std_workspace_alloc_bindings",
+        ":rustc_std_workspace_core_bindings",
+      ]
+    }
+  }
 }
 cargo_crate("object") {
   crate_type = "rlib"
@@ -2010,6 +2134,19 @@ cargo_crate("object") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "object_bindings"
+    cpp_namespace = "rs_object"
+    deps = []
+    deps += []
+    if (!is_win) {
+      deps += [
+        ":memchr_bindings",
+        ":rustc_std_workspace_alloc_bindings",
+        ":rustc_std_workspace_core_bindings",
+      ]
+    }
+  }
 }
 cargo_crate("panic_abort") {
   crate_type = "rlib"
@@ -2064,63 +2201,18 @@ cargo_crate("panic_abort") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
-}
-cargo_crate("panic_unwind") {
-  crate_type = "rlib"
-  crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/lib.rs"
-  sources = [
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/dummy.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/emcc.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/gcc.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/hermit.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/lib.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/miri.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/panic_unwind/src/seh.rs",
-  ]
-  inputs = []
-  no_std = true
-
-  # Unit tests skipped. Generate with --with-tests to include them.
-  build_native_rust_unit_tests = false
-  edition = "2024"
-  cargo_pkg_version = "0.0.0"
-  cargo_pkg_name = "panic_unwind"
-  cargo_pkg_description = "Implementation of Rust panics via stack unwinding"
-  cargo_pkg_repository = "https://github.com/rust-lang/rust.git"
-  library_configs -= [
-    "//build/config/compiler:chromium_code",
-    "//build/config/compiler:disallow_unstable_features",
-  ]
-  library_configs += [ "//build/config/compiler:no_chromium_code" ]
-  executable_configs -= [
-    "//build/config/compiler:chromium_code",
-    "//build/config/compiler:disallow_unstable_features",
-  ]
-  executable_configs += [ "//build/config/compiler:no_chromium_code" ]
-  deps = [
-    ":alloc",
-    ":rustc_std_workspace_core",
-    ":unwind",
-    "//build/rust/std:profiler_builtins_group",
-    "//build/rust/std:std_build_deps",
-  ]
-  if (!is_win) {
-    deps += [ ":libc" ]
+  cpp_api_from_rust = {
+    target_name = "panic_abort_bindings"
+    cpp_namespace = "rs_panic_abort"
+    deps = []
+    deps += [ ":rustc_std_workspace_core_bindings" ]
+    if (is_android) {
+      deps += [
+        ":alloc_bindings",
+        ":libc_bindings",
+      ]
+    }
   }
-  aliased_deps = {
-    core = ":rustc_std_workspace_core"
-  }
-  rustenv = [
-    "CFG_DISABLE_UNSTABLE_FEATURES=0",
-    "STD_ENV_ARCH=$rust_target_arch",
-  ]
-  rustflags = [
-    "--cfg=backtrace_in_libstd",
-    "-Zforce-unstable-if-unmarked",
-    "--cap-lints=allow",  # Suppress all warnings in stdlib crates
-  ]
-  output_dir =
-      "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
 }
 cargo_crate("proc_macro") {
   crate_type = "rlib"
@@ -2183,6 +2275,16 @@ cargo_crate("proc_macro") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "proc_macro_bindings"
+    cpp_namespace = "rs_proc_macro"
+    deps = []
+    deps += [
+      ":core_bindings",
+      ":rustc_literal_escaper_bindings",
+      ":std_bindings",
+    ]
+  }
 }
 cargo_crate("profiler_builtins") {
   crate_type = "rlib"
@@ -2219,14 +2321,19 @@ cargo_crate("profiler_builtins") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "profiler_builtins_bindings"
+    cpp_namespace = "rs_profiler_builtins"
+    deps = []
+  }
 }
 cargo_crate("rustc_demangle") {
   crate_type = "rlib"
-  crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.26/src/lib.rs"
+  crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.27/src/lib.rs"
   sources = [
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.26/src/legacy.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.26/src/lib.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.26/src/v0.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.27/src/legacy.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.27/src/lib.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/vendor/rustc-demangle-0.1.27/src/v0.rs",
   ]
   inputs = []
   no_std = true
@@ -2234,7 +2341,7 @@ cargo_crate("rustc_demangle") {
   # Unit tests skipped. Generate with --with-tests to include them.
   build_native_rust_unit_tests = false
   edition = "2015"
-  cargo_pkg_version = "0.1.26"
+  cargo_pkg_version = "0.1.27"
   cargo_pkg_authors = "Alex Crichton <alex@alexcrichton.com>"
   cargo_pkg_name = "rustc-demangle"
   cargo_pkg_description = "Rust compiler symbol demangling."
@@ -2272,6 +2379,12 @@ cargo_crate("rustc_demangle") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "rustc_demangle_bindings"
+    cpp_namespace = "rs_rustc_demangle"
+    deps = []
+    deps += [ ":rustc_std_workspace_core_bindings" ]
+  }
 }
 cargo_crate("rustc_literal_escaper") {
   crate_type = "rlib"
@@ -2317,6 +2430,12 @@ cargo_crate("rustc_literal_escaper") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "rustc_literal_escaper_bindings"
+    cpp_namespace = "rs_rustc_literal_escaper"
+    deps = []
+    deps += [ ":rustc_std_workspace_core_bindings" ]
+  }
 }
 cargo_crate("rustc_std_workspace_alloc") {
   crate_type = "rlib"
@@ -2357,6 +2476,12 @@ cargo_crate("rustc_std_workspace_alloc") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "rustc_std_workspace_alloc_bindings"
+    cpp_namespace = "rs_rustc_std_workspace_alloc"
+    deps = []
+    deps += [ ":alloc_bindings" ]
+  }
 }
 cargo_crate("rustc_std_workspace_core") {
   crate_type = "rlib"
@@ -2398,6 +2523,15 @@ cargo_crate("rustc_std_workspace_core") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "rustc_std_workspace_core_bindings"
+    cpp_namespace = "rs_rustc_std_workspace_core"
+    deps = []
+    deps += [
+      ":compiler_builtins_bindings",
+      ":core_bindings",
+    ]
+  }
 }
 cargo_crate("rustc_std_workspace_std") {
   crate_type = "rlib"
@@ -2438,6 +2572,12 @@ cargo_crate("rustc_std_workspace_std") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "rustc_std_workspace_std_bindings"
+    cpp_namespace = "rs_rustc_std_workspace_std"
+    deps = []
+    deps += [ ":std_bindings" ]
+  }
 }
 cargo_crate("std") {
   crate_type = "rlib"
@@ -2539,6 +2679,7 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fd/net.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fd/owned.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fd/raw.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fd/stdio.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fd/tests.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fortanix_sgx/arch.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/fortanix_sgx/ffi.rs",
@@ -2660,6 +2801,10 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/io/socket.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/io/tests.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/mod.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/net/addr.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/net/listener.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/net/mod.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/net/stream.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/process.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/raw.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/os/windows/thread.rs",
@@ -2847,7 +2992,6 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/motor/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/motor/os.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/motor/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/abi/mem.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/abi/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/abi/panic.rs",
@@ -2864,7 +3008,6 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/os.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/thread_parking.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/waitqueue/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/waitqueue/spin_mutex.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/sgx/waitqueue/spin_mutex/tests.rs",
@@ -2877,15 +3020,14 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/solid/error.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/solid/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/solid/os.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/solid/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/teeos/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/teeos/os.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/trusty/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/helpers.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/os.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/system_time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/tests.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/uefi/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unix/fuchsia.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unix/futex.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unix/linux/mod.rs",
@@ -2909,10 +3051,8 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unsupported/common.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unsupported/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unsupported/os.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/unsupported/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/vexos/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/vexos/os.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/vexos/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/wasi/cabi_realloc.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/wasi/helpers.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/wasi/mod.rs",
@@ -2938,7 +3078,6 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/xous/os.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/xous/os/params.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/xous/os/params/tests.rs",
-    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/xous/time.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/zkvm/abi.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/zkvm/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/pal/zkvm/os.rs",
@@ -3090,6 +3229,16 @@ cargo_crate("std") {
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/thread_local/native/mod.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/thread_local/no_threads.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/thread_local/os.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/hermit.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/mod.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/sgx.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/solid.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/uefi.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/unix.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/unsupported.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/vexos.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/windows.rs",
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/sys/time/xous.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/test_helpers.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/thread/builder.rs",
     "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/src/thread/current.rs",
@@ -3202,7 +3351,6 @@ cargo_crate("std") {
     ":core",
     ":hashbrown",
     ":panic_abort",
-    ":panic_unwind",
     ":rustc_demangle",
     ":std_detect",
     ":unwind",
@@ -3218,14 +3366,13 @@ cargo_crate("std") {
     ]
   }
   if (is_win) {
-    deps += [ ":windows_targets" ]
+    deps += [ ":windows_link" ]
   }
   features = [
     "addr2line",
     "backtrace",
     "miniz_oxide",
     "object",
-    "panic-unwind",
   ]
   build_root =
       "//third_party/rust-toolchain/lib/rustlib/src/rust/library/std/build.rs"
@@ -3243,6 +3390,32 @@ cargo_crate("std") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "std_bindings"
+    cpp_namespace = "rs_std"
+    deps = []
+    deps += [
+      ":alloc_bindings",
+      ":cfg_if_bindings",
+      ":core_bindings",
+      ":hashbrown_bindings",
+      ":panic_abort_bindings",
+      ":rustc_demangle_bindings",
+      ":std_detect_bindings",
+      ":unwind_bindings",
+    ]
+    if (!is_win) {
+      deps += [
+        ":addr2line_bindings",
+        ":libc_bindings",
+        ":miniz_oxide_bindings",
+        ":object_bindings",
+      ]
+    }
+    if (is_win) {
+      deps += [ ":windows_link_bindings" ]
+    }
+  }
 }
 cargo_crate("std_detect") {
   crate_type = "rlib"
@@ -3337,6 +3510,18 @@ cargo_crate("std_detect") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "std_detect_bindings"
+    cpp_namespace = "rs_std_detect"
+    deps = []
+    deps += [
+      ":rustc_std_workspace_alloc_bindings",
+      ":rustc_std_workspace_core_bindings",
+    ]
+    if (!is_win) {
+      deps += [ ":libc_bindings" ]
+    }
+  }
 }
 cargo_crate("sysroot") {
   crate_type = "rlib"
@@ -3370,7 +3555,6 @@ cargo_crate("sysroot") {
   ]
   features = [
     "backtrace",
-    "panic-unwind",
     "profiler",
   ]
   rustenv = [
@@ -3384,6 +3568,17 @@ cargo_crate("sysroot") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "sysroot_bindings"
+    cpp_namespace = "rs_sysroot"
+    deps = []
+    deps += [
+      ":proc_macro_bindings",
+      ":profiler_builtins_bindings",
+      ":std_bindings",
+      ":test_bindings",
+    ]
+  }
 }
 cargo_crate("test") {
   crate_type = "rlib"
@@ -3448,6 +3643,11 @@ cargo_crate("test") {
   if (!is_win) {
     deps += [ ":libc" ]
   }
+  build_root =
+      "//third_party/rust-toolchain/lib/rustlib/src/rust/library/test/build.rs"
+  build_sources = [
+    "//third_party/rust-toolchain/lib/rustlib/src/rust/library/test/build.rs",
+  ]
   rustenv = [
     "CFG_DISABLE_UNSTABLE_FEATURES=0",
     "STD_ENV_ARCH=$rust_target_arch",
@@ -3459,6 +3659,19 @@ cargo_crate("test") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "test_bindings"
+    cpp_namespace = "rs_test"
+    deps = []
+    deps += [
+      ":core_bindings",
+      ":getopts_bindings",
+      ":std_bindings",
+    ]
+    if (!is_win) {
+      deps += [ ":libc_bindings" ]
+    }
+  }
 }
 cargo_crate("unwind") {
   crate_type = "rlib"
@@ -3511,12 +3724,21 @@ cargo_crate("unwind") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "unwind_bindings"
+    cpp_namespace = "rs_unwind"
+    deps = []
+    deps += [ ":rustc_std_workspace_core_bindings" ]
+    if (!is_win) {
+      deps += [ ":libc_bindings" ]
+    }
+  }
 }
-cargo_crate("windows_targets") {
+cargo_crate("windows_link") {
   crate_type = "rlib"
-  crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/windows_targets/src/lib.rs"
+  crate_root = "//third_party/rust-toolchain/lib/rustlib/src/rust/library/windows_link/src/lib.rs"
   enabled = is_win
-  sources = [ "//third_party/rust-toolchain/lib/rustlib/src/rust/library/windows_targets/src/lib.rs" ]
+  sources = [ "//third_party/rust-toolchain/lib/rustlib/src/rust/library/windows_link/src/lib.rs" ]
   inputs = []
   no_std = true
 
@@ -3524,12 +3746,11 @@ cargo_crate("windows_targets") {
   build_native_rust_unit_tests = false
   edition = "2024"
   cargo_pkg_version = "0.0.0"
-  cargo_pkg_name = "windows-targets"
-  cargo_pkg_description = "A drop-in replacement for the real windows-targets crate for use in std only."
+  cargo_pkg_name = "windows-link"
+  cargo_pkg_description = "A drop-in replacement for the real windows-link crate for use in std only."
   library_configs -= [
     "//build/config/compiler:chromium_code",
     "//build/config/compiler:disallow_unstable_features",
-    "//build/config/coverage:default_coverage",
   ]
   library_configs += [ "//build/config/compiler:no_chromium_code" ]
   executable_configs -= [
@@ -3537,7 +3758,10 @@ cargo_crate("windows_targets") {
     "//build/config/compiler:disallow_unstable_features",
   ]
   executable_configs += [ "//build/config/compiler:no_chromium_code" ]
-  deps = [ "//build/rust/std:std_build_deps" ]
+  deps = [
+    "//build/rust/std:profiler_builtins_group",
+    "//build/rust/std:std_build_deps",
+  ]
   rustenv = [
     "CFG_DISABLE_UNSTABLE_FEATURES=0",
     "STD_ENV_ARCH=$rust_target_arch",
@@ -3549,4 +3773,9 @@ cargo_crate("windows_targets") {
   ]
   output_dir =
       "$root_out_dir/local_rustc_sysroot/lib/rustlib/$rust_abi_target/lib/"
+  cpp_api_from_rust = {
+    target_name = "windows_link_bindings"
+    cpp_namespace = "rs_windows_link"
+    deps = []
+  }
 }

@@ -707,12 +707,12 @@ inline UAShadowPseudoResult UAShadowPseudoCascading(const Element& element) {
   // this (developer-expected) behavior to those existing
   // pseudo-elements.  (It's possible that we could, but it would
   // require a good bit of compatibility analysis.)
-  DCHECK(shadow_pseudo_id.empty() || !shadow_pseudo_id.StartsWith("-") ||
-         shadow_pseudo_id.StartsWith("-webkit-") ||
-         shadow_pseudo_id.StartsWith("-internal-"))
+  DCHECK(shadow_pseudo_id.empty() || !shadow_pseudo_id.starts_with("-") ||
+         shadow_pseudo_id.starts_with("-webkit-") ||
+         shadow_pseudo_id.starts_with("-internal-"))
       << "shadow pseudo IDs should either begin with -webkit- or -internal- "
          "or not begin with a -";
-  return {true, shadow_pseudo_id.StartsWith("-")};
+  return {true, shadow_pseudo_id.starts_with("-")};
 }
 
 // Matches :host and :host-context rules if the element is a shadow host.
@@ -1753,7 +1753,8 @@ void StyleResolver::ApplyBaseStyleNoCache(
           {.origin = CascadeOrigin::kUserAgent});
     }
 
-    if (RuntimeEnabledFeatures::OverlayPropertyEnabled()) {
+    if (RuntimeEnabledFeatures::OverlayPropertyEnabled() &&
+        !RuntimeEnabledFeatures::OverlayGlobalRuleRemovalEnabled()) {
       // UA rule: * { overlay: none !important }
       // Implemented here because DCHECKs ensures we don't add universal rules
       // to the UA sheets. Note that this is a universal rule in any namespace.
@@ -1822,27 +1823,16 @@ void StyleResolver::ApplyBaseStyleNoCache(
         style_request.matching_behavior != kMatchAllRulesExcludingSMIL);
   }
 
-  const MatchResult& match_result = collector.MatchedResult();
+  const MatchResult& match_result = cascade.GetMatchResult();
 
   if (IsForPseudoElement(*element, style_request)) {
     if (!match_result.HasMatchedProperties()) {
-      InitStyle(*element, style_request, *initial_style_, state.ParentStyle(),
-                state.OriginatingElementStyle(), state);
-      StyleAdjuster::AdjustComputedStyle(state, nullptr /* element */);
       state.SetHadNoMatchedProperties();
-      // Even though there were no matched properties, we may still have
-      // pseudo-element styles to set (e.g. only ::column::scroll-marker rule
-      // and no ::column rule should still have ::column style).
-      if (match_result.PseudoElementStyles().HasAny()) {
-        state.StyleBuilder().SetPseudoElementStyles(
-            match_result.PseudoElementStyles().Bits());
-      }
-      return;
     }
   }
 
-  const MatchResult& result = cascade.GetMatchResult();
-  CacheSuccess cache_success = ApplyMatchedCache(state, style_request, result);
+  CacheSuccess cache_success =
+      ApplyMatchedCache(state, style_request, match_result);
   ComputedStyleBuilder& builder = state.StyleBuilder();
 
   if (style_recalc_context.is_ensuring_style &&
@@ -2583,7 +2573,7 @@ bool StyleResolver::ApplyAnimatedStyle(
   if (!IsAnimationStyleChange(*animating_element) ||
       !state.StyleBuilder().BaseData()) {
     state.StyleBuilder().SetBaseData(StyleBaseData::Create(
-        state.StyleBuilder().CloneStyle(), cascade.GetImportantSet()));
+        state.StyleBuilder().CloneStyle(), cascade.ReleaseImportantSet()));
   }
 
   CSSAnimations::CalculateAnimationUpdate(
@@ -2629,6 +2619,15 @@ bool StyleResolver::ApplyAnimatedStyle(
     DCHECK(!state.GetFontBuilder().FontDirty());
   }
 
+  if (ElementAnimations* animations =
+          animating_element->GetElementAnimations()) {
+    if (StyleBaseData* base_data = state.StyleBuilder().BaseData()) {
+      if (const CSSBitset* important_set = base_data->GetBaseImportantSet()) {
+        animations->CancelCompositedAnimationsAffectingProperties(
+            *important_set);
+      }
+    }
+  }
   CSSAnimations::CalculateCompositorAnimationUpdate(
       state.AnimationUpdate(), *animating_element, element,
       *state.StyleBuilder().GetBaseComputedStyle(), state.ParentStyle(),
@@ -3015,7 +3014,7 @@ const ComputedStyle* StyleResolver::StyleForInterpolations(
 
   ApplyBaseStyle(&element, style_recalc_context, style_request, state, cascade);
   state.StyleBuilder().SetBaseData(StyleBaseData::Create(
-      state.StyleBuilder().CloneStyle(), cascade.GetImportantSet()));
+      state.StyleBuilder().CloneStyle(), cascade.ReleaseImportantSet()));
 
   ApplyInterpolations(state, cascade, interpolations);
   return state.TakeStyle();
@@ -3196,7 +3195,7 @@ void StyleResolver::UpdateMediaType() {
   if (LocalFrameView* view = GetDocument().View()) {
     bool was_print = print_media_type_;
     print_media_type_ =
-        EqualIgnoringASCIICase(view->MediaType(), media_type_names::kPrint);
+        EqualIgnoringAsciiCase(view->MediaType(), media_type_names::kPrint);
     if (was_print != print_media_type_) {
       matched_properties_cache_.ClearViewportDependent();
     }
@@ -3358,6 +3357,7 @@ void StyleResolver::PropagateStyleToViewport() {
                    TextDirection::kLtr);
   }
 
+  // TODO(crbug.com/429459566): Add propagation of image-animation property.
   // Background
   {
     const ComputedStyle* background_style = document_element_style;

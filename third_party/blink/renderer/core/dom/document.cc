@@ -67,6 +67,7 @@
 #include "third_party/blink/public/common/thread_safe_browser_interface_broker_proxy.h"
 #include "third_party/blink/public/mojom/css/preferred_color_scheme.mojom-blink.h"
 #include "third_party/blink/public/mojom/css/preferred_contrast.mojom-blink.h"
+#include "third_party/blink/public/mojom/devtools/inspector_issue.mojom-blink.h"
 #include "third_party/blink/public/mojom/frame/frame.mojom-blink.h"
 #include "third_party/blink/public/mojom/input/focus_type.mojom-blink.h"
 #include "third_party/blink/public/mojom/manifest/display_mode.mojom-blink-forward.h"
@@ -79,6 +80,7 @@
 #include "third_party/blink/public/platform/web_content_settings_client.h"
 #include "third_party/blink/public/web/web_link_preview_triggerer.h"
 #include "third_party/blink/public/web/web_print_page_description.h"
+#include "third_party/blink/renderer/bindings/core/v8/capture_source_location.h"
 #include "third_party/blink/renderer/bindings/core/v8/frozen_array.h"
 #include "third_party/blink/renderer/bindings/core/v8/isolated_world_csp.h"
 #include "third_party/blink/renderer/bindings/core/v8/script_controller.h"
@@ -145,7 +147,7 @@
 #include "third_party/blink/renderer/core/dom/document_init.h"
 #include "third_party/blink/renderer/core/dom/document_lifecycle.h"
 #include "third_party/blink/renderer/core/dom/document_parser_timing.h"
-#include "third_party/blink/renderer/core/dom/document_part_root.h"
+#include "third_party/blink/renderer/core/dom/document_resize_options.h"
 #include "third_party/blink/renderer/core/dom/document_type.h"
 #include "third_party/blink/renderer/core/dom/dom_implementation.h"
 #include "third_party/blink/renderer/core/dom/element.h"
@@ -170,7 +172,6 @@
 #include "third_party/blink/renderer/core/dom/node_lists_node_data.h"
 #include "third_party/blink/renderer/core/dom/node_traversal.h"
 #include "third_party/blink/renderer/core/dom/node_with_index.h"
-#include "third_party/blink/renderer/core/dom/part_root.h"
 #include "third_party/blink/renderer/core/dom/processing_instruction.h"
 #include "third_party/blink/renderer/core/dom/scripted_animation_controller.h"
 #include "third_party/blink/renderer/core/dom/scroll_marker_group_data.h"
@@ -200,7 +201,6 @@
 #include "third_party/blink/renderer/core/events/event_factory.h"
 #include "third_party/blink/renderer/core/events/event_util.h"
 #include "third_party/blink/renderer/core/events/hash_change_event.h"
-#include "third_party/blink/renderer/core/events/overscroll_event.h"
 #include "third_party/blink/renderer/core/events/page_transition_event.h"
 #include "third_party/blink/renderer/core/events/visual_viewport_resize_event.h"
 #include "third_party/blink/renderer/core/events/visual_viewport_scroll_event.h"
@@ -261,8 +261,9 @@
 #include "third_party/blink/renderer/core/html/html_style_element.h"
 #include "third_party/blink/renderer/core/html/html_title_element.h"
 #include "third_party/blink/renderer/core/html/html_unknown_element.h"
-#include "third_party/blink/renderer/core/html/lazy_load_image_observer.h"
+#include "third_party/blink/renderer/core/html/media/lazy_load_media_observer.h"
 #include "third_party/blink/renderer/core/html/nesting_level_incrementer.h"
+#include "third_party/blink/renderer/core/html/parser/fragment_parser_options.h"
 #include "third_party/blink/renderer/core/html/parser/html_document_parser.h"
 #include "third_party/blink/renderer/core/html/parser/html_document_parser_fastpath.h"
 #include "third_party/blink/renderer/core/html/parser/html_parser_idioms.h"
@@ -276,6 +277,7 @@
 #include "third_party/blink/renderer/core/input/event_handler.h"
 #include "third_party/blink/renderer/core/input/touch_list.h"
 #include "third_party/blink/renderer/core/inspector/console_message.h"
+#include "third_party/blink/renderer/core/inspector/inspector_audits_issue.h"
 #include "third_party/blink/renderer/core/inspector/inspector_trace_events.h"
 #include "third_party/blink/renderer/core/intersection_observer/element_intersection_observer_data.h"
 #include "third_party/blink/renderer/core/intersection_observer/intersection_observer_controller.h"
@@ -335,6 +337,7 @@
 #include "third_party/blink/renderer/core/resize_observer/resize_observer_entry.h"
 #include "third_party/blink/renderer/core/resize_observer/resize_observer_size.h"
 #include "third_party/blink/renderer/core/route_matching/route_map.h"
+#include "third_party/blink/renderer/core/sanitizer/sanitizer.h"
 #include "third_party/blink/renderer/core/sanitizer/sanitizer_api.h"
 #include "third_party/blink/renderer/core/script/detect_javascript_frameworks.h"
 #include "third_party/blink/renderer/core/script/script_runner.h"
@@ -488,17 +491,16 @@ bool CanBeSyntheticSelect(Element& element) {
 }
 
 bool HasSelectInTagName(Element& element) {
-  return element.localName().Contains(kSelectName, kTextCaseASCIIInsensitive);
+  return element.localName().ContainsIgnoringAsciiCase(kSelectName);
 }
 
 bool HasSelectInClassAttribute(Element& element) {
-  return element.GetClassAttribute().Contains(kSelectName,
-                                              kTextCaseASCIIInsensitive);
+  return element.GetClassAttribute().ContainsIgnoringAsciiCase(kSelectName);
 }
 
 bool HasSelectInNameAttribute(Element& element) {
   return element.getAttribute(html_names::kNameAttr)
-      .Contains(kSelectName, kTextCaseASCIIInsensitive);
+      .ContainsIgnoringAsciiCase(kSelectName);
 }
 
 bool IsRoleCombobox(Element& element) {
@@ -546,9 +548,8 @@ namespace {
 // https://github.com/whatwg/dom/pull/1079
 // Returns the first character that is invalid, otherwise nullopt.
 template <typename CharType>
-std::optional<CharType> ParseNamespacePrefixNewSpec(
+std::optional<CharType> ParseNamespacePrefix(
     base::span<const CharType> characters) {
-  DCHECK(RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled());
   DCHECK(!characters.empty());
   for (size_t i = 0; i < characters.size(); i++) {
     CharType c = characters[i];
@@ -565,9 +566,8 @@ std::optional<CharType> ParseNamespacePrefixNewSpec(
 // https://github.com/whatwg/dom/pull/1079
 // Returns the first character that is invalid, otherwise nullopt.
 template <typename CharType>
-std::optional<CharType> ParseAttributeLocalNameNewSpec(
+std::optional<CharType> ParseAttributeLocalName(
     base::span<const CharType> characters) {
-  DCHECK(RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled());
   DCHECK(!characters.empty());
   for (size_t i = 0; i < characters.size(); i++) {
     CharType c = characters[i];
@@ -581,12 +581,11 @@ std::optional<CharType> ParseAttributeLocalNameNewSpec(
   return std::nullopt;
 }
 
-// https://github.com/whatwg/dom/pull/1079
+// https://dom.spec.whatwg.org/#valid-element-local-name
 // Returns the first character that is invalid, otherwise nullopt.
 template <typename CharType>
-std::optional<CharType> ParseElementLocalNameNewSpec(
+std::optional<CharType> ParseElementLocalName(
     const base::span<const CharType>& characters) {
-  DCHECK(RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled());
   // If name's length is 0, then return false.
   DCHECK(!characters.empty());
   CharType next_char = characters[0];
@@ -716,58 +715,13 @@ static inline bool IsValidNamePart(UChar32 c) {
   return true;
 }
 
-// Tests whether |name| is something the HTML parser would accept as a
-// tag name.
-template <typename CharType>
-static inline bool IsValidElementNamePerHTMLParser(
-    base::span<const CharType> characters) {
-  CharType c = characters[0] | 0x20;
-  if (!('a' <= c && c <= 'z'))
-    return false;
-
-  for (size_t i = 1; i < characters.size(); ++i) {
-    c = characters[i];
-    if (c == '\t' || c == '\n' || c == '\f' || c == '\r' || c == ' ' ||
-        c == '/' || c == '>')
-      return false;
-  }
-  return true;
-}
-
-static bool IsValidElementNamePerHTMLParser(const String& name) {
+// https://dom.spec.whatwg.org/#valid-element-local-name
+bool IsValidElementName(const String& name) {
   if (name.empty()) {
     return false;
   }
   return VisitCharacters(
-      name, [](auto chars) { return IsValidElementNamePerHTMLParser(chars); });
-}
-
-// Tests whether |name| is a valid name per DOM spec. Also checks
-// whether the HTML parser would accept this element name and counts
-// cases of mismatches.
-bool IsValidElementName(Document* document, const String& name) {
-  if (RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled()) {
-    if (name.empty()) {
-      return false;
-    }
-    return VisitCharacters(
-        name, [](auto chars) { return !ParseElementLocalNameNewSpec(chars); });
-  }
-
-  bool is_valid_dom_name = Document::IsValidName(name);
-  bool is_valid_html_name = IsValidElementNamePerHTMLParser(name);
-  if (is_valid_html_name != is_valid_dom_name) [[unlikely]] {
-    // This is inaccurate because it will not report activity in
-    // detached documents. However retrieving the frame from the
-    // bindings is too slow.
-    // TODO(crbug.com/40228234): Mark these UseCounters as obsolete when
-    // removing the RelaxDOMValidNames flag.
-    UseCounter::Count(document,
-                      is_valid_dom_name
-                          ? WebFeature::kElementNameDOMValidHTMLParserInvalid
-                          : WebFeature::kElementNameDOMInvalidHTMLParserValid);
-  }
-  return is_valid_dom_name;
+      name, [](auto chars) { return !ParseElementLocalName(chars); });
 }
 
 static bool AcceptsEditingFocus(const Element& element) {
@@ -861,10 +815,7 @@ const HeapVector<Member<HTMLFormElement>>& Document::TopLevelFormsList::Get(
         }
       }
     }
-    if (base::FeatureList::IsEnabled(
-            features::kAutofillEnableSyntheticSelectMetricsLogging)) {
-      LogSyntheticSelectMetrics(owner);
-    }
+    LogSyntheticSelectMetrics(owner);
     dirty_ = false;
   }
   return list_;
@@ -1273,7 +1224,7 @@ void Document::SetDoctype(DocumentType* doc_type) {
   doc_type_ = doc_type;
   if (doc_type_) {
     AdoptIfNeeded(*doc_type_);
-    if (doc_type_->publicId().StartsWithIgnoringASCIICase(
+    if (doc_type_->publicId().StartsWithIgnoringAsciiCase(
             "-//wapforum//dtd xhtml mobile 1.")) {
       is_mobile_document_ = true;
       style_engine_->ViewportStyleSettingChanged();
@@ -1384,7 +1335,7 @@ Element* Document::CreateRawElement(const QualifiedName& qname,
 // https://dom.spec.whatwg.org/#dom-document-createelement
 Element* Document::CreateElementForBinding(const AtomicString& name,
                                            ExceptionState& exception_state) {
-  if (!IsValidElementName(this, name)) {
+  if (!IsValidElementName(name)) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidCharacterError,
         StrCat({"The tag name provided ('", name, "') is not a valid name."}));
@@ -1478,7 +1429,7 @@ Element* Document::CreateElementForBinding(
 
   // 1. If localName does not match Name production, throw
   // InvalidCharacterError.
-  if (!IsValidElementName(this, local_name)) {
+  if (!IsValidElementName(local_name)) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidCharacterError,
         StrCat({"The tag name provided ('", local_name,
@@ -1569,7 +1520,7 @@ Element* Document::createElementNS(
     return nullptr;
   }
 
-  if (!IsValidElementName(this, qualified_name)) {
+  if (!IsValidElementName(qualified_name)) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidCharacterError,
         StrCat({"The tag name provided ('", qualified_name,
@@ -1636,7 +1587,7 @@ CDATASection* Document::createCDATASection(const String& data,
         "This operation is not supported for HTML documents.");
     return nullptr;
   }
-  if (data.Contains("]]>")) {
+  if (data.contains("]]>")) {
     exception_state.ThrowDOMException(DOMExceptionCode::kInvalidCharacterError,
                                       "String cannot contain ']]>' since that "
                                       "is the end delimiter of a CData "
@@ -1656,7 +1607,7 @@ ProcessingInstruction* Document::createProcessingInstruction(
         StrCat({"The target provided ('", target, "') is not a valid name."}));
     return nullptr;
   }
-  if (data.Contains("?>")) {
+  if (data.contains("?>")) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidCharacterError,
         StrCat({"The data provided ('", data, "') contains '?>'."}));
@@ -2173,8 +2124,7 @@ void Document::UpdateTitle(const String& title) {
 void Document::DispatchDidReceiveTitle() {
   if (IsInMainFrame()) {
     String shortened_title = title_.Substring(0, mojom::blink::kMaxTitleChars);
-    GetFrame()->GetLocalFrameHostRemote().UpdateTitle(
-        shortened_title, base::i18n::TextDirection::LEFT_TO_RIGHT);
+    GetFrame()->GetLocalFrameHostRemote().UpdateTitle(shortened_title);
     GetFrame()->GetPage()->GetPageScheduler()->OnTitleOrFaviconUpdated();
   }
   GetFrame()->Client()->DispatchDidReceiveTitle(title_);
@@ -2419,8 +2369,10 @@ Document::CalculateStyleAndLayoutTreeUpdateForThisDocument() const {
   if (!IsActive() || !View())
     return StyleAndLayoutTreeUpdate::kNone;
 
-  if (style_engine_->NeedsFullStyleUpdate())
+  if (style_engine_->NeedsFullStyleUpdate() ||
+      OverscrollCommandTargetsDirty()) {
     return StyleAndLayoutTreeUpdate::kFull;
+  }
   if (!use_elements_needing_update_.empty())
     return StyleAndLayoutTreeUpdate::kFull;
   // We have scheduled an invalidation set on the document node which means any
@@ -2750,6 +2702,8 @@ void Document::UpdateStyleAndLayoutTreeForThisDocument() {
   EvaluateMediaQueryListIfNeeded();
   UpdateUseShadowTreesIfNeeded();
 
+  UpdateOverscrollCommandTargets();
+
   style_engine.UpdateActiveStyle();
   style_engine.UpdateCounterStyles();
   style_engine.InvalidatePositionTryStyles();
@@ -2958,18 +2912,6 @@ void Document::UpdateStyleAndLayoutForNode(const Node* node,
   // For all nodes we must have up-to-date style and have performed layout to do
   // any location-based calculation.
   UpdateStyleAndLayout(reason);
-}
-
-DocumentPartRoot& Document::getPartRoot() {
-  return EnsureDocumentPartRoot();
-}
-
-DocumentPartRoot& Document::EnsureDocumentPartRoot() {
-  CHECK(RuntimeEnabledFeatures::DOMPartsAPIEnabled());
-  if (!document_part_root_) {
-    document_part_root_ = MakeGarbageCollected<DocumentPartRoot>(*this);
-  }
-  return *document_part_root_;
 }
 
 RouteMap* Document::routeMap() {
@@ -3627,9 +3569,9 @@ DocumentParser* Document::CreateParser() {
 
   data_->using_rust_xml_parser_ = false;
 
-  // Use the Rust XML parser for situations like XMLHttpRequests and
-  // JS DOMParser, where no dom_window_ is available.
-  if (!GetFrame()) {
+  // Use the Rust XML parser for situations non-XSLT situations: XMLHttpRequest,
+  // JS DOMParser API, where no dom_window_ is available, or for SVG images.
+  if (!GetFrame() || IsSVGDocument()) {
     // Measure this for now only in non-frame = non-XSLT situations, so that
     // when we compare the UMA metrics of Rust vs. non-Rust for
     // XMLRustForNonXsltEnabled(), we're looking at roughly the same type and
@@ -4731,7 +4673,7 @@ void Document::DispatchAutofillEvent(
     HeapVector<std::pair<Member<Element>, String>> autofill_values,
     const base::UnguessableToken& fill_id,
     bool supports_refill) {
-  if (!RuntimeEnabledFeatures::AutofillEventEnabled()) {
+  if (!RuntimeEnabledFeatures::AutofillEventEnabled(GetExecutionContext())) {
     return;
   }
 
@@ -5169,7 +5111,7 @@ void Document::ProcessBaseElement() {
   // encodings correctly.
   KURL base_element_url;
   if (href) {
-    String stripped_href = StripLeadingAndTrailingHTMLSpaces(*href);
+    StringView stripped_href = StripLeadingAndTrailingHtmlSpaces(*href);
     if (!stripped_href.empty())
       base_element_url = KURL(FallbackBaseURL(), stripped_href);
   }
@@ -5212,10 +5154,12 @@ void Document::ProcessBaseElement() {
 
   AtomicString old_base_target = base_target_;
   if (target) {
-    if (target->Contains('\n') || target->Contains('\r'))
+    if (target->contains('\n') || target->contains('\r')) {
       UseCounter::Count(*this, WebFeature::kBaseWithNewlinesInTarget);
-    if (target->Contains('<'))
+    }
+    if (target->contains('<')) {
       UseCounter::Count(*this, WebFeature::kBaseWithOpenBracketInTarget);
+    }
     base_target_ = *target;
   } else {
     base_target_ = g_null_atom;
@@ -5393,7 +5337,7 @@ MouseEventWithHitTestResults Document::PerformMouseEventHitTest(
 
   if (!request.ReadOnly()) {
     UpdateHoverActiveState(request.Active(), !request.Move(),
-                           result.InnerElement());
+                           result.InnerPossiblyPseudoElement());
   }
 
   return MouseEventWithHitTestResults(event, location, result);
@@ -5578,15 +5522,6 @@ Node* Document::Clone(Document& factory,
     return nullptr;
   Document* clone = CloneDocumentWithoutChildren();
   clone->CloneDataFromDocument(*this);
-  DocumentPartRoot* part_root = nullptr;
-  DCHECK(!data.Has(CloneOption::kPreserveDOMPartsMinimalAPI) || !HasNodePart());
-  if (data.Has(CloneOption::kPreserveDOMParts)) {
-    DCHECK(RuntimeEnabledFeatures::DOMPartsAPIEnabled());
-    DCHECK(!RuntimeEnabledFeatures::DOMPartsAPIMinimalEnabled());
-    part_root = &clone->getPartRoot();
-    data.PushPartRoot(*part_root);
-    PartRoot::CloneParts(*this, *clone, data);
-  }
   if (RuntimeEnabledFeatures::ScopedCustomElementRegistryEnabled()) {
     // 2. If node's custom element registry's "is scoped" is true, then
     // set copy's custom element registry to node's custom element registry.
@@ -5597,7 +5532,6 @@ Node* Document::Clone(Document& factory,
   if (data.Has(CloneOption::kIncludeDescendants)) {
     clone->CloneChildNodesFrom(*this, data, fallback_registry);
   }
-  DCHECK(!part_root || &data.CurrentPartRoot() == part_root);
   return clone;
 }
 
@@ -5690,7 +5624,7 @@ void Document::EvaluateMediaQueryList() {
     media_query_matcher_->MediaFeaturesChanged();
 }
 
-void Document::LayoutViewportWasResized() {
+void Document::LayoutViewportWasResized(const DocumentResizeOptions options) {
   if (!IsActive()) {
     return;
   }
@@ -5708,8 +5642,9 @@ void Document::LayoutViewportWasResized() {
   // Note that in the case of the initial empty document, the load may hav
   // completed before performing the first layout. Also, we need to fire a
   // resize event if the window size changes during load event dispatch.
-  if ((View() && View()->DidFirstLayout()) ||
-      load_event_progress_ == kLoadEventInProgress || IsLoadCompleted()) {
+  if (((View() && View()->DidFirstLayout()) ||
+       load_event_progress_ == kLoadEventInProgress || IsLoadCompleted()) &&
+      !options.should_suppress_events) {
     EnqueueResizeEvent();
     EnqueueVisualViewportResizeEvent();
     if (GetFrame()->IsMainFrame() && !Printing())
@@ -5792,16 +5727,39 @@ void Document::SetActiveElement(Element* new_active_element) {
 
 void Document::RemoveFocusedElementOfSubtree(Node& node,
                                              bool among_children_only) {
-  if (!node.isConnected() || !focused_element_ ||
-      !node.IsShadowIncludingInclusiveAncestorOf(*focused_element_)) {
+  if (!node.isConnected()) {
     return;
   }
+
+  if (!focused_element_) {
+    if (RuntimeEnabledFeatures::ClearFocusWithinOnSubtreeRemovalEnabled()) {
+      if (auto* element = DynamicTo<Element>(node);
+          element && element->HasFocusWithin()) {
+        element->SetHasFocusWithinUpToAncestor(
+            /*has_focus_within=*/false, /*ancestor=*/nullptr,
+            /*need_snap_container_search=*/false);
+      }
+    }
+    return;
+  }
+
+  if (!node.IsShadowIncludingInclusiveAncestorOf(*focused_element_)) {
+    return;
+  }
+
   const auto& focused_element = *node.GetTreeScope().AdjustedFocusedElement();
   if (focused_element.IsDescendantOf(&node) ||
       (!among_children_only && node == focused_element)) {
-    bool omit_blur_events =
-        RuntimeEnabledFeatures::OmitBlurEventOnElementRemovalEnabled();
-    ClearFocusedElement(omit_blur_events);
+    if (StatePreservingAtomicMoveInProgress()) {
+      // With state-preserving atomic move (moveBefore), we don't actually
+      // unfocus the element, but we have to make sure the selection UI catches
+      // up with the new node's position in the DOM.
+      SetShouldUpdateSelectionAfterLayout(true);
+    } else {
+      bool omit_blur_events =
+          RuntimeEnabledFeatures::OmitBlurEventOnElementRemovalEnabled();
+      ClearFocusedElement(omit_blur_events);
+    }
   }
 }
 
@@ -5920,6 +5878,16 @@ bool Document::SetFocusedElement(Element* new_focused_element,
         // handler shifted focus
         focus_change_blocked = true;
         new_focused_element = nullptr;
+
+        if (ancestor) {
+          auto* new_ancestor = DynamicTo<Element>(
+              FlatTreeTraversal::CommonAncestor(*ancestor, *focused_element_));
+          if (new_ancestor != ancestor) {
+            ancestor->SetHasFocusWithinUpToAncestor(
+                false, new_ancestor,
+                /*need_snap_container_search=*/false);
+          }
+        }
       }
 
       // 'focusout' is a DOM level 3 name for the bubbling blur event.
@@ -5938,6 +5906,16 @@ bool Document::SetFocusedElement(Element* new_focused_element,
         // handler shifted focus
         focus_change_blocked = true;
         new_focused_element = nullptr;
+
+        if (ancestor) {
+          auto* new_ancestor = DynamicTo<Element>(
+              FlatTreeTraversal::CommonAncestor(*ancestor, *focused_element_));
+          if (new_ancestor != ancestor) {
+            ancestor->SetHasFocusWithinUpToAncestor(
+                false, new_ancestor,
+                /*need_snap_container_search=*/false);
+          }
+        }
       }
     }
     // EditContext's activation is synced with the associated element being
@@ -6574,20 +6552,6 @@ void Document::EnqueueScrollEndEventForNode(Node* target) {
   scripted_animation_controller_->EnqueuePerFrameEvent(scroll_end_event);
 }
 
-void Document::EnqueueOverscrollEventForNode(Node* target,
-                                             double delta_x,
-                                             double delta_y) {
-  // Mimic bubbling behavior of scroll event for consistency.
-  overscroll_accumulated_delta_x_ += delta_x;
-  overscroll_accumulated_delta_y_ += delta_y;
-  bool bubbles = target->IsDocumentNode();
-  Event* overscroll_event = OverscrollEvent::Create(
-      event_type_names::kOverscroll, bubbles, overscroll_accumulated_delta_x_,
-      overscroll_accumulated_delta_y_);
-  overscroll_event->SetTarget(target);
-  scripted_animation_controller_->EnqueuePerFrameEvent(overscroll_event);
-}
-
 void Document::EnqueueScrollSnapChangeEvent(Node* target,
                                             Member<Node>& block_target,
                                             Member<Node>& inline_target) {
@@ -6793,6 +6757,11 @@ String Document::cookie(ExceptionState& exception_state) const {
     return String();
 
   CountUse(WebFeature::kCookieGet);
+
+  // Report PerformanceIssue for DevTools
+  if (auto* execution_context = GetExecutionContext()) {
+    AuditsIssue::ReportDocumentCookiePerformanceIssue(execution_context);
+  }
 
   if (!dom_window_->GetSecurityOrigin()->CanAccessCookies()) {
     if (dom_window_->IsSandboxed(
@@ -7402,24 +7371,21 @@ bool Document::IsValidName(const StringView& name) {
 }
 
 // static
-bool Document::IsValidAttributeLocalNameNewSpec(const StringView& local_name) {
-  DCHECK(RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled());
+bool Document::IsValidAttributeLocalName(const StringView& local_name) {
   if (local_name.empty()) {
     return false;
   }
-  return VisitCharacters(local_name, [](auto chars) {
-    return !ParseAttributeLocalNameNewSpec(chars);
-  });
+  return VisitCharacters(
+      local_name, [](auto chars) { return !ParseAttributeLocalName(chars); });
 }
 
 // static
-bool Document::IsValidElementLocalNameNewSpec(const StringView& local_name) {
+bool Document::IsValidElementLocalName(const StringView& local_name) {
   if (local_name.empty()) {
     return false;
   }
-  return VisitCharacters(local_name, [](auto chars) {
-    return !ParseElementLocalNameNewSpec(chars);
-  });
+  return VisitCharacters(
+      local_name, [](auto chars) { return !ParseElementLocalName(chars); });
 }
 
 enum QualifiedNameStatus {
@@ -7441,59 +7407,14 @@ struct ParseQualifiedNameResult {
       : status(status), character(character) {}
 };
 
-template <typename CharType>
-static ParseQualifiedNameResult ParseQualifiedNameInternal(
-    const AtomicString& qualified_name,
-    base::span<const CharType> characters,
-    AtomicString& prefix,
-    AtomicString& local_name) {
-  bool name_start = true;
-  bool saw_colon = false;
-  size_t colon_pos = 0;
-
-  for (size_t i = 0; i < characters.size();) {
-    UChar32 c = CodePointAtAndNext(characters, i);
-    if (c == ':') {
-      if (saw_colon)
-        return ParseQualifiedNameResult(kQNMultipleColons);
-      name_start = true;
-      saw_colon = true;
-      colon_pos = i - 1;
-    } else if (name_start) {
-      if (!IsValidNameStart(c))
-        return ParseQualifiedNameResult(kQNInvalidStartChar, c);
-      name_start = false;
-    } else {
-      if (!IsValidNamePart(c))
-        return ParseQualifiedNameResult(kQNInvalidChar, c);
-    }
-  }
-
-  if (!saw_colon) {
-    prefix = g_null_atom;
-    local_name = qualified_name;
-  } else {
-    prefix = AtomicString(characters.take_first(colon_pos));
-    if (prefix.empty())
-      return ParseQualifiedNameResult(kQNEmptyPrefix);
-    local_name = AtomicString(characters.template subspan<1u>());
-  }
-
-  if (local_name.empty())
-    return ParseQualifiedNameResult(kQNEmptyLocalName);
-
-  return ParseQualifiedNameResult(kQNValid);
-}
-
 namespace {
 // https://github.com/whatwg/dom/pull/1079
 template <typename CharType>
-ParseQualifiedNameResult ParseQualifiedNameInternalNewSpec(
+ParseQualifiedNameResult ParseQualifiedNameInternal(
     base::span<const CharType> characters,
     AtomicString& out_prefix,
     AtomicString& out_local_name,
     Document::QualifiedNameParsingMode parsing_mode) {
-  DCHECK(RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled());
   // Do a first pass to look for the colon. Otherwise, we don't know which
   // parsing rules to apply to the text we are iterating.
   std::optional<size_t> colon_index;
@@ -7522,7 +7443,7 @@ ParseQualifiedNameResult ParseQualifiedNameInternalNewSpec(
     if (!prefix.size()) {
       return ParseQualifiedNameResult(kQNEmptyPrefix, ':');
     }
-    if (auto invalid_char = ParseNamespacePrefixNewSpec(prefix)) {
+    if (auto invalid_char = ParseNamespacePrefix(prefix)) {
       return ParseQualifiedNameResult(kQNInvalidChar, *invalid_char);
     }
   } else {
@@ -7534,13 +7455,13 @@ ParseQualifiedNameResult ParseQualifiedNameInternalNewSpec(
   }
 
   if (parsing_mode == Document::QualifiedNameParsingMode::kParsingAttribute) {
-    if (auto invalid_char = ParseAttributeLocalNameNewSpec(local_name)) {
+    if (auto invalid_char = ParseAttributeLocalName(local_name)) {
       return ParseQualifiedNameResult(kQNInvalidChar, *invalid_char);
     }
   } else {
     DCHECK_EQ(parsing_mode,
               Document::QualifiedNameParsingMode::kParsingElement);
-    if (auto invalid_char = ParseElementLocalNameNewSpec(local_name)) {
+    if (auto invalid_char = ParseElementLocalName(local_name)) {
       return ParseQualifiedNameResult(kQNInvalidChar, *invalid_char);
     }
   }
@@ -7563,15 +7484,9 @@ bool Document::ParseQualifiedName(const AtomicString& qualified_name,
   }
 
   ParseQualifiedNameResult return_value = VisitCharacters(
-      qualified_name,
-      [&qualified_name, &prefix, &local_name, &parsing_mode](auto chars) {
-        if (RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled()) {
-          return ParseQualifiedNameInternalNewSpec(chars, prefix, local_name,
-                                                   parsing_mode);
-        } else {
-          return ParseQualifiedNameInternal(qualified_name, chars, prefix,
-                                            local_name);
-        }
+      qualified_name, [&prefix, &local_name, &parsing_mode](auto chars) {
+        return ParseQualifiedNameInternal(chars, prefix, local_name,
+                                          parsing_mode);
       });
   if (return_value.status == kQNValid)
     return true;
@@ -7638,9 +7553,9 @@ void Document::SetEncodingData(const DocumentEncodingData& new_data) {
 }
 
 KURL Document::CompleteURL(
-    const String& url,
+    const StringView& url,
     const CompleteURLPreloadStatus preload_status) const {
-  return CompleteURLWithOverride(url, base_url_, preload_status);
+  return CompleteURLWithOverride(url.ToString(), base_url_, preload_status);
 }
 
 KURL Document::CompleteURLWithOverride(
@@ -7827,9 +7742,7 @@ Agent& Document::GetAgent() const {
 
 Attr* Document::createAttribute(const AtomicString& name,
                                 ExceptionState& exception_state) {
-  bool is_valid = RuntimeEnabledFeatures::RelaxDOMValidNamesEnabled()
-                      ? Document::IsValidAttributeLocalNameNewSpec(name)
-                      : Document::IsValidName(name);
+  bool is_valid = Document::IsValidAttributeLocalName(name);
   if (!is_valid) {
     exception_state.ThrowDOMException(
         DOMExceptionCode::kInvalidCharacterError,
@@ -8063,6 +7976,12 @@ void Document::FinishedParsing() {
             : "Blink.XMLParsing.NonXsltXmlParsingTime.Libxml2";
     base::UmaHistogramCustomTimes(histogram_name, parse_time,
                                   base::Milliseconds(1), base::Seconds(2), 100);
+    // In an experiment, switching the backends to compare Rust
+    // vs. Libxml2 it's handy to have the experiment tooling separate
+    // the metric and combine the measurements into one.
+    base::UmaHistogramCustomTimes(
+        "Blink.XMLParsing.NonXsltXmlParsingTime.Combined", parse_time,
+        base::Milliseconds(1), base::Seconds(2), 100);
     data_->xml_parser_start_time_.reset();
   }
 
@@ -8389,7 +8308,7 @@ void Document::SetTextScaleMetaTagPresent(bool present) {
   }
   text_scale_meta_tag_present_ = present;
   if (present) {
-    UseCounter::CountWebDXFeature(this, WebDXFeature::kDRAFT_MetaTextScale);
+    UseCounter::CountWebDXFeature(this, WebDXFeature::kMetaTextScale);
   }
   GetStyleEngine().InitialStyleChanged();
   GetStyleEngine()
@@ -9569,7 +9488,6 @@ void Document::Trace(Visitor* visitor) const {
   visitor->Trace(all_open_popovers_);
   visitor->Trace(all_open_dialogs_);
   visitor->Trace(elements_with_interest_);
-  visitor->Trace(document_part_root_);
   visitor->Trace(load_event_delay_timer_);
   visitor->Trace(plugin_loading_timer_);
   visitor->Trace(elem_sheet_);
@@ -9612,7 +9530,7 @@ void Document::Trace(Visitor* visitor) const {
   visitor->Trace(policy_);
   visitor->Trace(slot_assignment_engine_);
   visitor->Trace(viewport_data_);
-  visitor->Trace(lazy_load_image_observer_);
+  visitor->Trace(lazy_load_media_observer_);
   visitor->Trace(mime_handler_view_before_unload_event_listener_);
   visitor->Trace(cookie_jar_);
   visitor->Trace(fragment_directive_);
@@ -9634,6 +9552,8 @@ void Document::Trace(Visitor* visitor) const {
   visitor->Trace(payment_link_handler_);
 #endif  // BUILDFLAG(IS_ANDROID)
   visitor->Trace(view_transitions_);
+  visitor->Trace(overscroll_command_targets_);
+  visitor->Trace(overscroll_command_invokers_);
   Supplementable<Document>::Trace(visitor);
   TreeScope::Trace(visitor);
   ContainerNode::Trace(visitor);
@@ -9680,11 +9600,11 @@ bool Document::IsFocusAllowed(FocusTrigger trigger) const {
                  kFocusWithoutUserActivation);
 }
 
-LazyLoadImageObserver& Document::EnsureLazyLoadImageObserver() {
-  if (!lazy_load_image_observer_) {
-    lazy_load_image_observer_ = MakeGarbageCollected<LazyLoadImageObserver>();
+LazyLoadMediaObserver& Document::EnsureLazyLoadMediaObserver() {
+  if (!lazy_load_media_observer_) {
+    lazy_load_media_observer_ = MakeGarbageCollected<LazyLoadMediaObserver>();
   }
-  return *lazy_load_image_observer_;
+  return *lazy_load_media_observer_;
 }
 
 void Document::IncrementNumberOfCanvases() {
@@ -9740,7 +9660,7 @@ bool Document::IsInWebAppScope() const {
     return false;
 
   DCHECK_EQ(KURL(web_app_scope).GetString(), web_app_scope);
-  return Url().GetString().StartsWith(web_app_scope);
+  return Url().GetString().starts_with(web_app_scope);
 }
 
 bool Document::ChildrenCanHaveStyle() const {
@@ -10219,8 +10139,10 @@ Document* Document::parseHTMLUnsafe(ExecutionContext* context,
     return nullptr;
   }
   Document* doc = parseHTMLInternal(context, compliant_html, exception_state);
-  SanitizerAPI::SanitizeUnsafeInternal(
-      /*context_element*/ doc, /*root_element*/ doc, options, exception_state);
+  SanitizerAPI::SanitizeInternal(Sanitizer::Mode::kUnsafe,
+                                 /*context_element*/ doc, /*root_element*/ doc,
+                                 FragmentParserOptions(options),
+                                 exception_state);
   return doc;
 }
 
@@ -10231,8 +10153,10 @@ Document* Document::parseHTML(ExecutionContext* context,
                               ExceptionState& exception_state) {
   CHECK(RuntimeEnabledFeatures::SanitizerAPIEnabled());
   Document* doc = parseHTMLInternal(context, html, exception_state);
-  SanitizerAPI::SanitizeSafeInternal(
-      /*context_element*/ doc, /*root_element*/ doc, options, exception_state);
+  SanitizerAPI::SanitizeInternal(Sanitizer::Mode::kSafe,
+                                 /*context_element*/ doc, /*root_element*/ doc,
+                                 FragmentParserOptions(options),
+                                 exception_state);
   return doc;
 }
 
@@ -10297,22 +10221,63 @@ CustomElementRegistry* Document::EffectiveGlobalCustomElementRegistry() const {
   return nullptr;
 }
 
-void Document::AddOverscrollCommandTarget(const AtomicString& target) {
-  auto result = overscroll_command_targets_.insert(target);
-  if (result.is_new_entry) {
-    if (auto* element = getElementById(target)) {
-      element->OverscrollTargetStateChanged();
-    }
-  }
+const HeapHashSet<Member<const Element>>& Document::OverscrollCommandTargets() {
+  UpdateOverscrollCommandTargets();
+  return overscroll_command_targets_;
 }
 
-void Document::RemoveOverscrollCommandTarget(const AtomicString& target) {
-  bool erased_last = overscroll_command_targets_.erase(target);
-  if (erased_last) {
-    if (auto* element = getElementById(target)) {
-      element->OverscrollTargetStateChanged();
+void Document::UpdateOverscrollCommandTargets() {
+  if (!overscroll_command_targets_dirty_) {
+    return;
+  }
+
+  if (overscroll_command_invokers_.empty() &&
+      overscroll_command_targets_.empty()) {
+    overscroll_command_targets_dirty_ = false;
+    return;
+  }
+
+  HeapHashSet<Member<const Element>> new_targets;
+  for (Element* element : overscroll_command_invokers_) {
+    if (auto* html_element = DynamicTo<HTMLElement>(element)) {
+      if (Element* target = html_element->commandForElement()) {
+        new_targets.insert(target);
+      }
     }
   }
+
+  // Calculate the difference and call OverscrollTargetStateChanged.
+  for (auto& entry : overscroll_command_targets_) {
+    if (!new_targets.Contains(entry)) {
+      const_cast<Element*>(entry.Get())->OverscrollTargetStateChanged();
+    }
+  }
+  for (auto& entry : new_targets) {
+    if (!overscroll_command_targets_.Contains(entry)) {
+      const_cast<Element*>(entry.Get())->OverscrollTargetStateChanged();
+    }
+  }
+
+  overscroll_command_targets_ = std::move(new_targets);
+  overscroll_command_targets_dirty_ = false;
+}
+
+// We require either the invokers list to be non-empty (so we have some invokers
+// to process) or the existing targets list to be non-empty (because we might
+// have some "old" targets that need re-processing).
+bool Document::OverscrollCommandTargetsDirty() const {
+  return overscroll_command_targets_dirty_ &&
+         (!overscroll_command_invokers_.empty() ||
+          !overscroll_command_targets_.empty());
+}
+void Document::MarkOverscrollCommandTargetsDirty() {
+  overscroll_command_targets_dirty_ = true;
+}
+void Document::AddOverscrollCommandInvoker(Element& invoker) {
+  overscroll_command_invokers_.insert(&invoker);
+}
+void Document::RemoveOverscrollCommandInvoker(Element& invoker) {
+  overscroll_command_invokers_.erase(&invoker);
 }
 
 template class CORE_TEMPLATE_EXPORT Supplement<Document>;

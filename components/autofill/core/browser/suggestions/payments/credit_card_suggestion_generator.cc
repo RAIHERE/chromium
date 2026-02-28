@@ -13,6 +13,7 @@
 #include "base/containers/to_vector.h"
 #include "base/functional/callback.h"
 #include "base/functional/function_ref.h"
+#include "components/autofill/core/browser/autofill_browser_util.h"
 #include "components/autofill/core/browser/autofill_field.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_manager/personal_data_manager.h"
@@ -20,6 +21,7 @@
 #include "components/autofill/core/browser/filling/filling_product.h"
 #include "components/autofill/core/browser/form_structure.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
+#include "components/autofill/core/browser/payments/bnpl_manager.h"
 #include "components/autofill/core/browser/payments/bnpl_util.h"
 #include "components/autofill/core/browser/payments/constants.h"
 #include "components/autofill/core/browser/studies/autofill_experiments.h"
@@ -32,6 +34,38 @@
 #include "components/strings/grit/components_strings.h"
 
 namespace autofill {
+
+namespace {
+
+Suggestion CreateBnplSuggestion(
+    const payments::BnplIssuerContext& issuer_context,
+    const std::string& app_locale,
+    const bool is_card_number_field_empty) {
+  const bool is_linked = issuer_context.issuer.payment_instrument().has_value();
+
+  Suggestion bnpl_suggestion(SuggestionType::kBnplEntry);
+  bnpl_suggestion.main_text =
+      Suggestion::Text(issuer_context.issuer.GetDisplayName(),
+                       Suggestion::Text::IsPrimary(true));
+  if (is_card_number_field_empty) {
+    bnpl_suggestion.labels = {
+        {Suggestion::Text(payments::GetBnplIssuerSelectionOptionText(
+            issuer_context.issuer.issuer_id(), app_locale,
+            base::span_from_ref(issuer_context)))}};
+  } else {
+    bnpl_suggestion.labels = {{Suggestion::Text(l10n_util::GetStringUTF16(
+        IDS_AUTOFILL_CARD_BNPL_PAY_LATER_CLEAR_FORM_TO_ENABLE))}};
+    bnpl_suggestion.acceptability =
+        Suggestion::Acceptability::kUnacceptableWithDeactivatedStyle;
+  }
+  bnpl_suggestion.icon = payments::GetBnplSuggestionIcon(
+      issuer_context.issuer.issuer_id(), is_linked);
+  bnpl_suggestion.payload = Suggestion::BnplIssuer(issuer_context.issuer);
+
+  return bnpl_suggestion;
+}
+
+}  // namespace
 
 using SuggestionDataSource = SuggestionGenerator::SuggestionDataSource;
 using SuggestionData = SuggestionGenerator::SuggestionData;
@@ -61,7 +95,11 @@ FetchCreditCardOrCvcFieldSuggestionDataSync(
   }
 
   const bool allow_payment_swapping =
-      trigger_field.is_autofilled() && IsPaymentsFieldSwappingEnabled();
+      // TODO(crbug.com/393114125): Change to use
+      // `AutofillField::field_modifiers_` after launching
+      // `kAutofillFixIsAutofilled`.
+      trigger_field.is_autofilled_according_to_renderer() &&
+      IsPaymentsFieldSwappingEnabled();
 
   bool suppress_disused_cards =
       SanitizeCreditCardFieldValue(trigger_field.value()).empty();
@@ -142,13 +180,47 @@ std::vector<Suggestion> GenerateCreditCardOrCvcFieldSuggestionsSync(
   const bool display_gpay_logo = std::ranges::none_of(
       cards_to_suggest,
       [](const CreditCard& card) { return CreditCard::IsLocalCard(&card); });
-  const bool should_show_bnpl_suggestion = payments::ShouldAppendBnplSuggestion(
-      client, is_card_number_field_empty, trigger_field_type);
+
+  const bool should_show_pay_later_tab_suggestions =
+      payments::ShouldShowBnplSuggestions(client, trigger_field_type) &&
+      base::FeatureList::IsEnabled(features::kAutofillEnablePayNowPayLaterTabs);
+  const bool should_append_bnpl_suggestion =
+      payments::ShouldShowBnplSuggestions(client, trigger_field_type) &&
+      is_card_number_field_empty &&
+      !base::FeatureList::IsEnabled(
+          features::kAutofillEnablePayNowPayLaterTabs);
+
+  if (should_show_pay_later_tab_suggestions) {
+    const PaymentsDataManager& payments_data_manager =
+        client.GetPersonalDataManager().payments_data_manager();
+    if (payments::ShouldStartPayLaterWithLoadingSpinner(
+            payments_data_manager)) {
+      Suggestion loading_suggestion =
+          Suggestion(SuggestionType::kLoadingThrobber);
+      loading_suggestion.acceptability =
+          Suggestion::Acceptability::kUnacceptable;
+      loading_suggestion.expected_number_of_suggestions =
+          payments_data_manager.GetBnplIssuers().size();
+      suggestions.push_back(std::move(loading_suggestion));
+    } else {
+      for (const payments::BnplIssuerContext& context :
+           payments::GetSortedBnplIssuerContext(
+               client, /*checkout_amount=*/std::nullopt)) {
+        suggestions.push_back(CreateBnplSuggestion(
+            context, client.GetAppLocale(), is_card_number_field_empty));
+      }
+    }
+  }
+
   std::ranges::move(
       GetCreditCardFooterSuggestions(
-          client, should_show_bnpl_suggestion, should_show_scan_credit_card,
-          trigger_field.is_autofilled(), display_gpay_logo,
-          amount_extraction_status),
+          client, should_show_pay_later_tab_suggestions,
+          should_append_bnpl_suggestion, should_show_scan_credit_card,
+          // TODO(crbug.com/393114125): Change to use
+          // `AutofillField::field_modifiers_` after launching
+          // `kAutofillFixIsAutofilled`.
+          trigger_field.is_autofilled_according_to_renderer(),
+          display_gpay_logo, amount_extraction_status),
       std::back_inserter(suggestions));
 
   return suggestions;
@@ -235,12 +307,16 @@ std::vector<Suggestion> GenerateVirtualCardStandaloneCvcFieldSuggestionsSync(
     return suggestions;
   }
 
-  std::ranges::move(
-      GetCreditCardFooterSuggestions(
-          client, /*should_show_bnpl_suggestion=*/false,
-          /*should_show_scan_credit_card=*/false, trigger_field.is_autofilled(),
-          /*with_gpay_logo=*/true, amount_extraction_status),
-      std::back_inserter(suggestions));
+  std::ranges::move(GetCreditCardFooterSuggestions(
+                        client, /*should_show_pay_later_tab_suggestions=*/false,
+                        /*should_append_bnpl_suggestion=*/false,
+                        /*should_show_scan_credit_card=*/false,
+                        // TODO(crbug.com/393114125): Change to use
+                        // `AutofillField::field_modifiers_` after launching
+                        // `kAutofillFixIsAutofilled`.
+                        trigger_field.is_autofilled_according_to_renderer(),
+                        /*with_gpay_logo=*/true, amount_extraction_status),
+                    std::back_inserter(suggestions));
 
   return suggestions;
 }
@@ -254,11 +330,13 @@ std::vector<Suggestion> GetSuggestionsForCreditCards(
     const std::vector<std::string>& four_digit_combinations_in_dom,
     const payments::AmountExtractionStatus& amount_extraction_status,
     autofill_metrics::CreditCardFormEventLogger& credit_card_form_event_logger,
-    const AutofillMetrics::PaymentsSigninState signin_state_for_metrics) {
+    const AutofillMetrics::PaymentsSigninState signin_state_for_metrics,
+    bool exclude_virtual_cards) {
   std::vector<Suggestion> suggestions;
   CreditCardSuggestionGenerator credit_card_suggestion_generator(
       four_digit_combinations_in_dom, amount_extraction_status,
-      credit_card_form_event_logger, signin_state_for_metrics);
+      &credit_card_form_event_logger, signin_state_for_metrics,
+      exclude_virtual_cards);
 
   auto on_suggestions_generated =
       [&suggestions](
@@ -287,13 +365,15 @@ std::vector<Suggestion> GetSuggestionsForCreditCards(
 CreditCardSuggestionGenerator::CreditCardSuggestionGenerator(
     const std::vector<std::string>& four_digit_combinations_in_dom,
     const payments::AmountExtractionStatus& amount_extraction_status,
-    autofill_metrics::CreditCardFormEventLogger& credit_card_form_event_logger,
-    const AutofillMetrics::PaymentsSigninState signin_state_for_metrics)
+    autofill_metrics::CreditCardFormEventLogger* credit_card_form_event_logger,
+    const AutofillMetrics::PaymentsSigninState signin_state_for_metrics,
+    bool exclude_virtual_cards)
     : four_digit_combinations_in_dom_(four_digit_combinations_in_dom),
       summary_(CreditCardSuggestionSummary()),
       amount_extraction_status_(amount_extraction_status),
       credit_card_form_event_logger_(credit_card_form_event_logger),
-      signin_state_for_metrics_(signin_state_for_metrics) {}
+      signin_state_for_metrics_(signin_state_for_metrics),
+      exclude_virtual_cards_(exclude_virtual_cards) {}
 
 CreditCardSuggestionGenerator::~CreditCardSuggestionGenerator() = default;
 
@@ -343,8 +423,10 @@ void CreditCardSuggestionGenerator::FetchSuggestionData(
         void(std::pair<SuggestionDataSource,
                        std::vector<SuggestionGenerator::SuggestionData>>)>
         callback) {
-  credit_card_form_event_logger_->set_signin_state_for_metrics(
-      signin_state_for_metrics_);
+  if (credit_card_form_event_logger_) {
+    credit_card_form_event_logger_->set_signin_state_for_metrics(
+        signin_state_for_metrics_);
+  }
   std::u16string card_number_field_value = u"";
   bool is_card_number_autofilled = false;
 
@@ -355,7 +437,10 @@ void CreditCardSuggestionGenerator::FetchSuggestionData(
         autofill_field &&
         autofill_field->Type().GetCreditCardType() == CREDIT_CARD_NUMBER) {
       card_number_field_value += SanitizeCreditCardFieldValue(field.value());
-      is_card_number_autofilled |= field.is_autofilled();
+      // TODO(crbug.com/393114125): Change to use
+      // `AutofillField::field_modifiers_` after launching
+      // `kAutofillFixIsAutofilled`.
+      is_card_number_autofilled |= field.is_autofilled_according_to_renderer();
     }
   }
 
@@ -402,7 +487,7 @@ void CreditCardSuggestionGenerator::FetchSuggestionData(
   // Non-empty virtual_card_guid_to_last_four_map indicates this is standalone
   // CVC form AND there is matched VCN (based on the VCN usages and last four
   // from the DOM).
-  if (!virtual_card_guid_to_last_four_map.empty()) {
+  if (!virtual_card_guid_to_last_four_map.empty() && !exclude_virtual_cards_) {
     // TODO(crbug.com/40916587): Refactor credit card suggestion code by moving
     // duplicate logic to helper functions.
     callback(FetchVirtualCardStandaloneCvcFieldSuggestionDataSync(
@@ -438,11 +523,15 @@ void CreditCardSuggestionGenerator::GenerateSuggestions(
         CreateSaveAndFillSuggestion(client, display_gpay_logo));
     base::Extend(suggestions,
                  GetCreditCardFooterSuggestions(
-                     client, /*should_show_bnpl_suggestion=*/false,
+                     client, /*should_show_pay_later_tab_suggestions=*/false,
+                     /*should_append_bnpl_suggestion=*/false,
                      ShouldShowScanCreditCard(*form_structure,
                                               *trigger_autofill_field, client),
-                     trigger_field.is_autofilled(), display_gpay_logo,
-                     amount_extraction_status_.get()));
+                     // TODO(crbug.com/393114125): Change to use
+                     // `AutofillField::field_modifiers_` after launching
+                     // `kAutofillFixIsAutofilled`.
+                     trigger_field.is_autofilled_according_to_renderer(),
+                     display_gpay_logo, amount_extraction_status_.get()));
   } else if (all_suggestion_data.contains(
                  SuggestionDataSource::kVirtualStandaloneCvc)) {
     // Only trigger GetVirtualCreditCardsForStandaloneCvcField if it's
@@ -488,11 +577,26 @@ void CreditCardSuggestionGenerator::GenerateSuggestions(
         return suggestion.type == SuggestionType::kVirtualCreditCardEntry;
       });
 
-  credit_card_form_event_logger_->OnDidFetchSuggestion(
-      suggestions, summary_.with_cvc,
-      summary_.with_card_info_retrieval_enrolled,
-      is_virtual_card_standalone_cvc_field,
-      std::move(summary_.metadata_logging_context));
+  if (credit_card_form_event_logger_) {
+    credit_card_form_event_logger_->OnDidFetchSuggestion(
+        suggestions, summary_.with_cvc,
+        summary_.with_card_info_retrieval_enrolled,
+        is_virtual_card_standalone_cvc_field,
+        std::move(summary_.metadata_logging_context));
+  }
+
+  // Don't provide credit card suggestions for non-secure pages, but do provide
+  // them for secure pages with passive mixed content (see implementation of
+  // IsContextSecure).
+  if (!suggestions.empty() &&
+      IsFormOrClientNonSecure(client, *form_structure)) {
+    // Replace the suggestion content with a warning message explaining why
+    // Autofill is disabled for a website. The string is different if the credit
+    // card autofill HTTP warning experiment is enabled.
+    suggestions = {Suggestion(
+        l10n_util::GetStringUTF16(IDS_AUTOFILL_WARNING_INSECURE_CONNECTION),
+        SuggestionType::kInsecureContextPaymentDisabledMessage)};
+  }
 
   callback({FillingProduct::kCreditCard, suggestions});
 }

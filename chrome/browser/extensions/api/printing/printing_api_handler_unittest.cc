@@ -367,14 +367,7 @@ class TestLocalPrinter : public ash::LocalPrinter {
 
   void SetCaps(std::string_view id,
                std::optional<printing::PrinterSemanticCapsAndDefaults> caps) {
-    if (caps.has_value()) {
-      caps_map_[std::string(id)] = std::move(caps.value());
-      return;
-    }
-    auto it = caps_map_.find(id);
-    if (it != caps_map_.end()) {
-      caps_map_.erase(it);
-    }
+    caps_map_[std::string(id)] = std::move(caps);
   }
 
   void GetPrinters(const AccountId& accountId,
@@ -387,15 +380,23 @@ class TestLocalPrinter : public ash::LocalPrinter {
                      ash::LocalPrinter::GetCapabilityCallback cb) override {
     auto it = caps_map_.find(id);
     if (it == caps_map_.end()) {
-      std::move(cb).Run(std::nullopt);
+      std::move(cb).Run(std::nullopt, std::nullopt);
       return;
     }
-    std::move(cb).Run(it->second);
+    std::move(cb).Run(chromeos::Printer(id), it->second);
+  }
+
+  void GetStatus(const AccountId& acccountId,
+                 const std::string& id,
+                 ash::LocalPrinter::GetStatusCallback cb) override {
+    NOTREACHED() << "Should not be called by this unittest.";
   }
 
  private:
   std::vector<chromeos::Printer> printers_;
-  std::map<std::string, printing::PrinterSemanticCapsAndDefaults, std::less<>>
+  std::map<std::string,
+           std::optional<printing::PrinterSemanticCapsAndDefaults>,
+           std::less<>>
       caps_map_;
 };
 

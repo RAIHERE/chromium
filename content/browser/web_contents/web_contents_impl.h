@@ -406,6 +406,7 @@ class CONTENT_EXPORT WebContentsImpl
   RenderWidgetHostView* GetRenderWidgetHostView() override;
   RenderWidgetHostView* GetTopLevelRenderWidgetHostView() override;
   RenderWidgetHost* FindWidgetAtPoint(const gfx::PointF& point) override;
+  std::vector<RenderWidgetHostView*> GetPopupWidgets() override;
   void ClosePage() override;
   std::optional<SkColor> GetThemeColor() override;
   std::optional<SkColor> GetBackgroundColor() override;
@@ -728,8 +729,7 @@ class CONTENT_EXPORT WebContentsImpl
   void DOMContentLoaded(RenderFrameHostImpl* render_frame_host) override;
   void DocumentOnLoadCompleted(RenderFrameHostImpl* render_frame_host) override;
   void UpdateTitle(RenderFrameHostImpl* render_frame_host,
-                   const std::u16string& title,
-                   base::i18n::TextDirection title_direction) override;
+                   const std::u16string& title) override;
   // The app title is an alternative title. If non-empty, the browser may choose
   // to use the app title instead of the regular title for a web app displayed
   // in an app window. See
@@ -789,6 +789,7 @@ class CONTENT_EXPORT WebContentsImpl
   void Maximize() override;
   void Minimize() override;
   void Restore() override;
+  void SetResizable(bool resizable) override;
 #endif
 #if BUILDFLAG(IS_ANDROID)
   void UpdateUserGestureCarryoverInfo() override;
@@ -998,7 +999,7 @@ class CONTENT_EXPORT WebContentsImpl
   bool ShouldIgnoreUnresponsiveRenderer() override;
   bool IsGuest() override;
   std::optional<SkColor> GetBaseBackgroundColor() override;
-  std::unique_ptr<PrefetchHandle> StartPrefetch(
+  [[nodiscard]] std::unique_ptr<PrefetchHandle> StartPrefetch(
       const GURL& prefetch_url,
       bool use_prefetch_proxy,
       const std::string& embedder_histogram_suffix,
@@ -1202,7 +1203,7 @@ class CONTENT_EXPORT WebContentsImpl
       ui::Compositor* compositor) override;
   void OnInputIgnored(const blink::WebInputEvent& event) override;
 #if BUILDFLAG(IS_ANDROID)
-  float GetCurrentTouchSequenceYOffset() override;
+  gfx::PointF GetCurrentTouchSequenceOffset() override;
 #endif
 
   // RenderFrameHostManager::Delegate ------------------------------------------
@@ -1245,7 +1246,6 @@ class CONTENT_EXPORT WebContentsImpl
   bool IsPageInPreviewMode() const override;
   void CancelPreviewByMojoBinderPolicy(
       const std::string& interface_name) override;
-  void OnWebApiWindowResizableChanged() override;
 
   // blink::mojom::ColorChooserFactory ---------------------------------------
   void OnColorChooserFactoryReceiver(
@@ -1820,13 +1820,22 @@ class CONTENT_EXPORT WebContentsImpl
 
     // Exposed to deal with IPC message handlers which need to stop iteration
     // early.
-    const base::ObserverList<WebContentsObserver>& observer_list() {
+    const base::ObserverList<
+        WebContentsObserver,
+        /*check_empty=*/false,
+        base::ObserverListReentrancyPolicy::kAllowReentrancyUntriaged>&
+    observer_list() {
       return observers_;
     }
 
    private:
     bool is_notifying_observers_ = false;
-    base::ObserverList<WebContentsObserver> observers_;
+    // TODO(crbug.com/484371187): Investigate if reentrancy can be removed.
+    base::ObserverList<
+        WebContentsObserver,
+        /*check_empty=*/false,
+        base::ObserverListReentrancyPolicy::kAllowReentrancyUntriaged>
+        observers_;
   };
 
   // See WebContents::Create for a description of these parameters.

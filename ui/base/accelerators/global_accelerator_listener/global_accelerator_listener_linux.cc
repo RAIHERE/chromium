@@ -5,10 +5,11 @@
 #include "ui/base/accelerators/global_accelerator_listener/global_accelerator_listener_linux.h"
 
 #include <algorithm>
-#include <set>
 #include <string>
 #include <utility>
+#include <vector>
 
+#include "base/containers/flat_set.h"
 #include "base/functional/bind.h"
 #include "base/functional/callback_helpers.h"
 #include "base/logging.h"
@@ -79,7 +80,7 @@ void GlobalAcceleratorListenerLinux::OnServiceStarted(uint32_t version) {
   global_shortcuts_proxy_ = bus_->GetObjectProxy(
       kPortalServiceName, dbus::ObjectPath(kPortalObjectPath));
 
-  dbus_utils::ConnectToSignal<"ost">(
+  dbus_utils::ConnectToSignal<"osta{sv}">(
       global_shortcuts_proxy_, kGlobalShortcutsInterface, kSignalActivated,
       base::BindRepeating(&GlobalAcceleratorListenerLinux::OnActivatedSignal,
                           weak_ptr_factory_.GetWeakPtr()),
@@ -214,15 +215,17 @@ void GlobalAcceleratorListenerLinux::OnListShortcuts(
     return;
   }
 
-  std::set<std::string> registered_ids;
+  std::vector<std::string> registered_ids_list;
+  registered_ids_list.reserve(shortcuts->size());
   for (const DbusShortcut& shortcut : *shortcuts) {
-    registered_ids.insert(std::get<0>(shortcut));
+    registered_ids_list.push_back(std::get<0>(shortcut));
   }
+  base::flat_set<std::string> registered_ids(std::move(registered_ids_list));
 
   // If any bound command is not found among the registered shortcuts, bind
   // them.
   for (const auto& [modified_id, bound_cmd] : bound_commands_) {
-    if (registered_ids.find(modified_id) == registered_ids.end()) {
+    if (!registered_ids.contains(modified_id)) {
       auto* delegate = ui::LinuxUiDelegate::GetInstance();
       if (delegate && context_window_ != gfx::kNullAcceleratedWidget) {
         delegate->ExportWindowHandle(
@@ -300,13 +303,14 @@ void GlobalAcceleratorListenerLinux::OnBindShortcuts(
 }
 
 void GlobalAcceleratorListenerLinux::OnActivatedSignal(
-    dbus_utils::ConnectToSignalResultSig<"ost"> result) {
+    dbus_utils::ConnectToSignalResultSig<"osta{sv}"> result) {
   if (!result.has_value()) {
     LOG(ERROR) << "Failed to parse Activated signal.";
     return;
   }
 
-  auto [session_handle, shortcut_id, timestamp] = std::move(result.value());
+  auto [session_handle, shortcut_id, timestamp, options] =
+      std::move(result.value());
 
   // Only process the signal if it comes from our current session.
   if (!session_proxy_ || session_proxy_->object_path() != session_handle) {

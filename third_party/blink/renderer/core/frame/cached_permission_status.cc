@@ -37,9 +37,9 @@ CachedPermissionStatus::CachedPermissionStatus(ExecutionContext* context)
       permission_service_(context),
       permission_observer_receivers_(this, context) {
   CHECK(context);
-  CHECK(RuntimeEnabledFeatures::PermissionElementEnabled(context) ||
-        RuntimeEnabledFeatures::GeolocationElementEnabled(context) ||
-        RuntimeEnabledFeatures::UserMediaElementEnabled(context));
+  CHECK(RuntimeEnabledFeatures::GeolocationElementEnabled(context) ||
+        RuntimeEnabledFeatures::UserMediaElementEnabled(context) ||
+        RuntimeEnabledFeatures::InstallElementEnabled(context));
 }
 
 void CachedPermissionStatus::Trace(Visitor* visitor) const {

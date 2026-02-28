@@ -998,29 +998,33 @@ WebInputEventResult WebFrameWidgetImpl::HandleKeyEvent(
     return result;
   }
 
-#if !BUILDFLAG(IS_MAC)
   const WebInputEvent::Type kContextMenuKeyTriggeringEventType =
 #if BUILDFLAG(IS_WIN)
       WebInputEvent::Type::kKeyUp;
 #else
       WebInputEvent::Type::kRawKeyDown;
 #endif
+
   const WebInputEvent::Type kShiftF10TriggeringEventType =
       WebInputEvent::Type::kRawKeyDown;
 
   bool is_unmodified_menu_key =
       !(event.GetModifiers() & WebInputEvent::kInputModifiers) &&
       event.windows_key_code == VKEY_APPS;
+#if BUILDFLAG(IS_MAC)
+  bool is_shift_f10 = false;
+#else
   bool is_shift_f10 = (event.GetModifiers() & WebInputEvent::kInputModifiers) ==
                           WebInputEvent::kShiftKey &&
                       event.windows_key_code == VKEY_F10;
+#endif
+
   if ((is_unmodified_menu_key &&
        event.GetType() == kContextMenuKeyTriggeringEventType) ||
       (is_shift_f10 && event.GetType() == kShiftF10TriggeringEventType)) {
     View()->SendContextMenuEvent();
     return WebInputEventResult::kHandledSystem;
   }
-#endif  // !BUILDFLAG(IS_MAC)
 
   return WebInputEventResult::kNotHandled;
 }
@@ -1402,20 +1406,6 @@ void WebFrameWidgetImpl::DragTargetDragEnterOrOver(
   }
 }
 
-void WebFrameWidgetImpl::SendOverscrollEventFromImplSide(
-    const gfx::Vector2dF& overscroll_delta,
-    cc::ElementId scroll_latched_element_id) {
-  if (!RuntimeEnabledFeatures::OverscrollCustomizationEnabled())
-    return;
-
-  Node* target_node = View()->FindNodeFromScrollableCompositorElementId(
-      scroll_latched_element_id);
-  if (target_node) {
-    target_node->GetDocument().EnqueueOverscrollEventForNode(
-        target_node, overscroll_delta.x(), overscroll_delta.y());
-  }
-}
-
 void WebFrameWidgetImpl::SendEndOfScrollEvents(
     const cc::CompositorCommitData& commit_data) {
   HeapHashSet<Member<AnchorElementViewportPositionTracker>> handled_trackers;
@@ -1494,10 +1484,6 @@ void WebFrameWidgetImpl::UpdateCompositorScrollState(
   if (commit_data.scroll_latched_element_id != cc::ElementId()) {
     if (commit_data.snap_strategy) {
       SendScrollSnapChangingEventIfNeeded(commit_data);
-    }
-    if (!commit_data.overscroll_delta.IsZero()) {
-      SendOverscrollEventFromImplSide(commit_data.overscroll_delta,
-                                      commit_data.scroll_latched_element_id);
     }
     NotifyLatchedScrollMarkerGroup(commit_data);
   }
@@ -1679,12 +1665,21 @@ AnimationFrameTimingInfo* WebFrameWidgetImpl::RecordRenderingUpdateEndTime(
       *local_root_frame->DomWindow(), rendering_update_time);
 }
 
+void WebFrameWidgetImpl::WillBeginImplCommit() {
+  LocalFrame* local_root_frame = LocalRootImpl()->GetFrame();
+  CHECK(local_root_frame);
+
+  if (LocalFrameView* frame_view = local_root_frame->View()) {
+    frame_view->WillBeginImplCommit();
+  }
+}
+
 void WebFrameWidgetImpl::DidBeginMainFrame() {
   LocalFrame* local_root_frame = LocalRootImpl()->GetFrame();
   CHECK(local_root_frame);
 
   if (LocalFrameView* frame_view = local_root_frame->View()) {
-    frame_view->RunPostLifecycleSteps();
+    frame_view->DidBeginMainFrame();
   }
 
   if (Page* page = local_root_frame->GetPage()) {

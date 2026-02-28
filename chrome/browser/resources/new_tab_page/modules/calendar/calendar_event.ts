@@ -87,7 +87,21 @@ export class CalendarEventElement extends CalendarEventElementBase {
   protected intersectionObserver_: IntersectionObserver|null = null;
   protected accessor timeStatus_: string = '';
 
+  override willUpdate(changedProperties: PropertyValues<this>) {
+    super.willUpdate(changedProperties);
+
+    if (changedProperties.has('event')) {
+      this.formattedStartTime_ = this.computeFormattedStartTime_();
+    }
+
+    if (changedProperties.has('event') || changedProperties.has('expanded')) {
+      this.timeStatus_ = this.computeTimeStatus_();
+    }
+  }
+
   override updated(changedProperties: PropertyValues<this>) {
+    super.updated(changedProperties);
+
     if ((changedProperties.has('event') || changedProperties.has('expanded')) &&
         (this.expanded && this.showAttachments_())) {
       const attachmentList = this.renderRoot.querySelector('#attachmentList');
@@ -105,18 +119,6 @@ export class CalendarEventElement extends CalendarEventElementBase {
         assert(lastAttachment);
         this.intersectionObserver_.observe(lastAttachment);
       }
-    }
-  }
-
-  override willUpdate(changedProperties: PropertyValues<this>) {
-    super.willUpdate(changedProperties);
-
-    if (changedProperties.has('event')) {
-      this.formattedStartTime_ = this.computeFormattedStartTime_();
-    }
-
-    if (changedProperties.has('event') || changedProperties.has('expanded')) {
-      this.timeStatus_ = this.computeTimeStatus_();
     }
   }
 

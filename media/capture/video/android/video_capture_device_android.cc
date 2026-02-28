@@ -116,9 +116,11 @@ void notifyVideoCaptureDeviceChanged() {
 }  // anonymous namespace
 
 VideoCaptureDeviceAndroid::VideoCaptureDeviceAndroid(
-    const VideoCaptureDeviceDescriptor& device_descriptor)
+    const VideoCaptureDeviceDescriptor& device_descriptor,
+    const gpu::GpuDriverBugWorkarounds& gpu_workarounds)
     : main_task_runner_(base::SingleThreadTaskRunner::GetCurrentDefault()),
-      device_descriptor_(device_descriptor) {}
+      device_descriptor_(device_descriptor),
+      gpu_workarounds_(gpu_workarounds) {}
 
 VideoCaptureDeviceAndroid::~VideoCaptureDeviceAndroid() {
   DCHECK(main_task_runner_->BelongsToCurrentThread());
@@ -148,7 +150,7 @@ void VideoCaptureDeviceAndroid::AllocateAndStart(
   }
 
   bool enable_hardware_buffer_capture =
-      base::FeatureList::IsEnabled(media::kAndroidZeroCopyVideoCapture);
+      media::IsAndroidZeroCopyVideoCaptureEnabled(gpu_workarounds_);
 
   JNIEnv* env = AttachCurrentThread();
   bool ret = Java_VideoCapture_allocate(
@@ -440,9 +442,11 @@ void VideoCaptureDeviceAndroid::OnHardwareBufferAvailableOnMainThread(
   gmb_handle.type = gfx::ANDROID_HARDWARE_BUFFER;
   gmb_handle.android_hardware_buffer = ahb_handle.Clone();
 
-  constexpr auto kSharedImageUsage = gpu::SHARED_IMAGE_USAGE_GLES2_READ |
-                                     gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
-                                     gpu::SHARED_IMAGE_USAGE_RASTER_READ;
+  constexpr auto kSharedImageUsage =
+      gpu::SHARED_IMAGE_USAGE_GLES2_READ |
+      gpu::SHARED_IMAGE_USAGE_DISPLAY_READ |
+      gpu::SHARED_IMAGE_USAGE_RASTER_READ |
+      gpu::SHARED_IMAGE_USAGE_VIDEO_ENCODE_ACCELERATOR;
   auto shared_image = sii->CreateSharedImage(
       {shared_image_format, gfx::Size(desc.width, desc.height), color_space,
        kSharedImageUsage, "AndroidCaptureDevice"},

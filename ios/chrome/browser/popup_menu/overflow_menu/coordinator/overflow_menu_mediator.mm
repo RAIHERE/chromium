@@ -41,7 +41,7 @@
 #import "ios/chrome/browser/find_in_page/model/find_tab_helper.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_service.h"
 #import "ios/chrome/browser/intelligence/bwg/model/bwg_service_factory.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intents/model/intents_donation_helper.h"
 #import "ios/chrome/browser/lens_overlay/coordinator/lens_overlay_availability.h"
@@ -98,7 +98,10 @@
 #import "ios/chrome/browser/shared/public/features/features.h"
 #import "ios/chrome/browser/shared/public/features/system_flags.h"
 #import "ios/chrome/browser/shared/ui/symbols/symbols.h"
+#import "ios/chrome/browser/shared/ui/util/layout_guide_names.h"
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
+#import "ios/chrome/browser/shared/ui/util/util_swift.h"
+#import "ios/chrome/browser/sharing/ui_bundled/sharing_metrics.h"
 #import "ios/chrome/browser/sharing/ui_bundled/sharing_params.h"
 #import "ios/chrome/browser/supervised_user/model/supervised_user_capabilities.h"
 #import "ios/chrome/browser/tab_switcher/ui_bundled/tab_utils.h"
@@ -261,6 +264,8 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
 @property(nonatomic, strong) OverflowMenuAction* askBWGAction;
 
 @property(nonatomic, strong) OverflowMenuAction* hideToolbarsAction;
+
+@property(nonatomic, strong) OverflowMenuAction* shareAction;
 
 @end
 
@@ -620,6 +625,8 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
   self.translateAction = [self newTranslateAction];
 
   self.requestDesktopAction = [self newRequestDesktopAction];
+
+  self.shareAction = [self newShareAction];
 
   NSString* requestMobileHideItemText =
       l10n_util::GetNSString(IDS_IOS_OVERFLOW_MENU_HIDE_ACTION_MOBILE_SITE);
@@ -1052,6 +1059,22 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
                                  }];
 }
 
+- (OverflowMenuAction*)newShareAction {
+  __weak __typeof(self) weakSelf = self;
+  return [self
+      createOverflowMenuActionWithNameID:IDS_IOS_TOOLS_MENU_SHARE_THIS_PAGE
+                              actionType:overflow_menu::ActionType::
+                                             ShareThisPage
+                              symbolName:kShareSymbol
+                            systemSymbol:YES
+                        monochromeSymbol:YES
+                         accessibilityID:kToolsMenuShareId
+                            hideItemText:nil
+                                 handler:^{
+                                   [weakSelf shareThisPage];
+                                 }];
+}
+
 - (OverflowMenuAction*)newFindInPageAction {
   __weak __typeof(self) weakSelf = self;
   NSString* hideItemText =
@@ -1402,6 +1425,11 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
     if (weakSelf.menuHasBeenDismissed) {
       return;
     }
+    // Ensures that the floaty doesn't show when another view controller is
+    // presented as a result of an overflow item being tapped.
+    [weakSelf.BWGHandler
+        hideFloatyIfInvokedAnimated:NO
+                         fromSource:gemini::FloatyUpdateSource::ViewTransition];
     [weakSelf logFeatureEngagementEventForClickOnAction:actionType];
     handler();
   };
@@ -1568,7 +1596,7 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
   self.openIncognitoTabAction.enterpriseDisabled =
       IsIncognitoModeDisabled(self.profilePrefs);
 
-  if (IsLensOverlayAvailable(_profilePrefs)) {
+  if (IsLensOverlayAllowedByPolicy(_profilePrefs)) {
     self.lensOverlayAction.enabled = ![self isLensOverlayVisible];
   }
 
@@ -1576,10 +1604,7 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
     self.readerModeAction.enabled = [self isReaderModeEnabled];
   }
 
-  if ([self isGeminiAvailable]) {
-    self.askBWGAction.enabled =
-        IsGeminiImmediateOverlayEnabled() || !_webState->IsLoading();
-  }
+  self.askBWGAction.enabled = [self isGeminiAvailable];
 
   if (base::FeatureList::IsEnabled(kHideToolbarsInOverflowMenu)) {
     self.hideToolbarsAction.enabled = YES;
@@ -1597,6 +1622,13 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
 
   NSMutableArray<OverflowMenuAction*>* appActions =
       [[NSMutableArray alloc] init];
+
+  if (base::FeatureList::IsEnabled(kShareInOverflowMenu) &&
+      [self isCurrentURLWebURL]) {
+    base::UmaHistogramEnumeration("Mobile.ShareThisPage.Shown",
+                                  ShareThisPageLocation::kOverflowMenu);
+    [appActions addObject:self.shareAction];
+  }
 
   // The reload/stop action is only shown when the reload button is not in the
   // toolbar. The reload button is shown in the toolbar when the toolbar is not
@@ -1664,7 +1696,7 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
       search_engines::SupportsSearchImageWithLens(self.templateURLService);
   BOOL portraitOverride =
       IsLensOverlayLandscapeOrientationEnabled(_profilePrefs);
-  BOOL isAvailable = IsLensOverlayAvailable(_profilePrefs);
+  BOOL isAvailable = IsLensOverlayAllowedByPolicy(_profilePrefs);
   return isAvailable && isSupported && (isPortrait || portraitOverride) &&
          ![self isLensOverlayVisible];
 }
@@ -2223,6 +2255,8 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
       return self.askBWGAction;
     case overflow_menu::ActionType::HideToolbars:
       return self.hideToolbarsAction;
+    case overflow_menu::ActionType::ShareThisPage:
+      return self.shareAction;
   }
 }
 
@@ -2242,6 +2276,7 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
     case overflow_menu::ActionType::Help:
     case overflow_menu::ActionType::ShareChrome:
     case overflow_menu::ActionType::EditActions:
+    case overflow_menu::ActionType::ShareThisPage:
       NOTREACHED();
     case overflow_menu::ActionType::Bookmark:
       return [self newAddBookmarkAction];
@@ -2464,6 +2499,17 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
       presentInProductHelpWithType:InProductHelpType::kDefaultSiteView];
 }
 
+- (void)shareThisPage {
+  base::UmaHistogramEnumeration("Mobile.ShareThisPage.Used",
+                                ShareThisPageLocation::kOverflowMenu);
+  [self dismissMenu];
+
+  UIView* toolMenuView =
+      [_layoutGuideCenter referencedViewUnderName:kToolsMenuGuide];
+
+  [self.activityServiceHandler showShareSheetFromShareButton:toolMenuView];
+}
+
 // Dismisses the menu and requests the mobile version of the current page
 - (void)requestMobileSite {
   RecordAction(UserMetricsAction("MobileMenuRequestMobileSite"));
@@ -2557,7 +2603,9 @@ OverflowMenuFooter* CreateOverflowMenuManagedFooter(
 - (void)startAskBWG {
   [self dismissMenu];
   [self.BWGHandler
-      startGeminiFlowWithEntryPoint:gemini::EntryPoint::OverflowMenu];
+      startGeminiFlowWithStartupState:
+          [[GeminiStartupState alloc]
+              initWithEntryPoint:gemini::EntryPoint::OverflowMenu]];
 }
 
 - (void)startCollapseToolbars {

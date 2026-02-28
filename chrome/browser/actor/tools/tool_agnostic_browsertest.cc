@@ -9,12 +9,14 @@
 #include "base/test/test_future.h"
 #include "base/time/time.h"
 #include "chrome/browser/actor/actor_features.h"
+#include "chrome/browser/actor/actor_keyed_service.h"
 #include "chrome/browser/actor/actor_test_util.h"
 #include "chrome/browser/actor/execution_engine.h"
 #include "chrome/browser/actor/tools/tool_request.h"
 #include "chrome/browser/actor/tools/tools_test_util.h"
 #include "chrome/browser/ui/browser_navigator_params.h"
 #include "chrome/common/actor.mojom.h"
+#include "chrome/common/actor/task_id.h"
 #include "chrome/common/chrome_features.h"
 #include "chrome/test/base/ui_test_utils.h"
 #include "content/public/browser/render_frame_host.h"
@@ -27,6 +29,7 @@
 #include "content/public/test/browser_test_utils.h"
 #include "ui/base/page_transition_types.h"
 #include "ui/gfx/geometry/point_conversions.h"
+#include "url/url_util.h"
 
 #if BUILDFLAG(IS_CHROMEOS)
 #include "chromeos/constants/chromeos_features.h"
@@ -543,17 +546,17 @@ IN_PROC_BROWSER_TEST_F(ActorEarlyAddTaskTabsBrowserTest,
 
   // Tabs are added asynchronously so the execution engine isn't started until
   // tabs are added. Wait until tabs are added.
-  ASSERT_EQ(actor_task().GetExecutionEngine()->state(),
+  ASSERT_EQ(actor_task().GetExecutionEngine().state(),
             ExecutionEngine::State::kInit);
   base::test::TestFuture<void> started_future;
   ExecutionEngineStateWaiter waiter(started_future.GetCallback(),
-                                    *actor_task().GetExecutionEngine(),
+                                    actor_task().GetExecutionEngine(),
                                     ExecutionEngine::State::kStartAction);
   ASSERT_TRUE(started_future.Wait());
 
   // Now that tabs have been added the execution engine should be in an async
   // site policy checks state before the tool is created.
-  ASSERT_EQ(actor_task().GetExecutionEngine()->state(),
+  ASSERT_EQ(actor_task().GetExecutionEngine().state(),
             ExecutionEngine::State::kStartAction);
   ASSERT_FALSE(result.IsReady());
 
@@ -561,6 +564,89 @@ IN_PROC_BROWSER_TEST_F(ActorEarlyAddTaskTabsBrowserTest,
   // resolve. This is needed as the site policy checks may query task tabs (e.g.
   // a "Switch To Tab" button while confirming a non-allowlisted URL).
   EXPECT_TRUE(actor_task().GetTabs().contains(tab));
+}
+
+IN_PROC_BROWSER_TEST_F(ActorEarlyAddTaskTabsBrowserTest,
+                       NewlyAddedTabsVisibleFromStateChangeCallback) {
+  const GURL url =
+      embedded_test_server()->GetURL("/actor/page_with_clickable_element.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  std::optional<int> button_id =
+      GetDOMNodeId(*main_frame(), "button#clickable");
+  ASSERT_TRUE(button_id);
+
+  std::unique_ptr<ToolRequest> action =
+      MakeClickRequest(*main_frame(), button_id.value());
+  tabs::TabHandle tab = action->GetTabHandle();
+
+  ASSERT_TRUE(actor_task().GetTabs().empty());
+
+  std::optional<ActorTask::TabHandleSet> tabs_at_acting_start;
+  auto subscription = actor_keyed_service().AddTaskStateChangedCallback(
+      base::BindLambdaForTesting([&](TaskId id, ActorTask::State state) {
+        CHECK(id == actor_task().id());
+        if (state == ActorTask::State::kActing) {
+          tabs_at_acting_start.emplace(actor_task().GetTabs());
+        }
+      }));
+
+  // Tab-scoped actions require async site_policy checks.
+  ActResultFuture result;
+  actor_task().Act(ToRequestList(action), result.GetCallback());
+  ExpectOkResult(result);
+
+  ASSERT_TRUE(tabs_at_acting_start.has_value());
+  EXPECT_TRUE(tabs_at_acting_start->contains(tab));
+}
+
+// Ensure ActorKeyedService removes a task from its tracked task set when the
+// task is stopped.
+IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTest, ActorTaskRemovedOnStop) {
+  const GURL url =
+      embedded_test_server()->GetURL("/actor/page_with_clickable_element.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  TaskId task_id = actor_task().id();
+
+  ASSERT_EQ(actor_task().GetState(), ActorTask::State::kCreated);
+  ASSERT_EQ(actor_keyed_service().GetTask(task_id), &actor_task());
+
+  actor_task().Stop(ActorTask::StoppedReason::kTaskComplete);
+
+  EXPECT_EQ(actor_keyed_service().GetTask(task_id), nullptr);
+}
+
+IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTest,
+                       ActorTaskAvailableInStopStateCallback) {
+  const GURL url =
+      embedded_test_server()->GetURL("/actor/page_with_clickable_element.html");
+  ASSERT_TRUE(content::NavigateToURL(web_contents(), url));
+
+  ASSERT_EQ(actor_task().GetState(), ActorTask::State::kCreated);
+
+  TaskId task_at_created_state = actor_task().id();
+
+  std::optional<TaskId> task_at_finished_state;
+  auto subscription = actor_keyed_service().AddTaskStateChangedCallback(
+      base::BindLambdaForTesting([&](TaskId id, ActorTask::State state) {
+        if (id != actor_task().id()) {
+          return;
+        }
+        if (state == ActorTask::State::kFinished) {
+          // Get the ID from the ActorTask to ensure it's still live.
+          ActorTask* task = actor_keyed_service().GetTask(task_id_);
+          if (task) {
+            task_at_finished_state = task->id();
+          }
+        }
+      }));
+
+  actor_keyed_service().StopTask(task_id_,
+                                 ActorTask::StoppedReason::kTaskComplete);
+
+  ASSERT_TRUE(task_at_finished_state.has_value());
+  EXPECT_EQ(task_at_created_state, *task_at_finished_state);
 }
 
 // This test is for behavior guarded by a killswitch.
@@ -579,8 +665,9 @@ class ActorToolAgnosticBrowserTestWithDeferWhileInterrupted
 IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithDeferWhileInterrupted,
                        ActCallbackDeferredWhileInterrupted) {
   const GURL next_url = embedded_test_server()->GetURL("/actor/blank.html");
-  const GURL start_url = embedded_test_server()->GetURL(base::StrCat(
-      {"/actor/link_full_page.html?href=", EncodeURI(next_url.spec())}));
+  const GURL start_url = embedded_test_server()->GetURL(
+      base::StrCat({"/actor/link_full_page.html?href=",
+                    url::EncodeUriComponent(next_url.spec())}));
 
   ASSERT_TRUE(content::NavigateToURL(web_contents(), start_url));
 
@@ -591,7 +678,7 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithDeferWhileInterrupted,
   base::test::TestFuture<void> tool_invoked_future;
   actor_task()
       .GetExecutionEngine()
-      ->set_tool_invoke_complete_callback_for_testing(
+      .set_tool_invoke_complete_callback_for_testing(
           tool_invoked_future.GetCallback());
 
   // Inject a click action that causes a navigation. However, the navigation
@@ -624,17 +711,17 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithDeferWhileInterrupted,
   // complete since the actor task is paused. This also means the ActorTask::Act
   // callback isn't replied to.
   TinyWait();
-  EXPECT_EQ(actor_task().GetExecutionEngine()->state(),
+  EXPECT_EQ(actor_task().GetExecutionEngine().state(),
             ExecutionEngine::State::kToolInvoke);
   EXPECT_FALSE(act_result.IsReady());
 
-  actor_task().GetExecutionEngine()->FailCurrentTool(
+  actor_task().GetExecutionEngine().FailCurrentTool(
       mojom::ActionResultCode::kNavigateCommittedErrorPage);
 
   // Uninterrupting the task should unblock everything to completion.
   base::test::TestFuture<void> completion_future;
   ExecutionEngineStateWaiter waiter(completion_future.GetCallback(),
-                                    *actor_task().GetExecutionEngine(),
+                                    actor_task().GetExecutionEngine(),
                                     ExecutionEngine::State::kComplete);
   actor_task().Uninterrupt(ActorTask::State::kActing);
   ASSERT_TRUE(completion_future.Wait());
@@ -676,7 +763,7 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithCustomDelay,
   ActResultFuture result;
   base::test::TestFuture<void> start_future;
   ExecutionEngineStateWaiter state_waiter(start_future.GetCallback(),
-                                          *actor_task().GetExecutionEngine(),
+                                          actor_task().GetExecutionEngine(),
                                           ExecutionEngine::State::kToolInvoke);
 
   std::unique_ptr<ToolRequest> action =
@@ -687,7 +774,7 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithCustomDelay,
   // Wait until the tab has been associated with the task but before the tool
   // finishes invoking in ExecutionEngine.
   ASSERT_TRUE(start_future.Wait());
-  ASSERT_EQ(actor_task().GetExecutionEngine()->state(),
+  ASSERT_EQ(actor_task().GetExecutionEngine().state(),
             ExecutionEngine::State::kToolInvoke);
   ASSERT_TRUE(actor_task().GetTabs().contains(tab_handle));
   ASSERT_FALSE(result.IsReady());
@@ -720,7 +807,7 @@ IN_PROC_BROWSER_TEST_F(ActorToolAgnosticBrowserTestWithCustomDelay,
 
   base::test::TestFuture<void> tool_invoke_future;
   ExecutionEngineStateWaiter waiter(tool_invoke_future.GetCallback(),
-                                    *actor_task().GetExecutionEngine(),
+                                    actor_task().GetExecutionEngine(),
                                     ExecutionEngine::State::kToolInvoke);
   std::unique_ptr<ToolRequest> action =
       MakeClickRequest(*main_frame(), button_id.value());

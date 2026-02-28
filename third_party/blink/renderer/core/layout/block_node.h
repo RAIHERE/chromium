@@ -131,7 +131,6 @@ class CORE_EXPORT BlockNode : public LayoutInputNode {
       InlineNode* first_child_out = nullptr) const;
 
   bool IsInlineLevel() const;
-  bool IsAtomicInline() const;
   bool IsInTopOrViewTransitionLayer() const;
 
   // Returns the aspect ratio of a replaced element.
@@ -139,9 +138,7 @@ class CORE_EXPORT BlockNode : public LayoutInputNode {
 
   bool MayContainAnchor() const { return box_->MayContainAnchor(); }
 
-  bool IsOverscrollAreaParentPseudoElement() const {
-    return box_->IsPseudo(kPseudoIdOverscrollAreaParent);
-  }
+  bool IsOverscrollAreaParent() const { return box_->IsOverscrollAreaParent(); }
 
   bool HasLeftOverflow() const { return box_->HasLeftOverflow(); }
   bool HasTopOverflow() const { return box_->HasTopOverflow(); }
@@ -171,7 +168,7 @@ class CORE_EXPORT BlockNode : public LayoutInputNode {
     if (IsFloating()) {
       return false;
     }
-    if (IsAtomicInline()) {
+    if (IsInlineLevel()) {
       return false;
     }
     return (IsDocumentElement() || IsBody());

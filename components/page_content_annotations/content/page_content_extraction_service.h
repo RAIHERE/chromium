@@ -10,10 +10,13 @@
 #include <set>
 #include <vector>
 
+#include "base/memory/ref_counted.h"
+#include "base/memory/scoped_refptr.h"
 #include "base/memory/weak_ptr.h"
 #include "base/observer_list.h"
 #include "base/supports_user_data.h"
 #include "components/keyed_service/core/keyed_service.h"
+#include "components/optimization_guide/proto/features/common_quality_data.pb.h"
 
 #if BUILDFLAG(IS_ANDROID)
 #include "base/android/jni_android.h"
@@ -29,9 +32,9 @@ class WebContents;
 enum class Visibility;
 }  // namespace content
 
-namespace optimization_guide::proto {
-class AnnotatedPageContent;
-}  // namespace optimization_guide::proto
+namespace feature_engagement {
+class Tracker;
+}  // namespace feature_engagement
 
 namespace os_crypt_async {
 class OSCryptAsync;
@@ -39,6 +42,10 @@ class OSCryptAsync;
 
 namespace page_content_annotations {
 
+using RefCountedAnnotatedPageContent =
+    base::RefCountedData<optimization_guide::proto::AnnotatedPageContent>;
+
+class AnnotatedPageContentRequest;
 struct ExtractedPageContentResult;
 class PageContentCache;
 class PageContentCacheHandler;
@@ -52,7 +59,7 @@ class PageContentExtractionService : public KeyedService,
     // triggered for every page once the page has sufficiently loaded.
     virtual void OnPageContentExtracted(
         content::Page& page,
-        const optimization_guide::proto::AnnotatedPageContent& page_content) {}
+        scoped_refptr<const RefCountedAnnotatedPageContent> page_content) {}
   };
 
 #if BUILDFLAG(IS_ANDROID)
@@ -62,7 +69,8 @@ class PageContentExtractionService : public KeyedService,
 #endif  // BUILDFLAG(IS_ANDROID)
 
   PageContentExtractionService(os_crypt_async::OSCryptAsync* os_crypt_async,
-                               const base::FilePath& profile_path);
+                               const base::FilePath& profile_path,
+                               feature_engagement::Tracker* tracker);
   ~PageContentExtractionService() override;
 
   void AddObserver(Observer* observer);
@@ -79,14 +87,17 @@ class PageContentExtractionService : public KeyedService,
   virtual std::optional<ExtractedPageContentResult>
   GetExtractedPageContentAndEligibilityForPage(content::Page& page);
 
+  // Returns whether the cached APC for `page` is eligible for server upload.
+  // Will return nullopt if not available.
+  // Virtual for testing.
+  virtual std::optional<bool> GetServerUploadEligibilityForPage(
+      content::Page& page);
+
   // Called when a tab is closed.
   void OnTabClosed(int64_t tab_id);
 
   // Called when a closed tab is undone.
   void OnTabCloseUndone(int64_t tab_id);
-
-  // Called when a tab closure is committed and can't be undone anymore.
-  void TabClosureCommitted(int64_t tab_id);
 
   // Called when the visibility of a WebContents changes.
   void OnVisibilityChanged(std::optional<int64_t> tab_id,
@@ -111,12 +122,12 @@ class PageContentExtractionService : public KeyedService,
   // observers. `tab_id` for the tab where page is loaded, if available.
   virtual void OnPageContentExtracted(
       content::Page& page,
-      const optimization_guide::proto::AnnotatedPageContent&
+      scoped_refptr<const RefCountedAnnotatedPageContent>
           annotated_page_content,
       const std::vector<uint8_t>& screenshot_data,
       std::optional<int> tab_id);
 
-  std::optional<ExtractedPageContentResult> GetCachedContentsFromWebContents(
+  AnnotatedPageContentRequest* GetAnnotatedPageContentRequestFromWebContents(
       content::WebContents* web_contents);
 
   base::ObserverList<Observer> observers_;

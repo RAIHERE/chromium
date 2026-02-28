@@ -138,7 +138,9 @@ class MockSaveCardBottomSheetModel : public autofill::SaveCardBottomSheetModel {
       std::variant<autofill::payments::PaymentsAutofillClient::
                        LocalSaveCardPromptCallback,
                    autofill::payments::PaymentsAutofillClient::
-                       UploadSaveCardPromptCallback> save_card_callback,
+                       UploadSaveCardPromptCallback,
+                   autofill::payments::PaymentsAutofillClient::
+                       CardSaveAndFillDialogCallback> save_card_callback,
       autofill::payments::PaymentsAutofillClient::SaveCreditCardOptions options)
       : SaveCardBottomSheetModel(
             std::move(ui_info),
@@ -160,7 +162,9 @@ class SaveCardBottomSheetMediatorTest : public PlatformTest {
     using Variant = std::variant<
         autofill::payments::PaymentsAutofillClient::LocalSaveCardPromptCallback,
         autofill::payments::PaymentsAutofillClient::
-            UploadSaveCardPromptCallback>;
+            UploadSaveCardPromptCallback,
+        autofill::payments::PaymentsAutofillClient::
+            CardSaveAndFillDialogCallback>;
     std::unique_ptr<MockSaveCardBottomSheetModel> model =
         std::make_unique<MockSaveCardBottomSheetModel>(
             CreateAutofillSaveCardUiInfo(for_upload),
@@ -739,6 +743,35 @@ TEST_F(SaveCardBottomSheetMediatorTestForLocalSave,
       base::StrCat({kCreditCardUploadSuccessConfirmationResultPrefix,
                     ".CardNotUploaded"}),
       LegacySaveCardPromptResult::kClosed, 1);
+}
+
+// Test that actionType returns kSaveScanAndFill when initialized for scan and
+// fill.
+TEST_F(SaveCardBottomSheetMediatorTest, ActionTypeForScanAndFill) {
+  using Variant = std::variant<
+      autofill::payments::PaymentsAutofillClient::LocalSaveCardPromptCallback,
+      autofill::payments::PaymentsAutofillClient::UploadSaveCardPromptCallback,
+      autofill::payments::PaymentsAutofillClient::
+          CardSaveAndFillDialogCallback>;
+
+  std::unique_ptr<autofill::SaveCardBottomSheetModel> model =
+      std::make_unique<MockSaveCardBottomSheetModel>(
+          CreateAutofillSaveCardUiInfo(/*for_upload=*/false),
+          Variant(static_cast<autofill::payments::PaymentsAutofillClient::
+                                  CardSaveAndFillDialogCallback>(
+              base::DoNothing())),
+          autofill::payments::PaymentsAutofillClient::SaveCreditCardOptions()
+              .with_num_strikes(0));
+
+  SaveCardBottomSheetMediator* scan_and_fill_mediator =
+      [[SaveCardBottomSheetMediator alloc]
+                  initWithUIModel:std::move(model)
+          autofillCommandsHandler:mock_autofill_commands_handler_];
+
+  EXPECT_EQ([scan_and_fill_mediator actionType],
+            SaveCardActionType::kSaveScanAndFill);
+
+  [scan_and_fill_mediator disconnect];
 }
 
 class SaveCardBottomSheetMediatorMetricsTestWithCardSaveType

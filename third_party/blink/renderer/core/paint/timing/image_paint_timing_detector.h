@@ -76,7 +76,6 @@ class CORE_EXPORT ImageRecordsManager {
       if (largest_ignored_image_ == record) {
         largest_ignored_image_ = nullptr;
       }
-      record->OnImageOrTextRemovedWhilePending();
       pending_images_.erase(it);
       // Leave out |images_queued_for_paint_time_| intentionally because the
       // null record can be removed in
@@ -278,6 +277,7 @@ class CORE_EXPORT ImagePaintTimingDetector final
                                 const PropertyTreeStateOrAlias&,
                                 const LayoutObject&,
                                 const MediaTiming&);
+  void SendRectsToHud();
 
   LargestContentfulPaintCalculator* GetLargestContentfulPaintCalculator() const;
 

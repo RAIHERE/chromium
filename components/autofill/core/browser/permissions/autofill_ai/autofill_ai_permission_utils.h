@@ -8,6 +8,7 @@
 #include <optional>
 #include <string>
 
+#include "components/autofill/core/browser/country_type.h"
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type.h"
 
 class PrefService;
@@ -16,9 +17,18 @@ namespace signin {
 class IdentityManager;
 }
 
+namespace syncer {
+class SyncService;
+}
+
+#if !BUILDFLAG(IS_FUCHSIA)
+class GoogleGroupsManager;
+#endif
+
 namespace autofill {
 
 class AutofillClient;
+class EntityDataManager;
 
 // An AutofillAI-related action that a user may take directly or indirectly
 // (e.g., IPH).
@@ -48,10 +58,8 @@ enum class AutofillAiAction {
   kOptIn,
   // Used only if AutofillAiAvailableByDefault is enabled, it controls whether
   // users can opt into Autofill AI features, such as identity docs and travel
-  // information.
-  // Its implementation is currently the exact same as kOptIn. However this
-  // will change once a new developer extension
-  // pref is introduced, which will allow for disabling Autofill AI.
+  // information. It returns false on high-level checks, such as address-pref
+  // being off.
   kEnableOrDisable,
   // Trigger a run of the server classification model.
   kServerClassificationModel,
@@ -59,7 +67,10 @@ enum class AutofillAiAction {
   kUseCachedServerClassificationModelResults,
   // Whether the user can store entities in the Google Wallet server.
   kImportToWallet,
-  kMaxValue = kImportToWallet,
+  // Whether the user should see a promotion to allow Wallet to share data with
+  // Chrome.
+  kWalletDataSharingPromotion,
+  kMaxValue = kWalletDataSharingPromotion,
 };
 
 // Opt-in status for the AutofillAI feature.
@@ -73,6 +84,7 @@ enum class AutofillAiAction {
 // These values are persisted to logs. Entries should not be renumbered and
 // numeric values should never be reused.
 // LINT.IfChange(AutofillAiOptInStatus)
+// GENERATED_JAVA_ENUM_PACKAGE: org.chromium.components.autofill.autofill_ai
 enum class AutofillAiOptInStatus {
   kOptedOut = 0,
   kOptedIn = 1,
@@ -94,6 +106,21 @@ enum class AutofillAiOptInStatus {
 // See go/forms-ai:permissions for more detail.
 bool MayPerformAutofillAiAction(
     const AutofillClient& client,
+    AutofillAiAction action,
+    std::optional<EntityType> entity_type = std::nullopt,
+    std::string* debug_message = nullptr);
+
+bool MayPerformAutofillAiAction(
+#if !BUILDFLAG(IS_FUCHSIA)
+    const GoogleGroupsManager* google_groups_manager,
+#endif
+    const PrefService* prefs,
+    const EntityDataManager* edm,
+    const signin::IdentityManager* identity_manager,
+    const syncer::SyncService* sync_service,
+    bool is_wallet_storage_enabled,
+    bool is_off_the_record,
+    const GeoIpCountryCode& country_code,
     AutofillAiAction action,
     std::optional<EntityType> entity_type = std::nullopt,
     std::string* debug_message = nullptr);
@@ -124,6 +151,18 @@ bool MayPerformAutofillAiAction(
 // (Enhanced Autofill) are.
 bool SetAutofillAiOptInStatus(AutofillClient& client,
                               AutofillAiOptInStatus opt_in_status);
+bool SetAutofillAiOptInStatus(
+#if !BUILDFLAG(IS_FUCHSIA)
+    const GoogleGroupsManager* google_groups_manager,
+#endif
+    PrefService* prefs,
+    const EntityDataManager* edm,
+    const signin::IdentityManager* identity_manager,
+    const syncer::SyncService* sync_service,
+    bool is_wallet_storage_enabled,
+    bool is_off_the_record,
+    const GeoIpCountryCode& country_code,
+    AutofillAiOptInStatus opt_in_status);
 
 // Returns whether the user has ever explicitly opted in or out of Autofill AI.
 //

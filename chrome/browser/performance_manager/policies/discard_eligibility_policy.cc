@@ -6,19 +6,16 @@
 
 #include "base/metrics/histogram_functions.h"
 #include "base/strings/strcat.h"
-#include "chrome/common/chrome_features.h"
+#include "chrome/browser/glic/public/glic_keyed_service.h"
+#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
+#include "chrome/common/buildflags.h"
 #include "components/performance_manager/graph/page_node_impl.h"
 #include "components/performance_manager/public/decorators/page_live_state_decorator.h"
 #include "components/performance_manager/public/graph/node_data_describer_registry.h"
+#include "components/tabs/public/tab_interface.h"
 #include "components/url_matcher/url_matcher.h"
 #include "components/url_matcher/url_util.h"
 #include "content/public/browser/web_contents.h"
-
-#if BUILDFLAG(ENABLE_GLIC)
-#include "chrome/browser/glic/public/glic_keyed_service.h"
-#include "chrome/browser/glic/public/glic_keyed_service_factory.h"
-#include "components/tabs/public/tab_interface.h"
-#endif
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/web_applications/web_app_tab_helper.h"
@@ -202,8 +199,6 @@ CanDiscardResult DiscardEligibilityPolicy::CanDiscard(
 
   // Don't discard tabs that don't have a main frame (restored tab which is not
   // loaded yet, discarded tab, crashed tab).
-  // TODO(crbug.com/463291982): Add test to verify crashed page cannot be
-  // discarded.
   if (!page_node->GetMainFrameNode()) {
     add_reason(CannotDiscardReason::kNoMainFrame);
     return CanDiscardResult::kDisallowed;
@@ -271,7 +266,7 @@ CanDiscardResult DiscardEligibilityPolicy::CanDiscard(
   }
 
   // Do not discard PDFs as they might contain entry that is not saved and they
-  // don't remember their scrolling positions. See crbug.com/547286 and
+  // don't remember their scrolling positions. See crbug.com/40441737 and
   // crbug.com/65244.
   if (page_node->GetContentsMimeType() == "application/pdf") {
     add_reason_and_update_result(CannotDiscardReason::kPdf,
@@ -299,7 +294,6 @@ CanDiscardResult DiscardEligibilityPolicy::CanDiscard(
   }
 #endif  // !BUILDFLAG(IS_ANDROID)
 
-#if BUILDFLAG(ENABLE_GLIC)
   {
     content::WebContents* web_contents = page_node->GetWebContents().get();
     // Do not discard pages that are pin-shared with Glic.
@@ -317,7 +311,6 @@ CanDiscardResult DiscardEligibilityPolicy::CanDiscard(
       }
     }
   }
-#endif
 
   // Only discard http(s) pages and internal pages to make sure that we don't
   // discard extensions or other PageNode that don't correspond to a tab.

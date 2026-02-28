@@ -760,7 +760,8 @@ void StyleAdjuster::AdjustStyleForDisplay(
   }
 
   if (layout_parent_style.InlinifiesChildren() &&
-      !builder.HasOutOfFlowPosition() && ShouldBeInlinified(element)) {
+      !builder.HasOutOfFlowPosition() && ShouldBeInlinified(element) &&
+      !force_canvas_child_layout_subtree_styles) {
     if (builder.IsFloating()) {
       builder.SetFloating(EFloat::kNone);
       if (document) {
@@ -1083,11 +1084,17 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
       element && element->GetDocument().documentElement() == element;
   bool is_in_top_layer = false;
   if (RuntimeEnabledFeatures::OverlayPropertyEnabled()) {
-    is_in_top_layer =
-        !is_document_element && builder.Overlay() == EOverlay::kAuto;
+    if (RuntimeEnabledFeatures::OverlayGlobalRuleRemovalEnabled()) {
+      is_in_top_layer = !is_document_element &&
+                        builder.Overlay() == EOverlay::kAuto && element &&
+                        element->IsInTopLayer();
+    } else {
+      is_in_top_layer =
+          !is_document_element && builder.Overlay() == EOverlay::kAuto;
+    }
   } else {
     is_in_top_layer =
-        !is_document_element && (element && element->IsInTopLayer());
+        !is_document_element && (element && element->IsRenderedInTopLayer());
   }
 
   if (builder.Display() != EDisplay::kNone) {
@@ -1169,6 +1176,7 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
 
     if (is_transition_scope && !is_document_element) {
       builder.SetContain(builder.Contain() | kContainsLayout);
+      builder.SetViewTransitionScope(EViewTransitionScope::kAuto);
     } else if (builder.InternalOverscrollArea() ==
                EInternalOverscrollArea::kAuto) {
       // TODO(crbug.com/467112943): Layout containment is currently forced to
@@ -1279,8 +1287,8 @@ void StyleAdjuster::AdjustComputedStyle(StyleResolverState& state,
   AdjustEffectiveTouchAction(builder, parent_style, element,
                              IsOutermostSVGElement(element));
 
-  bool is_media_control =
-      element && element->ShadowPseudoId().StartsWith("-webkit-media-controls");
+  bool is_media_control = element && element->ShadowPseudoId().starts_with(
+                                         "-webkit-media-controls");
   if (is_media_control && !builder.HasEffectiveAppearance()) {
     // For compatibility reasons if the element is a media control and the
     // -webkit-appearance is none then we should clear the background image.

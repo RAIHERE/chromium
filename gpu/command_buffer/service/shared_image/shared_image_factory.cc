@@ -104,9 +104,6 @@ namespace gpu {
 
 namespace {
 
-BASE_FEATURE(kUseCompoundImageBackingAsDefault,
-             base::FEATURE_ENABLED_BY_DEFAULT);
-
 const char* GmbTypeToString(gfx::GpuMemoryBufferType type) {
   switch (type) {
     case gfx::EMPTY_BUFFER:
@@ -386,7 +383,7 @@ bool SharedImageFactory::CreateSharedImage(
       IsSharedBetweenThreads(usage));
 
   std::unique_ptr<SharedImageBacking> backing =
-      base::FeatureList::IsEnabled(kUseCompoundImageBackingAsDefault)
+      base::FeatureList::IsEnabled(features::kUseCompoundImageBackingAsDefault)
           ? CompoundImageBacking::WrapExternalBacking(this, copy_manager(),
                                                       std::move(temp_backing))
           : std::move(temp_backing);
@@ -492,18 +489,11 @@ bool SharedImageFactory::CreateSharedImage(const Mailbox& mailbox,
                                            SharedImageUsageSet usage,
                                            std::string debug_label,
                                            gfx::BufferUsage buffer_usage) {
-  if (!viz::HasEquivalentBufferFormat(format)) {
-    // Client GMB code still operates on BufferFormat so the SharedImageFormat
-    // received here must have an equivalent BufferFormat.
-    LOG(ERROR) << "Invalid format " << format.ToString();
-    return false;
-  }
-
   auto native_buffer_supported =
       IsNativeBufferSupported(format, buffer_usage, gpu_extra_info_);
   std::unique_ptr<SharedImageBacking> backing;
   const bool force_compound_backing =
-      base::FeatureList::IsEnabled(kUseCompoundImageBackingAsDefault);
+      base::FeatureList::IsEnabled(features::kUseCompoundImageBackingAsDefault);
 
   if (native_buffer_supported) {
     auto* factory = GetFactoryByUsage(usage, format, size,
@@ -608,7 +598,7 @@ bool SharedImageFactory::CreateSharedImage(const Mailbox& mailbox,
       IsSharedBetweenThreads(usage), data);
 
   std::unique_ptr<SharedImageBacking> backing =
-      base::FeatureList::IsEnabled(kUseCompoundImageBackingAsDefault)
+      base::FeatureList::IsEnabled(features::kUseCompoundImageBackingAsDefault)
           ? CompoundImageBacking::WrapExternalBacking(this, copy_manager(),
                                                       std::move(temp_backing))
           : std::move(temp_backing);
@@ -668,7 +658,8 @@ bool SharedImageFactory::CreateSharedImage(
         std::move(debug_label), IsSharedBetweenThreads(usage),
         std::move(buffer_handle));
 
-    backing = base::FeatureList::IsEnabled(kUseCompoundImageBackingAsDefault)
+    backing = base::FeatureList::IsEnabled(
+                  features::kUseCompoundImageBackingAsDefault)
                   ? CompoundImageBacking::WrapExternalBacking(
                         this, copy_manager(), std::move(temp_backing))
                   : std::move(temp_backing);
@@ -871,16 +862,29 @@ gpu::SharedImageCapabilities SharedImageFactory::MakeCapabilities() {
       gl::GetGLImplementation() == gl::kGLImplementationEGLANGLE &&
       gl::GetANGLEImplementation() == gl::ANGLEImplementation::kMetal;
   const bool is_skia_graphite =
-      gr_context_type_ == GrContextType::kGraphiteDawn ||
-      gr_context_type_ == GrContextType::kGraphiteMetal;
+      gr_context_type_ == GrContextType::kGraphiteDawn;
   shared_image_caps.supports_luminance_shared_images =
       !is_angle_metal && !is_skia_graphite;
   shared_image_caps.supports_r16_shared_images =
       is_angle_metal || is_skia_graphite;
-  shared_image_caps.supports_native_nv12_mappable_shared_images =
-      IsNativeBufferSupported(viz::MultiPlaneFormat::kNV12,
-                              gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
-                              gpu_extra_info_);
+  if (context_state_) {
+#if BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_FUCHSIA)
+    auto* surface_factory =
+        ui::OzonePlatform::GetInstance()->GetSurfaceFactoryOzone();
+    shared_image_caps.supports_ycbcr_nv12_sampling =
+        surface_factory->IsFormatSupportedForTexturing(
+            viz::MultiPlaneFormat::kNV12) &&
+        IsNativeBufferSupported(viz::MultiPlaneFormat::kNV12,
+                                gfx::BufferUsage::GPU_READ_CPU_READ_WRITE,
+                                gpu_extra_info_);
+    shared_image_caps.supports_ycbcr_p010_sampling =
+        surface_factory->IsFormatSupportedForTexturing(
+            viz::MultiPlaneFormat::kP010);
+#elif BUILDFLAG(IS_APPLE)
+    shared_image_caps.supports_ycbcr_nv12_sampling = true;
+    shared_image_caps.supports_ycbcr_p010_sampling = true;
+#endif
+  }
   shared_image_caps.disable_r8_shared_images =
       workarounds_.r8_egl_images_broken;
   shared_image_caps.disable_webgpu_shared_images =
@@ -1022,7 +1026,7 @@ void SharedImageFactory::LogGetFactoryFailed(gpu::SharedImageUsageSet usage,
   if (command_line->HasSwitch(ash::switches::kRevenBranding)) {
     return;
   }
-#endif
+#endif  // BUILDFLAG(IS_CHROMEOS)
 
   std::string new_debug_label = debug_label;
   // Get the debug label with Process Id for filtering crash reports by label as
@@ -1039,7 +1043,17 @@ void SharedImageFactory::LogGetFactoryFailed(gpu::SharedImageUsageSet usage,
   if (new_debug_label.find("CanvasResourceRasterGmb") != std::string::npos) {
     return;
   }
-#endif
+#endif  // BUILDFLAG(IS_ANDROID)
+
+#if BUILDFLAG(IS_LINUX)
+  // VizBufferQueue with Vulkan enabled over command-line for Linux does not
+  // work. Suppress dumps for these cases.
+  if (context_state_->GrContextIsVulkan() &&
+      new_debug_label.find("VizBufferQueue") != std::string::npos) {
+    return;
+  }
+#endif  // BUILDFLAG(IS_LINUX)
+
   SCOPED_CRASH_KEY_STRING64("SIFactory", "DebugLabel", new_debug_label);
   SCOPED_CRASH_KEY_STRING64("SIFactory", "Format", format.ToString());
   SCOPED_CRASH_KEY_NUMBER("SIFactory", "Usage", static_cast<uint32_t>(usage));

@@ -75,7 +75,6 @@ import org.chromium.ui.display.DisplayAndroid;
 import org.chromium.ui.mojom.WindowOpenDisposition;
 import org.chromium.url.GURL;
 
-import java.io.UnsupportedEncodingException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -241,13 +240,7 @@ public class FeedStream implements Stream {
 
         @Override
         public void updateWebFeedFollowState(WebFeedFollowUpdate update) {
-            byte[] webFeedId;
-            try {
-                webFeedId = update.webFeedName().getBytes("UTF8");
-            } catch (UnsupportedEncodingException e) {
-                Log.i(TAG, "Invalid webFeedName", e);
-                return;
-            }
+            byte[] webFeedId = update.webFeedName().getBytes(StandardCharsets.UTF_8);
             WebFeedFollowUpdate.Callback updateCallback = update.callback();
             if (update.isFollow()) {
                 Callback<WebFeedBridge.FollowResults> followCallback =
@@ -425,7 +418,7 @@ public class FeedStream implements Stream {
 
             DoneWatcher(Runnable runnable) {
                 mDelegate = runnable;
-                mWorkPending.addObserver(this);
+                mWorkPending.addSyncObserverAndPostIfNonNull(this);
             }
 
             @Override
@@ -721,7 +714,7 @@ public class FeedStream implements Stream {
             SnackbarManager snackbarManager,
             BottomSheetController bottomSheetController,
             WindowAndroid windowAndroid,
-            Supplier<ShareDelegate> shareDelegateSupplier,
+            Supplier<@Nullable ShareDelegate> shareDelegateSupplier,
             int streamKind,
             FeedActionDelegate actionDelegate,
             FeedContentFirstLoadWatcher feedContentFirstLoadWatcher,
@@ -1503,27 +1496,24 @@ public class FeedStream implements Stream {
     /**
      * Provides a wrapper around sharing methods.
      *
-     * Makes it easier to test.
+     * <p>Makes it easier to test.
      */
     @VisibleForTesting
     static class ShareHelperWrapper {
         private final WindowAndroid mWindowAndroid;
-        private final Supplier<ShareDelegate> mShareDelegateSupplier;
+        private final Supplier<@Nullable ShareDelegate> mShareDelegateSupplier;
 
         public ShareHelperWrapper(
-                WindowAndroid windowAndroid, Supplier<ShareDelegate> shareDelegateSupplier) {
+                WindowAndroid windowAndroid,
+                Supplier<@Nullable ShareDelegate> shareDelegateSupplier) {
             mWindowAndroid = windowAndroid;
             mShareDelegateSupplier = shareDelegateSupplier;
         }
 
-        /**
-         * Shares a url and title from Chrome to another app.
-         * Brings up the share sheet.
-         */
+        /** Shares a url and title from Chrome to another app. Brings up the share sheet. */
         public void share(String url, String title) {
             ShareParams params = new ShareParams.Builder(mWindowAndroid, title, url).build();
-            mShareDelegateSupplier
-                    .get()
+            assumeNonNull(mShareDelegateSupplier.get())
                     .share(
                             params,
                             new ChromeShareExtras.Builder().build(),

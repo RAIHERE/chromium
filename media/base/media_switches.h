@@ -17,6 +17,10 @@
 #include "media/media_buildflags.h"
 #include "ui/gl/angle_implementation.h"
 
+namespace gpu {
+class GpuDriverBugWorkarounds;
+}
+
 namespace base {
 class CommandLine;
 }
@@ -106,6 +110,10 @@ MEDIA_EXPORT extern const char kEnablePrimaryNodeAccessForVkmsTesting[];
 MEDIA_EXPORT extern const char kHardwareVideoDecodeFrameRate[];
 #endif  // BUILDFLAG(USE_V4L2_CODEC)
 
+#if BUILDFLAG(USE_VAAPI)
+MEDIA_EXPORT extern const char kHardwareVideoDevicePath[];
+#endif  // BUILDFLAG(USE_VAAPI)
+
 }  // namespace switches
 
 namespace media {
@@ -122,20 +130,12 @@ MEDIA_EXPORT extern const base::FeatureParam<int> kAudioDuckingAttenuation;
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAudioDuckingWin);
 #endif  // BUILDFLAG(IS_WIN)
 
-#if BUILDFLAG(ENABLE_FFMPEG)
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kAudioDecoderAudioFileReader);
-#endif
-
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAudioFocusDuckFlash);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAutoPictureInPictureForVideoPlayback);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAutoplayDisableSettings);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAVDColorSpaceChanges);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(
     kBrowserInitiatedAutomaticPictureInPictureDryRun);
-
-#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS) && !BUILDFLAG(IS_FUCHSIA)
-#endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_CHROMEOS) &&
-        // !BUILDFLAG(IS_FUCHSIA)
 
 // NOTE: callers should always use the free functions in
 // /media/cast/encoding/encoding_support.h instead of accessing these features
@@ -144,6 +144,16 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCastStreamingAv1);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(
     kCastStreamingExponentialVideoBitrateAlgorithm);
+MEDIA_EXPORT extern const base::FeatureParam<int>
+    kCastStreamingExponentialVideoBitrateAlgorithmWindowSize;
+MEDIA_EXPORT extern const base::FeatureParam<int>
+    kCastStreamingExponentialVideoBitrateAlgorithmDropThreshold;
+MEDIA_EXPORT extern const base::FeatureParam<double>
+    kCastStreamingExponentialVideoBitrateAlgorithmIncreaseFactor;
+MEDIA_EXPORT extern const base::FeatureParam<double>
+    kCastStreamingExponentialVideoBitrateAlgorithmDecreaseFactor;
+MEDIA_EXPORT extern const base::FeatureParam<double>
+    kCastStreamingExponentialVideoBitrateAlgorithmDynamicWindowMultiplier;
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCastStreamingHardwareHevc);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCastStreamingMediaVideoEncoder);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCastStreamingPerformanceOverlay);
@@ -188,9 +198,6 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSEnforceSystemAec);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedAecDeactivatedGroups);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedNsDeactivatedGroups);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedAgcDeactivatedGroups);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedAecAllowed);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedNsAllowed);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSDspBasedAgcAllowed);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kIgnoreUiGains);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kShowForceRespectUiGainsToggle);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kCrOSSystemVoiceIsolationOption);
@@ -213,7 +220,6 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kFileDialogsBlockPictureInPicture);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kFileDialogsTuckPictureInPicture);
 #endif  // !BUILDFLAG(IS_ANDROID)
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kGetDisplayMediaConfersActivation);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kGlobalMediaControls);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kGlobalMediaControlsAutoDismiss);
 #if !BUILDFLAG(IS_ANDROID)
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kMediaRemotingWithoutFullscreen);
@@ -280,6 +286,14 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kVideoPipDisplaySmoothnessOptimization);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(
     kVideoPipForceTrustedForMediaPlaybackForTesting);
 #endif  // !BUILDFLAG(IS_ANDROID)
+
+// Enables tracking the occlusion of encrypted video elements.
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kEncryptedMediaOcclusionTracking);
+
+// Enables extended video bitstream validation for H.264 and H.265.
+// Remove after M149, once we're sure that this doesn't break anyone.
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kExtendedVideoBitstreamValidation);
+
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kPlatformAudioEncoder);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kEnableRtcpReporting);
 #if BUILDFLAG(ENABLE_PLATFORM_HEVC)
@@ -307,13 +321,10 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kResumeBackgroundVideo);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kRevokeMediaSourceObjectURLOnAttach);
 #if BUILDFLAG(ENABLE_SYMPHONIA)
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kSymphoniaAudioDecoding);
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kSymphoniaMp3Decoding);
 #endif
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kShareThisTabInsteadButtonGetDisplayMedia);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(
-    kShareThisTabInsteadButtonGetDisplayMediaAudio);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kSpeakerChangeDetection);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kSpecCompliantCanPlayThrough);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kStandardizeVP9AndAV1Quantizer);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kSuspendMediaForFrozenFrames);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kUnifiedAutoplay);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kUseAndroidOverlayForSecureOnly);
@@ -350,6 +361,7 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kResolutionBasedDecoderPriority);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kMatchSourceAudioChannelLayout);
 
 #if BUILDFLAG(IS_ANDROID)
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kAllowDelayedAudioFocusGainAndroid);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAllowEnhancedPipTransition);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAutoDocPiPPermissionPromptAndroid);
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kAutoPictureInPictureAndroid);
@@ -456,8 +468,7 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kUseWindowBoundsForPip);
 
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kMediaLogToConsole);
 
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kLibvpxUseChromeThreads);
-MEDIA_EXPORT BASE_DECLARE_FEATURE(kLibaomUseChromeThreads);
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kAomVpxUsePresentationThreadType);
 
 #if BUILDFLAG(IS_WIN)
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kD3D12VideoDecoder);
@@ -484,6 +495,13 @@ MEDIA_EXPORT BASE_DECLARE_FEATURE(kPauseMutedBackgroundAudio);
 
 // Enable experimental headless captions.
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kHeadlessLiveCaption);
+
+// If enabled, Glic will start captioning as soon as a profile is loaded.
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kHeadlessCaptionEarlyStart);
+
+// If enabled, chrome would inform Glic once it starts trasncribing, if Glic
+// requested to be informed.
+MEDIA_EXPORT BASE_DECLARE_FEATURE(kMediaTrasncriptsFlagInPageMetadata);
 
 // Enable site-specific media link helpers.
 MEDIA_EXPORT BASE_DECLARE_FEATURE(kMediaLinkHelpers);
@@ -521,6 +539,11 @@ MEDIA_EXPORT bool IsAudioProcessMlModelUsageEnabled();
 #if BUILDFLAG(IS_MAC)
 MEDIA_EXPORT bool IsMacCatapSystemLoopbackCaptureSupported();
 MEDIA_EXPORT bool IsMacSckSystemLoopbackCaptureSupported();
+#endif
+
+#if BUILDFLAG(IS_ANDROID)
+MEDIA_EXPORT bool IsAndroidZeroCopyVideoCaptureEnabled(
+    const gpu::GpuDriverBugWorkarounds& gpu_workarounds);
 #endif
 
 // Returns true if system audio loopback capture is implemented for the current

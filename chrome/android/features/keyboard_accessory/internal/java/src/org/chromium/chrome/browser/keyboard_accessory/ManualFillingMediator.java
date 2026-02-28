@@ -231,7 +231,7 @@ class ManualFillingMediator
         mAccessorySheet.setHeight(getIdealSheetHeight());
         mApplicationViewportInsetTracker =
                 mWindowAndroid.getApplicationBottomInsetTracker().getSupplier();
-        mApplicationViewportInsetTracker.addObserver(mViewportInsetsObserver);
+        mApplicationViewportInsetTracker.addSyncObserverAndPostIfNonNull(mViewportInsetsObserver);
         mActivity.findViewById(android.R.id.content).addOnLayoutChangeListener(this);
         mBackPressManager = backPressManager;
         mBackPressChangedSupplier.set(shouldHideOnBackPress());
@@ -857,13 +857,31 @@ class ManualFillingMediator
     private @Px int getHorizontalOffset() {
         if (ChromeFeatureList.isEnabled(
                 ChromeFeatureList.AUTOFILL_ANDROID_KEYBOARD_ACCESSORY_DYNAMIC_POSITIONING)) {
-            return Math.round(
-                    mModel.get(FIELD_BOUNDS).left * mWindowAndroid.getDisplay().getDipScale());
+            @Px
+            int leftBound =
+                    Math.round(
+                            mModel.get(FIELD_BOUNDS).left
+                                    * mWindowAndroid.getDisplay().getDipScale());
+            @Px
+            int offset =
+                    mActivity
+                            .getResources()
+                            .getDimensionPixelSize(
+                                    R.dimen
+                                            .keyboard_accessory_bar_dynamic_positioning_horizontal_margin);
+            return leftBound + offset;
         }
         return 0;
     }
 
     private @Px int getMaxWidth() {
+        if (ChromeFeatureList.isEnabled(
+                ChromeFeatureList.AUTOFILL_ANDROID_KEYBOARD_ACCESSORY_DYNAMIC_POSITIONING)) {
+            return mActivity
+                    .getResources()
+                    .getDimensionPixelSize(
+                            R.dimen.keyboard_accessory_bar_dynamic_positioning_max_width);
+        }
         int screenWidthDp = mActivity.getResources().getConfiguration().screenWidthDp;
         @Px int screenWidth = DisplayUtil.dpToPx(mWindowAndroid.getDisplay(), screenWidthDp);
         return (int) (MAXIMUM_BAR_WIDTH_PERCENTAGE * screenWidth);

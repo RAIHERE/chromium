@@ -4,9 +4,13 @@
 
 package org.chromium.chrome.browser.app.tabmodel;
 
+import static org.chromium.base.TimeUtils.uptimeMillis;
+
 import android.app.Activity;
 
 import androidx.annotation.VisibleForTesting;
+
+import org.chromium.base.metrics.RecordHistogram;
 
 import org.chromium.base.Callback;
 import org.chromium.base.supplier.SettableMonotonicObservableSupplier;
@@ -18,6 +22,7 @@ import org.chromium.chrome.browser.compositor.overlays.strip.StripLayoutHelperMa
 import org.chromium.chrome.browser.tab.Tab;
 import org.chromium.chrome.browser.tab_ui.TabContentManager;
 import org.chromium.chrome.browser.tabmodel.MismatchedIndicesHandler;
+import org.chromium.chrome.browser.tabmodel.PersistentStoreMigrationManager;
 import org.chromium.chrome.browser.tabmodel.TabModel;
 import org.chromium.chrome.browser.tabmodel.TabModelSelector;
 import org.chromium.chrome.browser.tabmodel.TabModelSelectorBase;
@@ -33,10 +38,12 @@ import org.chromium.chrome.browser.tabmodel.TabPersistentStoreImpl;
  */
 @NullMarked
 public class TabModelOrchestrator {
+    private final long mInitializationTime = uptimeMillis();
     protected @MonotonicNonNull TabPersistentStore mTabPersistentStore;
     protected @MonotonicNonNull TabModelSelectorBase mTabModelSelector;
     protected @MonotonicNonNull TabPersistencePolicy mTabPersistencePolicy;
     protected @Nullable TabPersistentStore mShadowTabPersistentStore;
+    protected @Nullable PersistentStoreMigrationManager mMigrationManager;
     private boolean mTabModelsInitialized;
     private @Nullable Callback<String> mOnStandardActiveIndexRead;
     private boolean mTabPersistentStoreDestroyedEarly;
@@ -240,14 +247,33 @@ public class TabModelOrchestrator {
             if (mShadowTabPersistentStore != null) {
                 mShadowTabPersistentStore.clearState();
             }
+            if (mMigrationManager != null) mMigrationManager.onAllStoresRazed();
         }
     }
 
     /**
      * Clean up persistent state for a given instance.
+     *
      * @param instanceId Instance ID.
      */
-    public void cleanupInstance(int instanceId) {}
+    public void cleanupInstance(int instanceId) {
+        String windowTag = String.valueOf(instanceId);
+        PersistentStoreMigrationManager migrationManager =
+                new PersistentStoreMigrationManagerImpl(windowTag);
+        migrationManager.onWindowCleared();
+    }
+
+    /** Clean up persisted state for this orchestrator. */
+    public void clearCurrentWindow() {
+        assertInitialized();
+        if (!mTabPersistentStoreDestroyedEarly) {
+            mTabPersistentStore.clearCurrentWindow();
+            if (mShadowTabPersistentStore != null) {
+                mShadowTabPersistentStore.clearCurrentWindow();
+            }
+            if (mMigrationManager != null) mMigrationManager.onWindowCleared();
+        }
+    }
 
     /**
      * If there is an asynchronous session restore in-progress, try to synchronously restore the
@@ -310,6 +336,7 @@ public class TabModelOrchestrator {
                     @Override
                     public void onStateLoaded() {
                         mTabModelSelector.markTabStateInitialized();
+                        recordTimeHistogram("Tabs.TabPersistentStore.StateLoaded");
                     }
 
                     @Override
@@ -343,9 +370,17 @@ public class TabModelOrchestrator {
                     }
 
                     @Override
+                    public void onActiveTabLoaded(boolean incognito) {
+                        recordTimeHistogram(
+                                "Tabs.TabPersistentStore.ActiveTabLoaded."
+                                        + (incognito ? "Incognito" : "Regular"));
+                    }
+
+                    @Override
                     public void onInitialized(int tabCountAtStartup) {
                         // Resets the callback once the read of the Tab state file is completed.
                         mOnStandardActiveIndexRead = null;
+                        recordTimeHistogram("Tabs.TabPersistentStore.Initialized");
                     }
                 });
     }
@@ -373,5 +408,9 @@ public class TabModelOrchestrator {
         mTabPersistentStore = tabPersistentStore;
         mTabPersistencePolicy = tabPersistencePolicy;
         mShadowTabPersistentStore = shadowPersistentStore;
+    }
+
+    private void recordTimeHistogram(String histogramName) {
+        RecordHistogram.recordTimesHistogram(histogramName, uptimeMillis() - mInitializationTime);
     }
 }

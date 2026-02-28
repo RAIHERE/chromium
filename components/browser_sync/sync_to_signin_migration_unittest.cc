@@ -20,6 +20,7 @@
 #include "components/signin/public/base/signin_pref_names.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/sync/base/data_type.h"
+#include "components/sync/base/data_type_histogram.h"
 #include "components/sync/base/features.h"
 #include "components/sync/base/pref_names.h"
 #include "components/sync/base/user_selectable_type.h"
@@ -1827,6 +1828,23 @@ TEST_P(SyncToSigninMigrationDataTypesTest, MovePasswords_FolderNotWritable) {
       -base::File::FILE_ERROR_ACCESS_DENIED, 1);
 }
 #endif  // BUILDFLAG(IS_POSIX)
+
+TEST_P(SyncToSigninMigrationDataTypesTest, MarkStatsTableToBeCleanedUp) {
+  ASSERT_FALSE(pref_service_.GetBoolean(
+      syncer::prefs::kCleanUpStatsTableFromAccountPasswordStore));
+
+  base::HistogramTester histograms;
+  MaybeMigrateSyncingUserToSignedInWrapper(
+      IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
+
+  // The clean-up does not happen right away, but rather a pref is set
+  // to mark that it should be cleaned up.
+  EXPECT_TRUE(pref_service_.GetBoolean(
+      syncer::prefs::kCleanUpStatsTableFromAccountPasswordStore));
+  histograms.ExpectUniqueSample(
+      "Sync.SyncToSigninMigration.StatsTableCleanupStep",
+      syncer::SyncToSigninMigrationStatsTableCleanupStep::kCleanupRequested, 1);
+}
 #endif  // BUILDFLAG(IS_ANDROID)
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
@@ -1834,6 +1852,7 @@ TEST_P(SyncToSigninMigrationDataTypesTest, MarkExtensionsToBeMigrated) {
   ASSERT_FALSE(pref_service_.GetBoolean(
       syncer::prefs::internal::kMigrateExtensionsFromLocalToAccount));
 
+  base::HistogramTester histograms;
   MaybeMigrateSyncingUserToSignedInWrapper(
       IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
 
@@ -1841,6 +1860,9 @@ TEST_P(SyncToSigninMigrationDataTypesTest, MarkExtensionsToBeMigrated) {
   // marked to be migrated.
   EXPECT_TRUE(pref_service_.GetBoolean(
       syncer::prefs::internal::kMigrateExtensionsFromLocalToAccount));
+  histograms.ExpectUniqueSample(
+      "Sync.SyncToSigninMigration.ExtensionsMigrationStep",
+      syncer::SyncToSigninMigrationExtensionsStep::kMigrationRequested, 1);
 }
 #endif  // BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -1849,6 +1871,7 @@ TEST_P(SyncToSigninMigrationDataTypesTest, MarkThemeToBeMigrated) {
   ASSERT_FALSE(pref_service_.GetBoolean(
       syncer::prefs::internal::kMigrateThemeFromLocalToAccount));
 
+  base::HistogramTester histograms;
   MaybeMigrateSyncingUserToSignedInWrapper(
       IsBlockingAllowed(), fake_profile_dir_.GetPath(), &pref_service_);
 
@@ -1856,6 +1879,9 @@ TEST_P(SyncToSigninMigrationDataTypesTest, MarkThemeToBeMigrated) {
   // marked to be migrated.
   EXPECT_TRUE(pref_service_.GetBoolean(
       syncer::prefs::internal::kMigrateThemeFromLocalToAccount));
+  histograms.ExpectUniqueSample(
+      "Sync.SyncToSigninMigration.ThemeMigrationStep",
+      syncer::SyncToSigninMigrationThemeStep::kMigrationRequested, 1);
 }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 

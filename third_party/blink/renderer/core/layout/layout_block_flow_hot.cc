@@ -47,10 +47,6 @@ bool LayoutBlockFlow::CreatesNewFormattingContext() const {
   if (IsRenderedLegend())
     return true;
 
-  if (IsAtomicInlineLevel()) {
-    return true;
-  }
-
   if (IsSemiReplaced()) {
     return true;
   }
@@ -78,7 +74,7 @@ void LayoutBlockFlow::StyleDidChange(
     }
   }
 
-  if (diff.NeedsReshape()) {
+  if (diff.needs_reshape) {
     SetNeedsCollectInlines();
 
     // The `initial-letter` creates a special `InlineItem`. When it's turned

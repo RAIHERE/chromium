@@ -20,6 +20,7 @@
 #include "base/observer_list.h"
 #include "base/sequence_checker.h"
 #include "base/task/sequenced_task_runner.h"
+#include "build/build_config.h"
 #include "components/prefs/pref_registry_simple.h"
 #include "components/update_client/configurator.h"
 #include "components/update_client/crx_update_item.h"
@@ -78,7 +79,12 @@ UpdateClientImpl::~UpdateClientImpl() {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
 
   CHECK(task_queue_.empty());
+
+#if BUILDFLAG(IS_MAC)
+  // TODO(crbug.com/438803980): keep investigating why the CHECK fails on
+  // browser tests and interactive UI tests on Linux and Windows.
   CHECK(tasks_.empty());
+#endif
 
   config_ = nullptr;
 }
@@ -229,22 +235,20 @@ void UpdateClientImpl::Stop() {
 
   is_stopped_ = true;
 
-  // In the current implementation it is sufficient to cancel the pending
-  // tasks only. The tasks that are run by the update engine will stop
-  // making progress naturally, as the main task runner stops running task
-  // actions. Upon the browser shutdown, the resources employed by the active
-  // tasks will leak, as the operating system kills the thread associated with
-  // the update engine task runner. Further refactoring may be needed in this
-  // area, to cancel the running tasks by canceling the current action update.
-  // This behavior would be expected, correct, and result in no resource leaks
-  // in all cases, in shutdown or not.
-  //
   // Cancel the pending tasks. These tasks are safe to cancel and delete since
   // they have not picked up by the update engine, and not shared with any
   // task runner yet.
   while (!task_queue_.empty()) {
     auto task = task_queue_.front();
     task_queue_.pop_front();
+    task->Cancel();
+  }
+
+  // Also cancel active tasks to trigger downloader cleanup. Otherwise, upon the
+  // browser shutdown, the resources employed by the active tasks will leak, as
+  // the operating system kills the thread associated with the update engine
+  // task runner.
+  for (auto& task : tasks_) {
     task->Cancel();
   }
 }

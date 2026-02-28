@@ -48,6 +48,9 @@ const PrefMappingEntry kMappings[] = {
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"autofillCreditCardEnabled", autofill::prefs::kAutofillCreditCardEnabled,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
+    {"autofillOtherDatatypesEnabled",
+     autofill::prefs::kAutofillOtherDatatypesEnabled, APIPermissionID::kPrivacy,
+     APIPermissionID::kPrivacy},
     {"hyperlinkAuditingEnabled", prefs::kEnableHyperlinkAuditing,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"networkPredictionEnabled", prefetch::prefs::kNetworkPredictionOptions,
@@ -90,11 +93,17 @@ const PrefMappingEntry kMappings[] = {
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"webRTCPostQuantumKeyAgreement", prefs::kWebRTCPostQuantumKeyAgreement,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
+    {"webRTCDiagnosticLogCollectionAllowedForOrigins",
+     prefs::kWebRTCDiagnosticLogCollectionAllowedForOrigins,
+     APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"webRTCUDPPortRange", prefs::kWebRTCUDPPortRange,
      APIPermissionID::kPrivacy, APIPermissionID::kPrivacy},
     {"relatedWebsiteSetsEnabled",
      prefs::kPrivacySandboxRelatedWebsiteSetsEnabled, APIPermissionID::kPrivacy,
      APIPermissionID::kPrivacy},
+    {"proxyOverrideRulesPrivate", proxy_config::prefs::kProxyOverrideRules,
+     APIPermissionID::kProxyOverrideRulesPrivate,
+     APIPermissionID::kProxyOverrideRulesPrivate},
     // accessibilityFeatures.animationPolicy is available for
     // all platforms but the others from accessibilityFeatures
     // is only available for OS_CHROMEOS.

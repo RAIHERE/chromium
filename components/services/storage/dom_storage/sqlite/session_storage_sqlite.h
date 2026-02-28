@@ -83,10 +83,27 @@ class SessionStorageSqlite : public DomStorageDatabase {
   DbStatus PutVersionForTesting(int64_t version) override;
 
  private:
+  // Reads the `next_map_id` value from the meta table. Returns 0 if no value
+  // has been stored yet.
+  int64_t ReadNextMapId() const;
+
+  // Reads all rows from the `session_metadata` table and returns them as a
+  // vector of `MapMetadata`. Rows with the same `map_id` (cloned maps) are
+  // merged into a single `MapMetadata` entry with multiple session IDs in its
+  // `MapLocator`.
+  StatusOr<std::vector<DomStorageDatabase::MapMetadata>> ReadAllMapMetadata()
+      const;
+
   // `Open()` creates `database_`, `meta_table_` and `map_entries_table_`.
   std::unique_ptr<sql::Database> database_;
   std::unique_ptr<sql::MetaTable> meta_table_;
   std::unique_ptr<MapEntriesTable> map_entries_table_;
+
+  // Simulates I/O failure in `PutMetadata()` and `UpdateMaps()` by force
+  // returning an IOError. Set to true by `MakeAllCommitsFailForTesting()`.
+  bool should_fail_commits_for_testing_ = false;
+
+  base::OnceClosure destruction_callback_for_testing_;
 };
 
 }  // namespace storage

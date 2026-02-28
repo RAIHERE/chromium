@@ -11,8 +11,6 @@ build_webui("build") {
   grd_prefix = "skills"
 
   static_files = [
-    "images/skills_empty.svg",
-    "images/skills_empty_dark.svg",
     "skills.html",
     "skills_dialog.html",
   ]
@@ -21,20 +19,32 @@ build_webui("build") {
   ts_files = [
     "app.html.ts",
     "app.ts",
+    "card.html.ts",
+    "card.ts",
     "discover_skills_page.html.ts",
     "discover_skills_page.ts",
+    "error_page.html.ts",
+    "error_page.ts",
     "icons.html.ts",
     "sidebar.html.ts",
     "sidebar.ts",
     "skills_dialog_app.html.ts",
     "skills_dialog_app.ts",
     "skills_dialog_browser_proxy.ts",
+    "skills_empty.html.ts",
+    "skills_empty.ts",
+    "skills_page_browser_proxy.ts",
     "user_skills_page.html.ts",
     "user_skills_page.ts",
   ]
 
   css_files = [
     "app.css",
+    "card.css",
+    "discover_skills_page.css",
+    "error_page.css",
+    "shared_style.css",
+    "shared_vars.css",
     "sidebar.css",
     "skills_dialog.css",
     "user_skills_page.css",

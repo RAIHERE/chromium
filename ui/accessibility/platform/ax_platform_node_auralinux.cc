@@ -1056,8 +1056,9 @@ gunichar GetCharacterAtOffset(AtkText* atk_text, int offset) {
   size_t limited_offset = std::min(static_cast<size_t>(offset), text_length);
 
   base_icu::UChar32 code_point;
-  base::ReadUnicodeCharacter(text.c_str(), text_length + 1, &limited_offset,
-                             &code_point);
+  if (!base::ReadUnicodeCharacter(text, &limited_offset, &code_point)) {
+    return 0;
+  }
   return code_point;
 }
 
@@ -3601,6 +3602,24 @@ void AXPlatformNodeAuraLinux::OnWindowVisibilityChanged() {
   atk_object_notify_state_change(atk_object, ATK_STATE_ICONIFIED, minimized);
 }
 
+void AXPlatformNodeAuraLinux::HandleWindowActivatedEvent() {
+  if (AtkUtilAuraLinux::GetInstance()->IsAtSpiReady()) {
+    OnWindowActivated();
+  } else {
+    AtkUtilAuraLinux::GetInstance()->PostponeEventsFor(this);
+    window_activate_event_postponed_ = true;
+  }
+}
+
+void AXPlatformNodeAuraLinux::HandleWindowDeactivatedEvent() {
+  if (AtkUtilAuraLinux::GetInstance()->IsAtSpiReady()) {
+    OnWindowDeactivated();
+  } else {
+    AtkUtilAuraLinux::GetInstance()->CancelPostponedEventsFor(this);
+    window_activate_event_postponed_ = false;
+  }
+}
+
 void AXPlatformNodeAuraLinux::OnScrolledToAnchor() {
   AtkObject* atk_object = GetOrCreateAtkObject();
   if (!atk_object)
@@ -4137,20 +4156,10 @@ void AXPlatformNodeAuraLinux::NotifyAccessibilityEvent(
       OnValueChanged();
       break;
     case ax::mojom::Event::kWindowActivated:
-      if (AtkUtilAuraLinux::GetInstance()->IsAtSpiReady()) {
-        OnWindowActivated();
-      } else {
-        AtkUtilAuraLinux::GetInstance()->PostponeEventsFor(this);
-        window_activate_event_postponed_ = true;
-      }
+      HandleWindowActivatedEvent();
       break;
     case ax::mojom::Event::kWindowDeactivated:
-      if (AtkUtilAuraLinux::GetInstance()->IsAtSpiReady()) {
-        OnWindowDeactivated();
-      } else {
-        AtkUtilAuraLinux::GetInstance()->CancelPostponedEventsFor(this);
-        window_activate_event_postponed_ = false;
-      }
+      HandleWindowDeactivatedEvent();
       break;
     case ax::mojom::Event::kWindowVisibilityChanged:
       OnWindowVisibilityChanged();
@@ -4266,11 +4275,11 @@ AXPlatformNodeAuraLinux::GetHypertextAdjustments() {
   text_unicode_adjustments_.emplace();
 
   std::u16string text = GetHypertext();
-  size_t text_length = text.size();
+  size_t text_length = text.length();
   for (size_t i = 0; i < text_length; i++) {
     base_icu::UChar32 code_point;
     size_t original_i = i;
-    base::ReadUnicodeCharacter(text.c_str(), text_length + 1, &i, &code_point);
+    base::ReadUnicodeCharacter(text, &i, &code_point);
 
     if ((i - original_i + 1) != 1) {
       text_unicode_adjustments_->push_back(

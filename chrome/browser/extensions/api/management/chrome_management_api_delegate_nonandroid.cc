@@ -42,7 +42,6 @@
 #include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registrar.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
-#include "chrome/common/chrome_features.h"
 #include "chrome/common/extensions/extension_metrics.h"
 #include "components/favicon/core/favicon_service.h"
 #include "components/security_state/content/security_state_tab_helper.h"
@@ -176,7 +175,7 @@ class ChromeAppForLinkDelegate : public AppForLinkDelegate {
       // These modes are not supported by the extension app backend.
       case web_app::DisplayMode::kWindowControlsOverlay:
       case web_app::DisplayMode::kTabbed:
-      case web_app::DisplayMode::kBorderless:
+      case web_app::DisplayMode::kUnframed:
       case web_app::DisplayMode::kPictureInPicture:
       case web_app::DisplayMode::kUndefined:
         info.launch_type = api::management::LaunchType::kNone;

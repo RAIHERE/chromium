@@ -352,7 +352,8 @@ def _CheckForUnwantedFlagDescriptionContent(input_api, output_api):
     return result
 
 def _CheckNewDirectoryHasBuildGn(input_api, output_api):
-    """Checks that any new directory under chrome/browser has a BUILD.gn.
+    """Checks that any new direct subdirectory under chrome/browser or
+    chrome/browser/ui has a BUILD.gn.
     See docs/chrome_browser_design_principles.md for details.
     """
     affected_files = list(input_api.AffectedFiles(include_deletes=False))
@@ -368,12 +369,10 @@ def _CheckNewDirectoryHasBuildGn(input_api, output_api):
         input_api.os_path.dirname(f) for f in added_files)
 
     for d in dirs_of_added_files:
-        # Normalize path separators.
-        d_norm = d.replace('\\', '/')
-
-        # Only verify directories under chrome/browser (excluding root).
-        if not d_norm.startswith(
-                'chrome/browser') or d_norm == 'chrome/browser':
+        # Only verify direct subdirectories of chrome/browser or
+        # chrome/browser/ui.
+        if input_api.os_path.dirname(d).replace('\\', '/') not in (
+                'chrome/browser', 'chrome/browser/ui'):
             continue
 
         # If BUILD.gn is in the CL or already on disk, we're good.
@@ -400,11 +399,45 @@ def _CheckNewDirectoryHasBuildGn(input_api, output_api):
     if missing_build_gn_dirs:
         return [
             output_api.PresubmitPromptWarning(
-                'New directories under chrome/browser must have a BUILD.gn file.',
+                'New direct subdirectories of chrome/browser or '
+                'chrome/browser/ui must have a BUILD.gn file.',
                 items=sorted(missing_build_gn_dirs))
         ]
 
     return []
+
+
+def _CheckNoNewEnableGlicUsage(input_api, output_api):
+    """Checks that there is no new usage of enable_glic or ENABLE_GLIC in
+    chrome/browser/.
+    """
+    problems = []
+    pattern = re.compile(r'\b(enable_glic|ENABLE_GLIC)\b')
+
+    for f in input_api.AffectedFiles(include_deletes=False):
+        if not f.UnixLocalPath().startswith('chrome/browser/') :
+            continue
+
+        if f.UnixLocalPath().endswith('PRESUBMIT.py'):
+            continue
+
+        for line_num, line in f.ChangedContents():
+            if pattern.search(line):
+                problems.append('  %s:%d:%s' %
+                                (f.LocalPath(), line_num, line.strip()))
+
+    if not problems:
+        return []
+
+    return [
+        output_api.PresubmitPromptWarning(
+            'New usage of "enable_glic" or "ENABLE_GLIC" found in '
+            'chrome/browser/. Ignore this warning if this might be a false '
+            'positive. Otherwise, revise the code to retain code blocks that '
+            'are ran when the flag is enabled. See crbug.com/486982086.',
+            items=problems)
+    ]
+
 
 ###############################################################################
 # Presubmit aggregator
@@ -413,6 +446,7 @@ def _CheckNewDirectoryHasBuildGn(input_api, output_api):
 def _CommonChecks(input_api, output_api):
     """Checks common to both upload and commit."""
     results = []
+    results.extend(_CheckNoNewEnableGlicUsage(input_api, output_api))
     results.extend(_CheckNewDirectoryHasBuildGn(input_api, output_api))
     results.extend(
         _CheckNoAutofillBrowserTestsWithoutAutofillBrowserTestEnvironment(

@@ -34,10 +34,30 @@ class BorderShapePainter {
                     const PhysicalRect& outer_reference_rect,
                     const PhysicalRect& inner_reference_rect);
 
+  // Paints an outline that follows the border-shape path.
+  // Returns true if an outline was painted.
+  static bool PaintOutline(GraphicsContext&,
+                           const ComputedStyle&,
+                           const PhysicalRect& outer_reference_rect,
+                           int outline_width,
+                           int outline_offset);
+
   static Path InnerPath(const ComputedStyle&,
                         const PhysicalRect& inner_reference_rect);
   static Path OuterPath(const ComputedStyle&,
                         const PhysicalRect& outer_reference_rect);
+
+  // Returns the inner path to use for overflow clipping. For single-shape
+  // border-shape, this contracts the path inward by half the border stroke
+  // width, since the border is drawn as a stroke centered on the path and
+  // children should not paint over the inner half of the border.
+  static Path OverflowClipInnerPath(const ComputedStyle&,
+                                    const PhysicalRect& inner_reference_rect);
+
+  // Returns an outer path offset by the given amount (positive = outward).
+  static Path OuterPathWithOffset(const ComputedStyle&,
+                                  const PhysicalRect& outer_reference_rect,
+                                  float offset);
 
   static PhysicalBoxStrut VisualOutsets(
       const ComputedStyle&,

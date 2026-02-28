@@ -95,6 +95,12 @@ class FrameSinkManagerTest : public testing::Test {
     return support->begin_frame_source_;
   }
 
+  void SetInteractive(
+      const std::unique_ptr<CompositorFrameSinkSupport>& support,
+      bool interactive) {
+    support->SetIsHandlingInteraction(interactive);
+  }
+
   void ExpireAllTemporaryReferencesAndGarbageCollect() {
     manager_->surface_manager()->ExpireOldTemporaryReferences();
     manager_->surface_manager()->ExpireOldTemporaryReferences();
@@ -192,9 +198,11 @@ class FrameSinkManagerTest : public testing::Test {
   void TearDown() override {
     // Make sure that all FrameSinkSourceMappings have been deleted.
     EXPECT_TRUE(manager_->frame_sink_source_map_.empty());
+    EXPECT_TRUE(manager_->sink_map_.empty());
 
     // Make sure test cleans up all [Root]CompositorFrameSinkImpls.
-    EXPECT_TRUE(manager_->support_map_.empty());
+    EXPECT_TRUE(manager_->root_sink_map_.empty());
+    EXPECT_TRUE(manager_->sink_map_.empty());
 
     // Make sure test has invalidated all registered FrameSinkIds.
     EXPECT_TRUE(manager_->frame_sink_data_.empty());
@@ -2182,6 +2190,55 @@ TEST_F(FrameSinkManagerTest, DeepHierarchyThrottleInheritanceOnRegistration) {
 
   manager_->UnregisterFrameSinkHierarchy(kFrameSinkIdB, kFrameSinkIdC);
   manager_->UnregisterFrameSinkHierarchy(kFrameSinkIdA, kFrameSinkIdB);
+  manager_->InvalidateFrameSinkId(kFrameSinkIdA, {});
+  manager_->InvalidateFrameSinkId(kFrameSinkIdB, {});
+  manager_->InvalidateFrameSinkId(kFrameSinkIdC, {});
+}
+
+TEST_F(FrameSinkManagerTest,
+       ChangingFrameSinkSupportInteractionChangesInteractionMap) {
+  manager_->RegisterFrameSinkId(kFrameSinkIdA, true);
+  manager_->RegisterFrameSinkId(kFrameSinkIdB, true);
+  manager_->RegisterFrameSinkId(kFrameSinkIdC, true);
+  {
+    auto client_b = CreateCompositorFrameSinkSupport(kFrameSinkIdB);
+    auto client_c = CreateCompositorFrameSinkSupport(kFrameSinkIdC);
+
+    {
+      auto client_a = CreateCompositorFrameSinkSupport(kFrameSinkIdA);
+      // Mark clients a, b as handling interactions
+      SetInteractive(client_a, true);
+      SetInteractive(client_b, true);
+
+      EXPECT_THAT(manager_->interactive_frame_sink_ids_for_testing(),
+                  testing::ContainerEq(base::flat_set<FrameSinkId>(
+                      {kFrameSinkIdA, kFrameSinkIdB})));
+
+      // Client b no longer handling interactions.
+      SetInteractive(client_b, false);
+      // It should disappear from the interactive frame sink list
+      EXPECT_THAT(
+          manager_->interactive_frame_sink_ids_for_testing(),
+          testing::ContainerEq(base::flat_set<FrameSinkId>({kFrameSinkIdA})));
+
+      // Now C is an interactive client
+      SetInteractive(client_c, true);
+      EXPECT_THAT(manager_->interactive_frame_sink_ids_for_testing(),
+                  testing::ContainerEq(base::flat_set<FrameSinkId>(
+                      {kFrameSinkIdA, kFrameSinkIdC})));
+    }
+    // The CFSS destructor calls UnregisterCompositorFrameSinkSupport,
+    // which should remove it from the set of interactive
+    // clients.
+    EXPECT_THAT(
+        manager_->interactive_frame_sink_ids_for_testing(),
+        testing::ContainerEq(base::flat_set<FrameSinkId>({kFrameSinkIdC})));
+  }
+
+  // There should be no interactive clients anymore.
+  EXPECT_THAT(manager_->interactive_frame_sink_ids_for_testing(),
+              testing::ContainerEq(base::flat_set<FrameSinkId>({})));
+
   manager_->InvalidateFrameSinkId(kFrameSinkIdA, {});
   manager_->InvalidateFrameSinkId(kFrameSinkIdB, {});
   manager_->InvalidateFrameSinkId(kFrameSinkIdC, {});

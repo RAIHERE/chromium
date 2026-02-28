@@ -204,7 +204,7 @@ class CORE_EXPORT HTMLElement : public Element {
   virtual bool IsHTMLFrameSetElement() const { return false; }
   // TODO(crbug.com/443013457): Remove these 2 methods when the
   // permission/usermedia trials are over.
-  virtual bool IsHTMLPermissionElement() const { return false; }
+  virtual bool IsHTMLCapabilityElementBase() const { return false; }
   virtual bool IsHTMLUserMediaElement() const { return false; }
   virtual bool IsHTMLUnknownElement() const { return false; }
   virtual bool IsPluginElement() const { return false; }
@@ -218,6 +218,9 @@ class CORE_EXPORT HTMLElement : public Element {
   // https://html.spec.whatwg.org/C/#interactive-content
   virtual bool IsInteractiveContent() const;
   void DefaultEventHandler(Event&) override;
+
+  // Returns the axes on which this element has native arrow key behavior.
+  FocusgroupFlags NativeArrowKeyAxes() const override;
 
   // Used to handle return/space key events and simulate clicks. Returns true
   // if the event is handled.
@@ -390,6 +393,9 @@ class CORE_EXPORT HTMLElement : public Element {
   // "true". Spec: https://github.com/whatwg/html/pull/10018.
   AtomicString writingSuggestions() const;
   void setWritingSuggestions(const AtomicString& value);
+
+  // See comment on this method in element.h
+  bool IsRenderedInTopLayer() const override;
 
  protected:
   FocusableState SupportsFocus(UpdateBehavior update_behavior) const override;

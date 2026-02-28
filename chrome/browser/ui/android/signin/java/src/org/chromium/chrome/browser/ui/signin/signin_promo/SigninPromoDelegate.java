@@ -8,6 +8,7 @@ import android.content.Context;
 import android.content.Intent;
 import android.text.TextUtils;
 
+import androidx.annotation.ColorInt;
 import androidx.annotation.IntDef;
 
 import org.chromium.build.annotations.NullMarked;
@@ -104,6 +105,9 @@ public abstract class SigninPromoDelegate {
      */
     abstract boolean refreshPromoState(@Nullable CoreAccountInfo visibleAccount);
 
+    /** Returns the background color for the account picker in seamless sign-in layout `compact` */
+    abstract @ColorInt int getAccountPickerBackgroundColor();
+
     /** Returns whether this entry point supports seamless sign-in. */
     boolean isSeamlessSigninAllowed() {
         return SigninFeatureMap.isEnabled(SigninFeatures.ENABLE_SEAMLESS_SIGNIN);
@@ -135,34 +139,30 @@ public abstract class SigninPromoDelegate {
                         != SigninFeatureMap.SeamlessSigninStringType.NON_SEAMLESS) {
             return mContext.getString(R.string.signin_account_picker_bottom_sheet_signin_title);
         }
-        if (profileData == null) {
-            if (seamlessSigninStringType
-                    == SigninFeatureMap.SeamlessSigninStringType.NON_SEAMLESS) {
-                return mContext.getString(R.string.signin_promo_signin);
-            }
-            return mContext.getString(R.string.sign_in_to_chrome);
-        }
         if (seamlessSigninStringType == SigninFeatureMap.SeamlessSigninStringType.CONTINUE_BUTTON) {
-            if (!TextUtils.isEmpty(profileData.getGivenName())) {
+            if (profileData != null && !TextUtils.isEmpty(profileData.getGivenName())) {
                 return mContext.getString(
                         R.string.sync_promo_continue_as, profileData.getGivenName());
             }
-            if (!TextUtils.isEmpty(profileData.getFullName())) {
+            if (profileData != null && !TextUtils.isEmpty(profileData.getFullName())) {
                 return mContext.getString(
                         R.string.sync_promo_continue_as, profileData.getFullName());
             }
             return mContext.getString(R.string.sync_promo_continue);
         } else if (seamlessSigninStringType
                 == SigninFeatureMap.SeamlessSigninStringType.SIGNIN_BUTTON) {
-            if (!TextUtils.isEmpty(profileData.getGivenName())) {
+            if (profileData != null && !TextUtils.isEmpty(profileData.getGivenName())) {
                 return mContext.getString(
                         R.string.signin_promo_sign_in_as, profileData.getGivenName());
             }
-            if (!TextUtils.isEmpty(profileData.getFullName())) {
+            if (profileData != null && !TextUtils.isEmpty(profileData.getFullName())) {
                 return mContext.getString(
                         R.string.signin_promo_sign_in_as, profileData.getFullName());
             }
             return mContext.getString(R.string.signin_promo_sign_in);
+        }
+        if (profileData == null) {
+            return mContext.getString(R.string.signin_promo_signin);
         }
         return SigninUtils.getContinueAsButtonText(mContext, profileData);
     }

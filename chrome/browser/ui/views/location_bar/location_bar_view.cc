@@ -190,6 +190,7 @@
 #include "ui/views/controls/focus_ring.h"
 #include "ui/views/controls/highlight_path_generator.h"
 #include "ui/views/controls/label.h"
+#include "ui/views/interaction/element_tracker_views.h"
 #include "ui/views/property_effects.h"
 #include "ui/views/style/typography.h"
 #include "ui/views/style/typography_provider.h"
@@ -304,12 +305,13 @@ void LocationBarView::Init() {
 
     permission_dashboard_controller_ =
         std::make_unique<PermissionDashboardController>(
-            this, permission_dashboard_view_);
+            this, this, permission_dashboard_view_);
   } else {
     chip_controller_ = std::make_unique<ChipController>(
-        this, AddChildViewAt(std::make_unique<PermissionChipView>(
-                                 PermissionChipView::PressedCallback()),
-                             0));
+        this, this,
+        AddChildViewAt(std::make_unique<PermissionChipView>(
+                           PermissionChipView::PressedCallback()),
+                       0));
   }
 
   const auto& typography_provider = views::TypographyProvider::Get();
@@ -497,10 +499,6 @@ void LocationBarView::Init() {
     // first so that they appear on the left side of the icon container.
     // TODO(crbug.com/40835681): Improve the ordering heuristics for page action
     // icons and determine a way to handle simultaneous icon animations.
-    if (base::FeatureList::IsEnabled(commerce::kProductSpecifications)) {
-      params.types_enabled.push_back(
-          PageActionIconType::kProductSpecifications);
-    }
     params.types_enabled.push_back(PageActionIconType::kDiscounts);
     params.types_enabled.push_back(PageActionIconType::kPriceInsights);
     params.types_enabled.push_back(PageActionIconType::kPriceTracking);
@@ -689,8 +687,15 @@ void LocationBarView::SelectAll() {
   omnibox_view_->SelectAll(true);
 }
 
-void LocationBarView::FocusLocation(bool is_user_initiated) {
+void LocationBarView::FocusLocation(bool is_user_initiated,
+                                    bool clear_focus_if_failed) {
   omnibox_view_->SetFocus(is_user_initiated);
+  if (clear_focus_if_failed && !omnibox_view_->HasFocus()) {
+    // If none of location bar got focus, then clear focus.
+    views::FocusManager* focus_manager = GetFocusManager();
+    DCHECK(focus_manager);
+    focus_manager->ClearFocus();
+  }
 }
 
 void LocationBarView::Revert() {
@@ -1201,6 +1206,16 @@ void LocationBarView::ResetTabState(WebContents* contents) {
   omnibox_view_->ResetTabState(contents);
 }
 
+bool LocationBarView::ShouldCloseOmniboxPopup(ui::MouseEvent* event) {
+  if (event->type() != ui::EventType::kMousePressed) {
+    return false;
+  }
+
+  auto* const view = static_cast<views::View*>(event->target());
+  CHECK(view);
+  return !Contains(view);
+}
+
 ChipController* LocationBarView::GetChipController() {
   if (base::FeatureList::IsEnabled(
           content_settings::features::kLeftHandSideActivityIndicators)) {
@@ -1231,8 +1246,28 @@ LocationBarView::GetChipAnchor() {
   return std::nullopt;
 }
 
+ui::TrackedElement* LocationBarView::GetAnchorOrNull() {
+  return views::ElementTrackerViews::GetInstance()->GetElementForView(this);
+}
+
+Browser* LocationBarView::GetBrowser() {
+  return browser();
+}
+
 bool LocationBarView::IsVisible() const {
   return GetVisible();
+}
+
+bool LocationBarView::IsDrawn() const {
+  return View::IsDrawn();
+}
+
+bool LocationBarView::IsFullscreen() const {
+  return GetWidget()->IsFullscreen();
+}
+
+void LocationBarView::InvalidateLayout() {
+  View::InvalidateLayout();
 }
 
 gfx::Rect LocationBarView::Bounds() const {
@@ -1578,7 +1613,7 @@ bool LocationBarView::RefreshContentSettingViews() {
         base::FeatureList::IsEnabled(
             content_settings::features::kLeftHandSideActivityIndicators)) {
       visibility_changed |= permission_dashboard_controller()->Update(
-          v->content_setting_image_model(), v->delegate());
+          v->content_setting_image_model());
     } else {
       v->Update();
       if (was_visible != v->GetVisible()) {
@@ -1665,13 +1700,18 @@ void LocationBarView::OnPageInfoBubbleClosed(
     return;
   }
 
-  FocusLocation(false);
+  FocusLocation(/*is_user_initiated=*/false, /*clear_focus_if_failed=*/false);
 }
 
 void LocationBarView::FocusSearch() {
   // This is called by keyboard accelerator, so it's user-initiated.
   omnibox_view_->SetFocus(/*is_user_initiated=*/true);
   omnibox_view_->EnterKeywordModeForDefaultSearchProvider();
+}
+
+void LocationBarView::UpdateFocusBehavior(bool toolbar_visible) {
+  omnibox_view()->SetFocusBehavior(toolbar_visible ? FocusBehavior::ALWAYS
+                                                   : FocusBehavior::NEVER);
 }
 
 void LocationBarView::UpdateContentSettingsIcons() {
@@ -2043,14 +2083,14 @@ bool LocationBarView::IsEditingOrEmpty() const {
   return omnibox_view_ && omnibox_view_->IsEditingOrEmpty();
 }
 
-void LocationBarView::OnLocationIconPressed(const ui::MouseEvent& event) {
+bool LocationBarView::OpenContextMenu() {
   if (browser_ &&
       GetOmniboxController()->edit_model()->ShouldShowAddContextButton()) {
     if (!omnibox_popup_aim_presenter_ ||
         !omnibox_popup_aim_presenter_->GetWebUIContent() ||
         !omnibox_popup_aim_presenter_->GetWebUIContent()
              ->GetWrappedWebContents()) {
-      return;
+      return false;
     }
 
     omnibox_context_menu_ = std::make_unique<OmniboxContextMenu>(
@@ -2060,6 +2100,26 @@ void LocationBarView::OnLocationIconPressed(const ui::MouseEvent& event) {
     gfx::Point point(0, location_icon_view_->height());
     views::View::ConvertPointToScreen(location_icon_view_, &point);
     run_omnibox_context_menu_callback_.Run(omnibox_context_menu_.get(), point);
+    return true;
+  }
+  return false;
+}
+
+void LocationBarView::OnLocationIconGestureEvent(ui::GestureEvent* event) {
+  switch (event->type()) {
+    case ui::EventType::kGestureTap:
+    case ui::EventType::kGestureLongPress:
+    case ui::EventType::kGestureLongTap:
+    case ui::EventType::kGestureTwoFingerTap:
+      OpenContextMenu();
+      break;
+    default:
+      break;
+  }
+}
+
+void LocationBarView::OnLocationIconPressed(const ui::MouseEvent& event) {
+  if (!OpenContextMenu()) {
     return;
   }
 

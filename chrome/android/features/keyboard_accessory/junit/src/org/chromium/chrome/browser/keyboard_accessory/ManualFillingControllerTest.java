@@ -134,6 +134,7 @@ import java.util.concurrent.atomic.AtomicReference;
 public class ManualFillingControllerTest {
     private static final int sKeyboardHeightDp = 100;
     private static final int sAccessoryHeightDp = 48;
+    private static final int sDynamicPositioningMaxWidthPx = 100;
 
     @Rule public MockitoRule mMockitoRule = MockitoJUnit.rule();
 
@@ -358,6 +359,9 @@ public class ManualFillingControllerTest {
         Configuration config = new Configuration();
         config.hardKeyboardHidden = HARDKEYBOARDHIDDEN_UNDEFINED;
         when(mMockResources.getConfiguration()).thenReturn(config);
+        when(mMockResources.getDimensionPixelSize(
+                        R.dimen.keyboard_accessory_bar_dynamic_positioning_max_width))
+                .thenReturn(sDynamicPositioningMaxWidthPx);
         doNothing()
                 .when(mMockBackPressManager)
                 .addHandler(any(), eq(BackPressHandler.Type.MANUAL_FILLING));
@@ -443,7 +447,7 @@ public class ManualFillingControllerTest {
         mController.registerSheetUpdateDelegate(mLastMockWebContents, firstSheetUpdater);
         getStateForBrowserTab()
                 .getSheetDataProvider(AccessoryTabType.PASSWORDS)
-                .addObserver(firstTabHelper::record);
+                .addSyncObserverAndPostIfNonNull(firstTabHelper::record);
         firstTabHelper.providePasswordSheet("FirstPassword");
         assertThat(firstTabHelper.getFirstRecordedPassword(), is("FirstPassword"));
 
@@ -456,7 +460,7 @@ public class ManualFillingControllerTest {
         mController.registerSheetUpdateDelegate(mLastMockWebContents, secondSheetUpdater);
         getStateForBrowserTab()
                 .getSheetDataProvider(AccessoryTabType.PASSWORDS)
-                .addObserver(secondTabHelper::record);
+                .addSyncObserverAndPostIfNonNull(secondTabHelper::record);
         secondTabHelper.providePasswordSheet("SecondPassword");
         assertThat(secondTabHelper.getFirstRecordedPassword(), is("SecondPassword"));
 
@@ -703,7 +707,7 @@ public class ManualFillingControllerTest {
                 mLastMockWebContents, firstTabHelper.getActionListProvider());
         getStateForBrowserTab()
                 .getSheetDataProvider(AccessoryTabType.PASSWORDS)
-                .addObserver(firstTabHelper::record);
+                .addSyncObserverAndPostIfNonNull(firstTabHelper::record);
         getStateForBrowserTab().getActionsProvider().addObserver(firstTabHelper::record);
         firstTabHelper.providePasswordSheet("FirstPassword");
         firstTabHelper.provideAction(AccessoryAction.CREDMAN_CONDITIONAL_UI_REENTRY);
@@ -719,7 +723,7 @@ public class ManualFillingControllerTest {
                 mLastMockWebContents, secondTabHelper.getActionListProvider());
         getStateForBrowserTab()
                 .getSheetDataProvider(AccessoryTabType.PASSWORDS)
-                .addObserver(secondTabHelper::record);
+                .addSyncObserverAndPostIfNonNull(secondTabHelper::record);
         getStateForBrowserTab().getActionsProvider().addObserver(secondTabHelper::record);
         secondTabHelper.providePasswordSheet("SecondPassword");
         secondTabHelper.provideAction(AccessoryAction.CREDMAN_CONDITIONAL_UI_REENTRY);
@@ -1490,7 +1494,7 @@ public class ManualFillingControllerTest {
         verify(mMockKeyboardAccessory).setStyle(mStyleCaptor.capture());
         KeyboardAccessoryStyle style = mStyleCaptor.getValue();
         assertFalse(style.isDocked());
-        assertTrue(style.getMaxWidth() > 0);
+        assertEquals(sDynamicPositioningMaxWidthPx, style.getMaxWidth());
         verify(mMockKeyboardAccessory).setHasStickyLastItem(false);
         verify(mMockKeyboardAccessory).setAnimateSuggestionsFromTop(true);
     }
@@ -1532,6 +1536,7 @@ public class ManualFillingControllerTest {
         final int topBound = 20;
         final int rightBound = 30;
         final int bottomBound = 40;
+        final int horizontalMargin = 20;
 
         updateConfiguration(/* widthDp= */ 1600, /* heightDp= */ 2560);
         addBrowserTab(mMediator, 1111, null);
@@ -1546,6 +1551,9 @@ public class ManualFillingControllerTest {
                 .thenReturn(barHeight);
         when(mMockResources.getDimensionPixelSize(R.dimen.keyboard_accessory_notch_height))
                 .thenReturn(paddingForNotch);
+        when(mMockResources.getDimensionPixelSize(
+                        R.dimen.keyboard_accessory_bar_dynamic_positioning_horizontal_margin))
+                .thenReturn(horizontalMargin);
 
         mController.show(
                 /* waitForKeyboard= */ true, /* isCredentialFieldOrHasAutofillSuggestions= */ true);
@@ -1555,11 +1563,11 @@ public class ManualFillingControllerTest {
         verify(mMockKeyboardAccessory).setStyle(mStyleCaptor.capture());
         KeyboardAccessoryStyle style = mStyleCaptor.getValue();
         assertFalse(style.isDocked());
-        assertTrue(style.getMaxWidth() > 0);
+        assertEquals(sDynamicPositioningMaxWidthPx, style.getMaxWidth());
         assertEquals(KeyboardAccessoryStyle.NotchPosition.TOP, style.getNotchPosition());
 
         assertEquals(bottomBound * density, style.getVerticalOffset());
-        assertEquals(leftBound * density, style.getHorizontalOffset());
+        assertEquals(leftBound * density + horizontalMargin, style.getHorizontalOffset());
     }
 
     @Test
@@ -1571,6 +1579,7 @@ public class ManualFillingControllerTest {
         final int topBound = 20;
         final int rightBound = 30;
         final int bottomBound = 40;
+        final int horizontalMargin = 20;
 
         updateConfiguration(/* widthDp= */ 1600, /* heightDp= */ 2560);
         addBrowserTab(mMediator, 1111, null);
@@ -1585,6 +1594,9 @@ public class ManualFillingControllerTest {
                 .thenReturn(barHeight);
         when(mMockResources.getDimensionPixelSize(R.dimen.keyboard_accessory_notch_height))
                 .thenReturn(paddingForNotch);
+        when(mMockResources.getDimensionPixelSize(
+                        R.dimen.keyboard_accessory_bar_dynamic_positioning_horizontal_margin))
+                .thenReturn(horizontalMargin);
 
         mController.show(
                 /* waitForKeyboard= */ true, /* isCredentialFieldOrHasAutofillSuggestions= */ true);
@@ -1594,11 +1606,11 @@ public class ManualFillingControllerTest {
         verify(mMockKeyboardAccessory).setStyle(mStyleCaptor.capture());
         KeyboardAccessoryStyle style = mStyleCaptor.getValue();
         assertFalse(style.isDocked());
-        assertTrue(style.getMaxWidth() > 0);
+        assertEquals(sDynamicPositioningMaxWidthPx, style.getMaxWidth());
         assertEquals(KeyboardAccessoryStyle.NotchPosition.BOTTOM, style.getNotchPosition());
 
         assertEquals(topBound * density - paddingForNotch - barHeight, style.getVerticalOffset());
-        assertEquals(leftBound * density, style.getHorizontalOffset());
+        assertEquals(leftBound * density + horizontalMargin, style.getHorizontalOffset());
     }
 
     @Test
@@ -1623,7 +1635,7 @@ public class ManualFillingControllerTest {
         verify(mMockKeyboardAccessory).setStyle(mStyleCaptor.capture());
         KeyboardAccessoryStyle style = mStyleCaptor.getValue();
         assertFalse(style.isDocked());
-        assertTrue(style.getMaxWidth() > 0);
+        assertEquals(sDynamicPositioningMaxWidthPx, style.getMaxWidth());
         verify(mMockKeyboardAccessory).setHasStickyLastItem(false);
         verify(mMockKeyboardAccessory).setAnimateSuggestionsFromTop(true);
     }
@@ -1649,7 +1661,7 @@ public class ManualFillingControllerTest {
         verify(mMockKeyboardAccessory).setStyle(mStyleCaptor.capture());
         KeyboardAccessoryStyle style = mStyleCaptor.getValue();
         assertFalse(style.isDocked());
-        assertTrue(style.getMaxWidth() > 0);
+        assertEquals(sDynamicPositioningMaxWidthPx, style.getMaxWidth());
         verify(mMockKeyboardAccessory).setHasStickyLastItem(false);
         verify(mMockKeyboardAccessory).setAnimateSuggestionsFromTop(true);
     }

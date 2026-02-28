@@ -7,10 +7,10 @@
 
 #include "base/containers/flat_map.h"
 #include "base/scoped_observation.h"
+#include "chrome/browser/tab_list/tab_list_interface_observer.h"
 #include "chrome/browser/ui/extensions/extension_action_delegate.h"
 #include "chrome/browser/ui/extensions/extension_action_view_model.h"
 #include "chrome/browser/ui/extensions/extensions_container.h"
-#include "chrome/browser/ui/tabs/tab_list_interface_observer.h"
 #include "chrome/browser/ui/toolbar/toolbar_action_view_model.h"
 #include "chrome/browser/ui/toolbar/toolbar_actions_model.h"
 #include "content/public/browser/web_contents_observer.h"
@@ -83,13 +83,18 @@ class ExtensionsToolbarViewModel
     virtual void OnPinnedActionsChanged() = 0;
 
     // Called when the active WebContents is changed (e.g. tab change or page
-    // navigation).
-    virtual void OnActiveWebContentsChanged() = 0;
+    // navigation). `is_same_document` is true if the change was due to a
+    // same-document navigation.
+    virtual void OnActiveWebContentsChanged(bool is_same_document) = 0;
 
     // Called when the extensions that should be displayed in the request
     // access button to be recomputed.
     virtual void OnRequestAccessButtonParamsChanged(
         content::WebContents* web_contents) {}
+
+    // Called when both the extensions button and the request access button
+    // should be updated.
+    virtual void OnToolbarControlStateUpdated() {}
   };
 
   enum class ExtensionsToolbarButtonState {
@@ -143,7 +148,7 @@ class ExtensionsToolbarViewModel
 
   // Returns the state of the extensions toolbar button based on 'web_contents'.
   ExtensionsToolbarButtonState GetButtonState(
-      content::WebContents* web_contents) const;
+      content::WebContents& web_contents) const;
 
   // Executes the default behavior associated with the action. This should only
   // be called as a result of a user action.
@@ -178,7 +183,8 @@ class ExtensionsToolbarViewModel
   void DidFinishNavigation(content::NavigationHandle* handle) override;
 
   // TabListInterfaceObserver:
-  void OnActiveTabChanged(tabs::TabInterface* tab) override;
+  void OnActiveTabChanged(TabListInterface& tab_list,
+                          tabs::TabInterface* tab) override;
   void OnTabListDestroyed(TabListInterface& tab_list) override;
 
   // extensions::PermissionsManager::Observer:
@@ -191,12 +197,16 @@ class ExtensionsToolbarViewModel
   void OnHostAccessRequestsCleared(int tab_id) override;
   void OnHostAccessRequestDismissedByUser(const extensions::ExtensionId& id,
                                           const url::Origin& origin) override;
-  // TODO(crbug.com/461983701): Add OnUserPermissionsSettingsChanged and
-  // OnShowAccessRequestsInToolbarChanged
+  void OnUserPermissionsSettingsChanged(
+      const extensions::PermissionsManager::UserPermissionsSettings& settings)
+      override;
+  void OnShowAccessRequestsInToolbarChanged(
+      const extensions::ExtensionId& extension_id,
+      bool can_show_requests) override;
 
  private:
   // Returns whether any of `actions` given have access to the `web_contents`.
-  bool AnyActionHasCurrentSiteAccess(content::WebContents* web_contents) const;
+  bool AnyActionHasCurrentSiteAccess(content::WebContents& web_contents) const;
 
   // Creates and appends an action model to `actions_` vector.
   void AppendActionModel(const ToolbarActionsModel::ActionId& action_id);

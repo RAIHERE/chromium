@@ -26,10 +26,10 @@
 #include "chrome/browser/ui/ui_features.h"
 #include "chrome/browser/ui/views/frame/browser_frame_view.h"
 #include "chrome/browser/ui/views/frame/browser_view.h"
-#include "chrome/browser/ui/views/frame/top_container_background.h"
-#include "chrome/browser/ui/views/tabs/glow_hover_controller.h"
+#include "chrome/browser/ui/views/frame/themed_background.h"
 #include "chrome/browser/ui/views/tabs/tab.h"
-#include "chrome/browser/ui/views/tabs/tab_close_button.h"
+#include "chrome/browser/ui/views/tabs/tab/glow_hover_controller.h"
+#include "chrome/browser/ui/views/tabs/tab/tab_close_button.h"
 #include "chrome/browser/ui/views/tabs/tab_group_underline.h"
 #include "chrome/browser/ui/views/tabs/tab_slot_controller.h"
 #include "chrome/browser/ui/views/tabs/tab_slot_view.h"
@@ -221,7 +221,10 @@ SkPath TabStyleViewsImpl::GetPath(TabStyle::PathType path_type,
                                   scale;
 
   // Selected, hover, and inactive tab fills are a detached squarcle tab.
-  if ((path_type == TabStyle::PathType::kFill &&
+  // If kDetachedTabs is enabled, the active tab fill and border are also a
+  // detached tab.
+  if (base::FeatureList::IsEnabled(features::kDetachedTabs) ||
+      (path_type == TabStyle::PathType::kFill &&
        state != TabStyle::TabSelectionState::kActive) ||
       path_type == TabStyle::PathType::kHighlight ||
       path_type == TabStyle::PathType::kInteriorClip ||
@@ -723,6 +726,13 @@ TabStyle::SeparatorOpacities TabStyleViewsImpl::GetSeparatorOpacities(
 
 float TabStyleViewsImpl::GetSeparatorOpacity(bool for_layout,
                                              bool leading) const {
+  // Do not show separators if the tab strip is in a decluttered state.
+  if (base::FeatureList::IsEnabled(features::kDesktopGlowUp) &&
+      tab()->controller()->GetTabCount() >=
+          TabStyle::kTabStripDeclutterMinTabs) {
+    return 0.0f;
+  }
+
   const auto has_visible_background = [](const Tab* const tab) {
     return tab->IsActive() || tab->IsSelected() || tab->IsMouseHovered();
   };
@@ -961,7 +971,7 @@ void TabStyleViewsImpl::PaintTabBackgroundFill(
     canvas->sk_canvas()->scale(scale, scale);
     gfx::ImageSkia* image =
         tab_->GetThemeProvider()->GetImageSkiaNamed(fill_id.value());
-    TopContainerBackground::PaintThemeAlignedImage(
+    ThemedBackground::PaintThemeAlignedImage(
         canvas, tab_,
         BrowserView::GetBrowserViewForBrowser(tab_->controller()->GetBrowser()),
         image);

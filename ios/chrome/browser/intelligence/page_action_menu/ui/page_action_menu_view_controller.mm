@@ -6,7 +6,7 @@
 
 #import "base/strings/sys_string_conversions.h"
 #import "build/branding_buildflags.h"
-#import "ios/chrome/browser/intelligence/bwg/utils/bwg_constants.h"
+#import "ios/chrome/browser/intelligence/bwg/utils/gemini_constants.h"
 #import "ios/chrome/browser/intelligence/features/features.h"
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_feature.h"
 #import "ios/chrome/browser/intelligence/page_action_menu/ui/page_action_menu_mutator.h"
@@ -457,6 +457,11 @@ const CGFloat kDividerWidth = 1.0;
   ChromeButton* button =
       [[ChromeButton alloc] initWithStyle:ChromeButtonStylePrimary];
 
+  // Override glassButtonConfiguration/prominentGlassButtonConfiguration
+  // to prevent wrong icon tinting.
+  if (@available(iOS 26.1, *)) {
+    button.configuration = [UIButtonConfiguration filledButtonConfiguration];
+  }
   // Create the background config.
   UIBackgroundConfiguration* backgroundConfig = button.configuration.background;
   backgroundConfig.backgroundColor = [UIColor colorNamed:kBlue600Color];
@@ -570,8 +575,9 @@ const CGFloat kDividerWidth = 1.0;
   RecordAIHubAction(IOSAIHubAction::kGemini);
   PageActionMenuViewController* __weak weakSelf = self;
   [self.pageActionMenuHandler dismissPageActionMenuWithCompletion:^{
-    [weakSelf.BWGHandler
-        startGeminiFlowWithEntryPoint:gemini::EntryPoint::AIHub];
+    [weakSelf.BWGHandler startGeminiFlowWithStartupState:
+                             [[GeminiStartupState alloc]
+                                 initWithEntryPoint:gemini::EntryPoint::AIHub]];
   }];
 }
 
@@ -819,7 +825,7 @@ const CGFloat kDividerWidth = 1.0;
 // Creates a navigation chevron icon.
 - (UIImageView*)createNavigationChevron {
   UIImageView* chevronIcon = [[UIImageView alloc]
-      initWithImage:DefaultSymbolWithPointSize(kChevronRightSymbol,
+      initWithImage:DefaultSymbolWithPointSize(kChevronForwardSymbol,
                                                kSmallButtonIconSize)];
   chevronIcon.translatesAutoresizingMaskIntoConstraints = NO;
   chevronIcon.tintColor = [UIColor colorNamed:kTextQuaternaryColor];
@@ -829,14 +835,14 @@ const CGFloat kDividerWidth = 1.0;
 // Registers for trait collection changes to handle device orientation updates.
 - (void)setupTraitChangeHandling {
   __weak PageActionMenuViewController* weakSelf = self;
-  NSArray<UITrait>* traits = TraitCollectionSetForTraits(
-      @[ UITraitHorizontalSizeClass.class, UITraitVerticalSizeClass.class ]);
-  [self registerForTraitChanges:traits
-                    withHandler:^(id<UITraitEnvironment> traitEnvironment,
-                                  UITraitCollection* previousCollection) {
-                      [weakSelf updateLensAvailability:traitEnvironment
-                                                           .traitCollection];
-                    }];
+  [self
+      registerForTraitChanges:
+          @[ UITraitHorizontalSizeClass.class, UITraitVerticalSizeClass.class ]
+                  withHandler:^(id<UITraitEnvironment> traitEnvironment,
+                                UITraitCollection* previousCollection) {
+                    [weakSelf updateLensAvailability:traitEnvironment
+                                                         .traitCollection];
+                  }];
 }
 
 // Creates UI view for a single feature row based on the provided feature data.
@@ -908,29 +914,87 @@ const CGFloat kDividerWidth = 1.0;
       break;
     }
     case PageActionMenuButtonAction: {
-      if (feature.actionText && feature.actionText.length > 0) {
-        UIButton* actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
-        [actionButton setTitle:feature.actionText
-                      forState:UIControlStateNormal];
-        actionButton.titleLabel.font = PreferredFontForTextStyle(
-            UIFontTextStyleSubheadline, UIFontWeightMedium);
-        [actionButton setTitleColor:[UIColor colorNamed:kBlue600Color]
-                           forState:UIControlStateNormal];
-        actionButton.tag = feature.featureType;
-        [actionButton addTarget:self
-                         action:@selector(handleFeatureButton:)
-               forControlEvents:UIControlEventTouchUpInside];
-        [stackView addArrangedSubview:actionButton];
+      if (feature.featureType == PageActionMenuPriceTracking) {
+        UIStackView* accessoryStack = [[UIStackView alloc] init];
+        accessoryStack.translatesAutoresizingMaskIntoConstraints = NO;
+        accessoryStack.axis = UILayoutConstraintAxisHorizontal;
+        accessoryStack.alignment = UIStackViewAlignmentCenter;
+        accessoryStack.spacing = 8.0;
+        [accessoryStack
+            setContentHuggingPriority:UILayoutPriorityDefaultHigh + 1
+                              forAxis:UILayoutConstraintAxisHorizontal];
 
-        // Add chevron for price tracking.
-        if (feature.featureType == PageActionMenuPriceTracking) {
-          UIImageView* chevronIcon = [self createNavigationChevron];
-          [stackView addArrangedSubview:chevronIcon];
-          actionButton.accessibilityLabel = l10n_util::GetNSString(
-              IDS_IOS_AI_HUB_OPEN_PRICE_TRACKING_ACCESSIBILITY_LABEL);
-        } else if (feature.featureType == PageActionMenuPopupBlocker) {
-          actionButton.accessibilityLabel = l10n_util::GetNSString(
-              IDS_IOS_AI_HUB_ALWAYS_SHOW_POPUPS_ACCESSIBILITY_LABEL);
+        if (feature.actionText && feature.actionText.length > 0) {
+          UILabel* trackingLabel = [[UILabel alloc] init];
+          trackingLabel.text = feature.actionText;
+          trackingLabel.font = PreferredFontForTextStyle(
+              UIFontTextStyleSubheadline, UIFontWeightMedium);
+          trackingLabel.textColor = [UIColor colorNamed:kTextSecondaryColor];
+          trackingLabel.adjustsFontForContentSizeCategory = YES;
+          trackingLabel.numberOfLines = 0;
+          trackingLabel.textAlignment = NSTextAlignmentRight;
+          [trackingLabel
+              setContentHuggingPriority:UILayoutPriorityRequired
+                                forAxis:UILayoutConstraintAxisHorizontal];
+          [accessoryStack addArrangedSubview:trackingLabel];
+        }
+
+        UIImageView* chevronIcon = [self createNavigationChevron];
+        UIButton* chevronButton = [UIButton buttonWithType:UIButtonTypeCustom];
+        chevronButton.translatesAutoresizingMaskIntoConstraints = NO;
+        [chevronButton addSubview:chevronIcon];
+
+        [NSLayoutConstraint activateConstraints:@[
+          [chevronIcon.centerXAnchor
+              constraintEqualToAnchor:chevronButton.centerXAnchor],
+          [chevronIcon.centerYAnchor
+              constraintEqualToAnchor:chevronButton.centerYAnchor],
+          [chevronButton.widthAnchor
+              constraintEqualToConstant:chevronIcon.intrinsicContentSize.width],
+          [chevronButton.heightAnchor
+              constraintEqualToConstant:chevronIcon.intrinsicContentSize.height]
+        ]];
+
+        [chevronButton
+            setContentHuggingPriority:UILayoutPriorityRequired
+                              forAxis:UILayoutConstraintAxisHorizontal];
+        [chevronButton
+            setContentHuggingPriority:UILayoutPriorityRequired
+                              forAxis:UILayoutConstraintAxisVertical];
+
+        // Set accessibility label based on subscription status.
+        chevronButton.accessibilityLabel =
+            feature.actionText
+                ? l10n_util::GetNSString(
+                      IDS_IOS_AI_HUB_OPEN_PRICE_TRACKING_ACCESSIBILITY_LABEL)
+                : l10n_util::GetNSString(
+                      IDS_IOS_AI_HUB_OPEN_PRICE_TRACK_ACCESSIBILITY_LABEL);
+
+        chevronButton.tag = feature.featureType;
+        [chevronButton addTarget:self
+                          action:@selector(handleFeatureButton:)
+                forControlEvents:UIControlEventTouchUpInside];
+        [accessoryStack addArrangedSubview:chevronButton];
+        [stackView addArrangedSubview:accessoryStack];
+      } else {
+        if (feature.actionText && feature.actionText.length > 0) {
+          UIButton* actionButton = [UIButton buttonWithType:UIButtonTypeSystem];
+          [actionButton setTitle:feature.actionText
+                        forState:UIControlStateNormal];
+          actionButton.titleLabel.font = PreferredFontForTextStyle(
+              UIFontTextStyleSubheadline, UIFontWeightMedium);
+          [actionButton setTitleColor:[UIColor colorNamed:kBlue600Color]
+                             forState:UIControlStateNormal];
+          actionButton.tag = feature.featureType;
+          [actionButton addTarget:self
+                           action:@selector(handleFeatureButton:)
+                 forControlEvents:UIControlEventTouchUpInside];
+          [stackView addArrangedSubview:actionButton];
+
+          if (feature.featureType == PageActionMenuPopupBlocker) {
+            actionButton.accessibilityLabel = l10n_util::GetNSString(
+                IDS_IOS_AI_HUB_ALWAYS_SHOW_POPUPS_ACCESSIBILITY_LABEL);
+          }
         }
       }
       break;

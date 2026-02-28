@@ -18,6 +18,9 @@
 #include "components/prefs/pref_change_registrar.h"
 #include "content/public/browser/web_contents_observer.h"
 #include "mojo/public/cpp/bindings/pending_receiver.h"
+#include "mojo/public/cpp/bindings/receiver.h"
+#include "mojo/public/cpp/bindings/remote.h"
+#include "ui/base/window_open_disposition.h"
 
 class MetricsReporter;
 class OmniboxController;
@@ -58,9 +61,13 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
                      bool delay_upload,
                      AddTabContextCallback) override;
 
-  void OnShow();
   void OnShowAiModeButtonPrefChanged();
   void OnContentSharingPolicyChanged();
+
+  void StepSelection(OmniboxPopupSelection::Direction direction,
+                     OmniboxPopupSelection::Step step);
+  void OpenCurrentSelection(WindowOpenDisposition disposition);
+  void SetAimButtonVisible(bool visible);
 
   // ContextualSearchboxHandler:
   void SetPage(
@@ -74,6 +81,8 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
       bookmarks::BookmarkModel* bookmark_model,
       const omnibox::GroupConfigMap& suggestion_groups_map,
       const TemplateURLService* turl_service) const override;
+  std::string AutocompleteIconToResourceName(
+      const gfx::VectorIcon& icon) const override;
 
   // AutocompleteController::Observer:
   void OnStart(AutocompleteController* controller,
@@ -87,6 +96,7 @@ class WebuiOmniboxHandler : public ContextualSearchboxHandler,
   void OnMatchIconUpdated(size_t index) override {}
   void OnContentsChanged() override {}
   void OnKeywordStateChanged(bool is_keyword_selected) override;
+  void OnCharTyped(base::TimeTicks timstamp) override;
 
   // `AimEligibilityService` callback.
   void OnAimEligibilityChanged();

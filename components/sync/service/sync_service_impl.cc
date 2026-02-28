@@ -90,12 +90,6 @@ namespace {
 BASE_FEATURE(kSyncUnsubscribeFromTypesWithPermanentErrors,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Delay before downloading device statistics and recording related metrics. The
-// exact number is somewhat arbitrary, chosen to ensure that refresh tokens are
-// loaded, the local cache GUID is up to date, and to avoid interfering with
-// general (sync or browser) startup.
-constexpr base::TimeDelta kDeviceStatisticsTrackerDelay = base::Seconds(30);
-
 #if BUILDFLAG(IS_ANDROID)
 constexpr int kMinGmsVersionCodeWithCustomPassphraseApi = 235204000;
 
@@ -219,17 +213,6 @@ void MaybeClearAccountKeyedPreferences(
 #endif  // !BUILDFLAG(IS_IOS) && !BUILDFLAG(IS_ANDROID)
 }
 
-std::unique_ptr<DeviceStatisticsRequest> CreateDeviceStatisticsRequest(
-    signin::IdentityManager* identity_manager,
-    scoped_refptr<network::SharedURLLoaderFactory> url_loader_factory,
-    std::string_view user_agent,
-    const CoreAccountInfo& account,
-    const GURL& url) {
-  return std::make_unique<DeviceStatisticsRequestImpl>(
-      identity_manager, std::move(url_loader_factory), user_agent, account,
-      url);
-}
-
 }  // namespace
 
 SyncServiceImpl::InitParams::InitParams() = default;
@@ -258,8 +241,7 @@ SyncServiceImpl::SyncServiceImpl(InitParams init_params)
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   DCHECK(sync_client_);
   DCHECK(IsLocalSyncEnabled() || identity_manager_ != nullptr);
-  CHECK_EQ(base::FeatureList::IsEnabled(syncer::kSyncUseOsCryptAsync),
-           os_crypt_async_ != nullptr);
+  CHECK(os_crypt_async_);
 
   // If Sync is disabled via command line flag, then SyncServiceImpl
   // shouldn't be instantiated.
@@ -436,13 +418,9 @@ void SyncServiceImpl::Initialize(DataTypeController::TypeVector controllers) {
       std::make_unique<LocalDataMigrationItemQueue>(this,
                                                     data_type_manager_.get());
 
-  if (base::FeatureList::IsEnabled(kSyncRecordDeviceStatisticsMetrics)) {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostDelayedTask(
-        FROM_HERE,
-        base::BindOnce(&SyncServiceImpl::MaybeStartDeviceStatisticsTracker,
-                       weak_factory_.GetWeakPtr()),
-        kDeviceStatisticsTrackerDelay);
-  }
+  device_statistics_scheduler_ = std::make_unique<DeviceStatisticsScheduler>(
+      /*delegate=*/this, sync_client_->GetPrefService(),
+      sync_client_->GetIdentityManager(), sync_service_url_);
 }
 
 void SyncServiceImpl::StartSyncingWithServer() {
@@ -451,20 +429,6 @@ void SyncServiceImpl::StartSyncingWithServer() {
   }
   if (IsLocalSyncEnabled()) {
     TriggerRefresh(TriggerRefreshSource::kLocalSync, DataTypeSet::All());
-  }
-
-  if (engine_ && sync_client_->IsMetricsAndCrashReportingEnabled() &&
-      base::FeatureList::IsEnabled(kSyncRecordDeviceStatisticsMetrics)) {
-    device_statistics_tracker_ = std::make_unique<DeviceStatisticsTracker>(
-        sync_client_->GetPrefService(), sync_client_->GetIdentityManager(),
-        sync_service_url_,
-        base::BindRepeating(
-            &CreateDeviceStatisticsRequest, sync_client_->GetIdentityManager(),
-            url_loader_factory_, MakeUserAgentForSync(channel_)),
-        SyncTransportDataPrefs::GetCacheGuidsForAllGaiaIds(
-            sync_client_->GetPrefService()));
-    device_statistics_tracker_->Start(base::BindOnce(
-        &SyncServiceImpl::DeviceStatisticsTrackerDone, base::Unretained(this)));
   }
 }
 
@@ -582,35 +546,20 @@ void SyncServiceImpl::OnDataTypeRequestsSyncStartup(DataType type) {
 }
 
 void SyncServiceImpl::TryStart() {
-  if (base::FeatureList::IsEnabled(syncer::kSyncUseOsCryptAsync)) {
-    CHECK(os_crypt_async_);
-    // It's possible for this to be called multiple times before the callback
-    // runs (e.g. if the user signs out and back in again). This is safe, as
-    // OSCryptAsync will just queue the callbacks and run them once the
-    // encryptor is available. The first call to TryStartImpl() that succeeds
-    // will create the engine, and subsequent ones will be no-ops. Two
-    // instances of Encryptor are needed, one for SyncServiceImpl and one for
-    // SyncEngine.
-    auto on_encryptors_gotten =
-        base::BindOnce(&SyncServiceImpl::TryStartImpl,
-                       weak_factory_.GetWeakPtr(), base::TimeTicks::Now());
+  CHECK(os_crypt_async_);
+  // It's possible for this to be called multiple times before the callback
+  // runs (e.g. if the user signs out and back in again). This is safe, as
+  // OSCryptAsync will just queue the callbacks and run them once the
+  // encryptor is available. The first call to TryStartImpl() that succeeds
+  // will create the engine, and subsequent ones will be no-ops.
+  auto barrier = base::BarrierCallback<os_crypt_async::Encryptor>(
+      2, base::BindOnce(&SyncServiceImpl::TryStartImpl,
+                        weak_factory_.GetWeakPtr(), base::TimeTicks::Now()));
 
-    auto barrier = base::BarrierCallback<os_crypt_async::Encryptor>(
-        2, std::move(on_encryptors_gotten));
-
-    // TODO(419157433): Remove the option to get the encryptor for SyncEngine
-    //  once the kSyncUseOsCryptAsync feature is enabled by default.
-    os_crypt_async_->GetInstance(
-        barrier, os_crypt_async::Encryptor::Option::kEncryptSyncCompat);
-    os_crypt_async_->GetInstance(
-        barrier, os_crypt_async::Encryptor::Option::kEncryptSyncCompat);
-  } else {
-    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
-        FROM_HERE,
-        base::BindOnce(&SyncServiceImpl::TryStartImpl,
-                       weak_factory_.GetWeakPtr(), base::TimeTicks::Now(),
-                       std::vector<os_crypt_async::Encryptor>()));
-  }
+  // One instance of Encryptor is needed for SyncServiceImpl and one for
+  // SyncEngine.
+  os_crypt_async_->GetInstance(barrier);
+  os_crypt_async_->GetInstance(barrier);
 }
 
 void SyncServiceImpl::TryStartImpl(
@@ -623,18 +572,15 @@ void SyncServiceImpl::TryStartImpl(
     return;
   }
 
-  std::unique_ptr<os_crypt_async::Encryptor> engine_encryptor;
-  if (!encryptors.empty()) {
-    CHECK_EQ(encryptors.size(), 2u);
-    base::UmaHistogramTimes("Sync.EncryptorReceivedTime",
-                            base::TimeTicks::Now() - try_start_time);
-    crypto_.SetEncryptor(std::make_unique<os_crypt_async::Encryptor>(
-        std::move(encryptors.at(0))));
-    engine_encryptor = std::make_unique<os_crypt_async::Encryptor>(
-        std::move(encryptors.at(1)));
-  } else {
-    crypto_.SetEncryptor(nullptr);
-  }
+  CHECK_EQ(encryptors.size(), 2u);
+
+  base::UmaHistogramTimes("Sync.EncryptorReceivedTime",
+                          base::TimeTicks::Now() - try_start_time);
+
+  // One instance of Encryptor is needed for SyncServiceImpl and one for
+  // SyncEngine.
+  crypto_.SetEncryptor(
+      std::make_unique<os_crypt_async::Encryptor>(std::move(encryptors[0])));
 
   if (!deferral_time.is_null()) {
     base::UmaHistogramCustomTimes("Sync.Startup.TimeDeferred2",
@@ -691,7 +637,8 @@ void SyncServiceImpl::TryStartImpl(
       std::make_unique<EngineComponentsFactoryImpl>(
           EngineSwitchesFromCommandLine());
 
-  params.encryptor = std::move(engine_encryptor);
+  params.encryptor =
+      std::make_unique<os_crypt_async::Encryptor>(std::move(encryptors[1]));
 
   if (!IsLocalSyncEnabled()) {
     auth_manager_->ConnectionOpened();
@@ -711,7 +658,7 @@ void SyncServiceImpl::Shutdown() {
 
   NotifyShutdown();
 
-  device_statistics_tracker_.reset();
+  device_statistics_scheduler_.reset();
 
   // Ensure the LocalDataMigrationItemQueue, the DataTypeManager and the
   // engine are destroyed in order since they hold consecutive pointers to each
@@ -988,14 +935,13 @@ SyncService::UserActionableError SyncServiceImpl::GetUserActionableError()
 
   // This error should ideally be the last one to be checked. Any new identity
   // errors should be handled before this.
-  if (base::FeatureList::IsEnabled(kSyncShowBookmarksLimitExceededError)) {
-    const DataTypeStatusTable::TypeErrorMap data_type_errors =
-        data_type_manager_->GetDataTypeErrors();
-    auto it = data_type_errors.find(BOOKMARKS);
-    if (it != data_type_errors.end() &&
-        bookmark_sync_error_state_.IsActionableError(it->second)) {
-      return UserActionableError::kBookmarksLimitExceeded;
-    }
+  const DataTypeStatusTable::TypeErrorMap data_type_errors =
+      data_type_manager_->GetDataTypeErrors();
+  auto it = data_type_errors.find(BOOKMARKS);
+  if (it != data_type_errors.end() &&
+      bookmark_sync_error_state_.IsActionableError(it->second) &&
+      base::FeatureList::IsEnabled(kSyncShowBookmarksLimitExceededError)) {
+    return UserActionableError::kBookmarksLimitExceeded;
   }
 
   return UserActionableError::kNone;
@@ -1353,7 +1299,7 @@ void SyncServiceImpl::SyncAuthCredentialsChanged() {
   // Cache in prefs whether a persistent auth error exists.
   if (auth_manager_->IsSyncPaused()) {
     sync_prefs_.SetHasCachedPersistentAuthErrorForMetrics(true);
-  } else if (!auth_manager_->GetCredentials().access_token.empty()) {
+  } else if (!auth_manager_->GetCredentials().access_token_info.token.empty()) {
     if (!IsSyncFeatureEnabled() &&
         sync_prefs_.HasCachedPersistentAuthErrorForMetrics()) {
       // An auth error is being fixed while in transport mode. Record the amount
@@ -1391,7 +1337,7 @@ void SyncServiceImpl::SyncAuthCredentialsChanged() {
   } else {
     // If the engine already exists, just propagate the new credentials.
     SyncCredentials credentials = auth_manager_->GetCredentials();
-    if (credentials.access_token.empty()) {
+    if (credentials.access_token_info.token.empty()) {
       engine_->InvalidateCredentials();
     } else {
       engine_->UpdateCredentials(credentials);
@@ -1757,10 +1703,6 @@ void SyncServiceImpl::ConfigureDataTypeManager(
   configure_context.reason = reason;
   configure_context.configuration_start_time = base::Time::Now();
 
-  base::UmaHistogramBoolean("Sync.ConfigureDataTypeManager.IsGaiaAccountId",
-                            GetAccountInfo().account_id.ToString() ==
-                                GetAccountInfo().gaia.ToString());
-
   DCHECK(!configure_context.cache_guid.empty());
 
   if (!migrator_) {
@@ -2010,6 +1952,24 @@ void SyncServiceImpl::OnIdentityManagerShutdown(
     signin::IdentityManager* identity_manager) {
   // Needs to be shutdown before IdentityManager.
   NOTREACHED(base::NotFatalUntil::M142);
+}
+
+bool SyncServiceImpl::IsDeviceStatisticsMetricReportingEnabled() {
+  return sync_client_->IsMetricsAndCrashReportingEnabled();
+}
+
+std::unique_ptr<DeviceStatisticsRequest>
+SyncServiceImpl::CreateDeviceStatisticsRequest(const CoreAccountInfo& account,
+                                               const GURL& url) {
+  return std::make_unique<DeviceStatisticsRequestImpl>(
+      sync_client_->GetIdentityManager(), url_loader_factory_,
+      MakeUserAgentForSync(channel_), account, url);
+}
+
+std::vector<std::string>
+SyncServiceImpl::GetCurrentDeviceCacheGuidsForDeviceStatistics() {
+  return SyncTransportDataPrefs::GetCacheGuidsForAllGaiaIds(
+      sync_client_->GetPrefService());
 }
 
 void SyncServiceImpl::OnAccountsInCookieUpdatedWithCallback(
@@ -2270,7 +2230,7 @@ bool SyncServiceImpl::IsRetryingAccessTokenFetchForTest() const {
 std::string SyncServiceImpl::GetAccessTokenForTest() const {
   DCHECK_CALLED_ON_VALID_SEQUENCE(sequence_checker_);
   CHECK_IS_TEST();
-  return auth_manager_->access_token();
+  return auth_manager_->GetCredentials().access_token_info.token;
 }
 
 SyncTokenStatus SyncServiceImpl::GetSyncTokenStatusForDebugging() const {
@@ -2341,7 +2301,8 @@ void SyncServiceImpl::RemoveClientFromServer() const {
   const std::string cache_guid = engine_->GetCacheGuid();
   const std::string birthday = engine_->GetBirthday();
   DCHECK(!cache_guid.empty());
-  const std::string& access_token = auth_manager_->access_token();
+  const std::string& access_token =
+      auth_manager_->GetCredentials().access_token_info.token;
   const bool report_sync_stopped = !access_token.empty() && !birthday.empty();
   base::UmaHistogramBoolean("Sync.SyncStoppedReported", report_sync_stopped);
   if (report_sync_stopped) {
@@ -2528,37 +2489,6 @@ void SyncServiceImpl::AcknowledgeBookmarksLimitExceededError(
   base::UmaHistogramEnumeration("Sync.BookmarksLimitExceededHelpClickedSource",
                                 source);
   bookmark_sync_error_state_.AcknowledgeError();
-}
-
-void SyncServiceImpl::MaybeStartDeviceStatisticsTracker() {
-  CHECK(base::FeatureList::IsEnabled(kSyncRecordDeviceStatisticsMetrics));
-
-  if (!sync_client_->IsMetricsAndCrashReportingEnabled()) {
-    return;
-  }
-
-  if (!auth_manager_->IsActiveAccountInfoFullyLoaded()) {
-    // It shouldn't happen in practice that the account info (refresh tokens)
-    // still aren't fully loaded at this point.
-    return;
-  }
-
-  device_statistics_tracker_ = std::make_unique<DeviceStatisticsTracker>(
-      sync_client_->GetPrefService(), sync_client_->GetIdentityManager(),
-      sync_service_url_,
-      base::BindRepeating(&CreateDeviceStatisticsRequest,
-                          sync_client_->GetIdentityManager(),
-                          url_loader_factory_, MakeUserAgentForSync(channel_)),
-      SyncTransportDataPrefs::GetCacheGuidsForAllGaiaIds(
-          sync_client_->GetPrefService()));
-  device_statistics_tracker_->Start(base::BindOnce(
-      &SyncServiceImpl::DeviceStatisticsTrackerDone, base::Unretained(this)));
-}
-
-void SyncServiceImpl::DeviceStatisticsTrackerDone() {
-  CHECK(base::FeatureList::IsEnabled(kSyncRecordDeviceStatisticsMetrics));
-
-  device_statistics_tracker_.reset();
 }
 
 }  // namespace syncer

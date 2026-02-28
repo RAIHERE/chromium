@@ -46,6 +46,7 @@
 #include "third_party/blink/renderer/platform/wtf/text/code_point_iterator.h"
 #include "third_party/blink/renderer/platform/wtf/text/copy_lchars_from_uchar_source.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_builder.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_internal.h"
 #include "third_party/blink/renderer/platform/wtf/text/string_utf8_adaptor.h"
 #include "third_party/blink/renderer/platform/wtf/text/unicode.h"
 #include "third_party/blink/renderer/platform/wtf/text/utf8.h"
@@ -55,6 +56,36 @@
 namespace blink {
 
 ASSERT_SIZE(String, void*);
+
+namespace {
+
+template <typename QueryType>
+Vector<String> SplitInternal(const String& input,
+                             QueryType separator,
+                             bool allow_empty_entries) {
+  Vector<String> result;
+
+  String::size_type separator_length;
+  if constexpr (requires { separator.length(); }) {
+    separator_length = separator.length();
+  } else {
+    separator_length = 1;
+  }
+  String::size_type start_pos = 0;
+  String::size_type end_pos;
+  while ((end_pos = input.find(separator, start_pos)) != kNotFound) {
+    if (allow_empty_entries || start_pos != end_pos) {
+      result.push_back(input.Substring(start_pos, end_pos - start_pos));
+    }
+    start_pos = end_pos + separator_length;
+  }
+  if (allow_empty_entries || start_pos != input.length()) {
+    result.push_back(input.Substring(start_pos));
+  }
+  return result;
+}
+
+}  // namespace
 
 // Construct a string with UTF-16 data.
 String::String(base::span<const UChar> utf16_data)
@@ -84,6 +115,18 @@ int CodeUnitCompareIgnoringASCIICase(const String& a, const char* b) {
 wtf_size_t String::Find(base::RepeatingCallback<bool(UChar)> match_callback,
                         wtf_size_t index) const {
   return impl_ ? impl_->Find(match_callback, index) : kNotFound;
+}
+
+String::size_type String::find(const StringView& value, size_type start) const {
+  return internal::Find(impl_.get(), value, start);
+}
+
+String::size_type String::rfind(const StringView& value,
+                                size_type start) const {
+  if (value.empty()) {
+    return std::min(start, length());
+  }
+  return impl_ ? impl_->ReverseFind(value, start) : npos;
 }
 
 UChar32 String::CharacterStartingAt(unsigned i) const {
@@ -277,126 +320,17 @@ String String::NumberToStringFixedWidth(double number,
   return String(converter.ToStringWithFixedWidth(number, decimal_places));
 }
 
-int String::ToIntStrict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToInt(NumberParsingOptions::Strict(), ok);
+Vector<String> String::Split(const StringView& separator) const {
+  DCHECK(!separator.empty());
+  return SplitInternal(*this, separator, /* allow_empty_entries */ true);
 }
 
-unsigned String::ToUIntStrict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToUInt(NumberParsingOptions::Strict(), ok);
+Vector<String> String::Split(UChar separator) const {
+  return SplitInternal(*this, separator, /* allow_empty_entries */ true);
 }
 
-unsigned String::HexToUIntStrict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->HexToUIntStrict(ok);
-}
-
-uint64_t String::HexToUInt64Strict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->HexToUInt64Strict(ok);
-}
-
-int64_t String::ToInt64Strict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToInt64(NumberParsingOptions::Strict(), ok);
-}
-
-uint64_t String::ToUInt64Strict(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToUInt64(NumberParsingOptions::Strict(), ok);
-}
-
-int String::ToInt(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToInt(NumberParsingOptions::Loose(), ok);
-}
-
-unsigned String::ToUInt(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0;
-  }
-  return impl_->ToUInt(NumberParsingOptions::Loose(), ok);
-}
-
-double String::ToDouble(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0.0;
-  }
-  return impl_->ToDouble(ok);
-}
-
-float String::ToFloat(bool* ok) const {
-  if (!impl_) {
-    if (ok)
-      *ok = false;
-    return 0.0f;
-  }
-  return impl_->ToFloat(ok);
-}
-
-void String::Split(const StringView& separator,
-                   bool allow_empty_entries,
-                   Vector<String>& result) const {
-  result.clear();
-
-  unsigned start_pos = 0;
-  wtf_size_t end_pos;
-  while ((end_pos = Find(separator, start_pos)) != kNotFound) {
-    if (allow_empty_entries || start_pos != end_pos)
-      result.push_back(Substring(start_pos, end_pos - start_pos));
-    start_pos = end_pos + separator.length();
-  }
-  if (allow_empty_entries || start_pos != length())
-    result.push_back(Substring(start_pos));
-}
-
-void String::Split(UChar separator,
-                   bool allow_empty_entries,
-                   Vector<String>& result) const {
-  result.clear();
-
-  unsigned start_pos = 0;
-  wtf_size_t end_pos;
-  while ((end_pos = find(separator, start_pos)) != kNotFound) {
-    if (allow_empty_entries || start_pos != end_pos)
-      result.push_back(Substring(start_pos, end_pos - start_pos));
-    start_pos = end_pos + 1;
-  }
-  if (allow_empty_entries || start_pos != length())
-    result.push_back(Substring(start_pos));
+Vector<String> String::SplitSkippingEmpty(UChar separator) const {
+  return SplitInternal(*this, separator, /* allow_empty_entries */ false);
 }
 
 std::string String::Ascii() const {

@@ -17,7 +17,7 @@
 #include "components/autofill/core/browser/data_model/autofill_ai/entity_type_names.h"
 #include "components/autofill/core/browser/field_types.h"
 #include "components/autofill/core/browser/proto/server.pb.h"
-#include "components/autofill/core/browser/test_utils/autofill_test_utils.h"
+#include "components/autofill/core/browser/test_utils/entity_data_test_utils.h"
 #include "components/autofill/core/common/autofill_features.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
@@ -603,6 +603,76 @@ TEST_P(AutofillEntityInstanceTest, IsSubsetOf_BothMasked_OneIsSuffixOfOther) {
 
   EXPECT_FALSE(entity1.IsSubsetOf(entity2));
   EXPECT_FALSE(entity2.IsSubsetOf(entity1));
+}
+
+// Tests that entity types that support masked storage have at least one
+// obfuscated attribute. Masked storage only makes sense for entities that have
+// obfuscated attributes since all unobfuscated attributes are already
+// transmitted via sync and therefore stored locally.
+TEST_P(AutofillEntityInstanceTest, IsMaskedStorageSupported) {
+  for (EntityType t : DenseSet<EntityType>::all()) {
+    EXPECT_TRUE(
+        !IsMaskedStorageSupported(t,
+                                  EntityInstance::RecordType::kServerWallet) ||
+        std::ranges::any_of(t.attributes(),
+                            [](AttributeType a) { return a.is_obfuscated(); }))
+        << t;
+    EXPECT_FALSE(
+        IsMaskedStorageSupported(t, EntityInstance::RecordType::kLocal))
+        << t;
+  }
+}
+
+// Tests explicitly for some entity types that they support masked storage.
+TEST_P(AutofillEntityInstanceTest, IsMaskedStorageSupportedSelectTypes) {
+  using enum EntityTypeName;
+  EXPECT_TRUE(IsMaskedStorageSupported(
+      EntityType(kDriversLicense), EntityInstance::RecordType::kServerWallet));
+  EXPECT_TRUE(
+      IsMaskedStorageSupported(EntityType(kKnownTravelerNumber),
+                               EntityInstance::RecordType::kServerWallet));
+  EXPECT_TRUE(IsMaskedStorageSupported(
+      EntityType(kNationalIdCard), EntityInstance::RecordType::kServerWallet));
+  EXPECT_TRUE(IsMaskedStorageSupported(
+      EntityType(kPassport), EntityInstance::RecordType::kServerWallet));
+  EXPECT_TRUE(IsMaskedStorageSupported(
+      EntityType(kRedressNumber), EntityInstance::RecordType::kServerWallet));
+}
+
+// Tests that all obfuscated attributes of entity types that can be stored in
+// Wallet are part of every import constraint.
+//
+// The reason for this test is as follows:
+// - When importing data from a form submission, we assemble the entity that we
+//   send to Wallet by augmenting the observed submission data with data stored
+//   locally for that entity.
+// - However, we never want to send a masked attribute to Wallet: If we did,
+//   then Wallet would overwrite the attribute's value with the masked value.
+// - We can guarantee that this never happens if we only offer to update if all
+//   of the obfuscated attributes were present in the submitted form.
+//
+// Should this test start to fail, then the form import logic must be updated.
+// For example, you might need to fetch the unmasked entity from the Wallet
+// server before sending the update request.
+TEST_P(AutofillEntityInstanceTest, ObfuscatedAttributesAreImportonstraints) {
+  for (const EntityType entity_type : DenseSet<EntityType>::all()) {
+    if (!IsMaskedStorageSupported(entity_type,
+                                  EntityInstance::RecordType::kServerWallet)) {
+      continue;
+    }
+    for (const AttributeType attribute_type : entity_type.attributes()) {
+      if (!attribute_type.is_obfuscated()) {
+        continue;
+      }
+      EXPECT_TRUE(std::ranges::all_of(entity_type.import_constraints(),
+                                      [&](DenseSet<AttributeType> constraint) {
+                                        return constraint.contains(
+                                            attribute_type);
+                                      }))
+          << attribute_type << " must appear in all import constraints of "
+          << entity_type;
+    }
+  }
 }
 
 INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(AutofillEntityInstanceTest);

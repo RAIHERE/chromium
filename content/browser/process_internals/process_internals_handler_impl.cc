@@ -60,10 +60,11 @@ using IsolatedOriginSource = ChildProcessSecurityPolicy::IsolatedOriginSource;
       site_instance->HasSite()
           ? std::make_optional(site_instance->GetSiteInfo().site_url())
           : std::nullopt;
-  frame_info->site_instance->is_guest = site_instance->IsGuest();
+  frame_info->site_instance->is_guest =
+      site_instance->GetSecurityPrincipal().IsGuest();
   frame_info->site_instance->is_pdf = site_instance->IsPdf();
   frame_info->site_instance->is_sandbox_for_iframes =
-      site_instance->GetSiteInfo().is_sandboxed();
+      site_instance->GetSecurityPrincipal().IsSandboxed();
   frame_info->site_instance->are_javascript_optimizers_enabled =
       !site_instance->GetSiteInfo().are_v8_optimizations_disabled();
   frame_info->site_instance->site_instance_group_id =
@@ -74,7 +75,8 @@ using IsolatedOriginSource = ChildProcessSecurityPolicy::IsolatedOriginSource;
   // If the SiteInstance has a non-default StoragePartition, include a basic
   // string representation of it.  Skip cases where the StoragePartition is
   // already conveyed in the site URL to avoid redundancy.
-  const auto& partition = site_instance->GetStoragePartitionConfig();
+  const auto& partition =
+      site_instance->GetSecurityPrincipal().GetStoragePartitionConfig();
   if (!partition.is_default() &&
       site_instance->GetSiteInfo().site_url().spec().find(
           partition.partition_domain()) == std::string::npos) {
@@ -212,7 +214,8 @@ void ProcessInternalsHandlerImpl::GetIsolationMode(
   if (SiteIsolationPolicy::AreIsolatedOriginsEnabled()) {
     modes.push_back("Isolate Origins");
   }
-  if (SiteIsolationPolicy::AreOriginKeyedProcessesEnabledByDefault()) {
+  if (SiteIsolationPolicy::AreOriginKeyedProcessesEnabledByDefault(
+          browser_context_)) {
     modes.push_back("Origin Keyed Processes by Default");
   }
   if (SiteIsolationPolicy::IsStrictOriginIsolationEnabled()) {

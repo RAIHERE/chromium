@@ -54,6 +54,7 @@ class LanguageModel final : public EventTarget, public ExecutionContextClient {
   ExecutionContext* GetExecutionContext() const override;
 
   DEFINE_ATTRIBUTE_EVENT_LISTENER(quotaoverflow, kQuotaoverflow)
+  DEFINE_ATTRIBUTE_EVENT_LISTENER(contextoverflow, kContextoverflow)
 
   // language_model.idl implementation.
   static ScriptPromise<LanguageModel> create(
@@ -81,11 +82,18 @@ class LanguageModel final : public EventTarget, public ExecutionContextClient {
                                      const V8LanguageModelPrompt* input,
                                      const LanguageModelAppendOptions* options,
                                      ExceptionState& exception_state);
+  ScriptPromise<IDLDouble> measureContextUsage(
+      ScriptState* script_state,
+      const V8LanguageModelPrompt* input,
+      const LanguageModelPromptOptions* options,
+      ExceptionState& exception_state);
   ScriptPromise<IDLDouble> measureInputUsage(
       ScriptState* script_state,
       const V8LanguageModelPrompt* input,
       const LanguageModelPromptOptions* options,
       ExceptionState& exception_state);
+  double contextUsage() const { return info_->input_usage; }
+  double contextWindow() const { return info_->input_quota; }
   double inputQuota() const { return info_->input_quota; }
   double inputUsage() const { return info_->input_usage; }
   uint32_t topK() const { return info_->sampling_params->top_k; }
@@ -112,7 +120,7 @@ class LanguageModel final : public EventTarget, public ExecutionContextClient {
       mojom::blink::ModelExecutionContextInfoPtr context_info);
   void OnResponseComplete(
       mojom::blink::ModelExecutionContextInfoPtr context_info);
-  void OnQuotaOverflow();
+  void OnContextOverflow();
 
   using ResolverOrStream =
       std::variant<ScriptPromiseResolverBase*, ReadableStream*>;

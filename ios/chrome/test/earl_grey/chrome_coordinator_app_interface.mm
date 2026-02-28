@@ -12,8 +12,9 @@
 #import "ios/chrome/browser/autocomplete/model/autocomplete_browser_agent.h"
 #import "ios/chrome/browser/bookmarks/ui_bundled/home/bookmarks_coordinator.h"
 #import "ios/chrome/browser/browser_view/model/browser_view_visibility_notifier_browser_agent.h"
+#import "ios/chrome/browser/composebox/eg_tests/inttest/composebox_inttest_coordinator.h"
 #import "ios/chrome/browser/discover_feed/model/discover_feed_visibility_browser_agent.h"
-#import "ios/chrome/browser/history/ui_bundled/history_coordinator.h"
+#import "ios/chrome/browser/history/ui_bundled/history_coordinator_factory.h"
 #import "ios/chrome/browser/history/ui_bundled/stub_history_coordinator_delegate.h"
 #import "ios/chrome/browser/main/model/browser_impl.h"
 #import "ios/chrome/browser/ntp/model/new_tab_page_tab_helper.h"
@@ -253,6 +254,12 @@
   return URLLoader->last_params.in_incognito;
 }
 
++ (void)startBrowser {
+  // The browser is lazily initialized. Access the browser to ensure it has
+  // been created.
+  [self.helper browser];
+}
+
 #pragma mark - Methods to start coordinators
 
 + (void)startLensPromoCoordinator {
@@ -270,9 +277,8 @@
 }
 
 + (void)startHistoryCoordinator {
-  HistoryCoordinator* coordinator = [[HistoryCoordinator alloc]
-      initWithBaseViewController:[self rootViewController]
-                         browser:self.helper.browser];
+  HistoryCoordinator* coordinator =
+      CreateHistoryCoordinator([self rootViewController], self.helper.browser);
   self.helper.mockObject = [[StubHistoryCoordinatorDelegate alloc] init];
   coordinator.delegate = self.helper.mockObject;
 
@@ -350,6 +356,15 @@
   OmniboxInttestCoordinator* coordinator = [[OmniboxInttestCoordinator alloc]
       initWithBaseViewController:[self rootViewController]
                          browser:self.helper.browser];
+  self.helper.coordinator = coordinator;
+  [self.helper.coordinator start];
+}
+
++ (void)startComposeboxCoordinator {
+  ComposeboxInttestCoordinator* coordinator =
+      [[ComposeboxInttestCoordinator alloc]
+          initWithBaseViewController:[self rootViewController]
+                             browser:self.helper.browser];
   self.helper.coordinator = coordinator;
   [self.helper.coordinator start];
 }

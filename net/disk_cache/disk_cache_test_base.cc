@@ -149,8 +149,8 @@ void DiskCacheTestWithCache::LoadInMemoryIndex() {
   ASSERT_EQ(backend_to_test_, BackendToTest::kSql);
   CHECK(sql_cache_impl_);
   base::test::TestFuture<disk_cache::SqlPersistentStore::Error> future;
-  ASSERT_TRUE(sql_cache_impl_->GetSqlStoreForTest()->MaybeLoadInMemoryIndex(
-      future.GetCallback()));
+  sql_cache_impl_->GetSqlStoreForTest()->MaybeLoadInMemoryIndex(
+      future.GetCallback());
   ASSERT_EQ(future.Get(), disk_cache::SqlPersistentStore::Error::kOk);
 }
 #endif  // ENABLE_DISK_CACHE_SQL_BACKEND
@@ -467,8 +467,7 @@ void DiskCacheTestWithCache::CreateBackend(uint32_t flags) {
         std::make_unique<disk_cache::SimpleBackendImpl>(
             /*file_operations=*/nullptr, cache_path_,
             /* cleanup_tracker = */ nullptr, simple_file_tracker_.get(), size_,
-            type_, /*net_log = */ nullptr,
-            /*cache_encryption_delegate=*/nullptr);
+            type_, /*cache_entry_hasher=*/nullptr, /*net_log = */ nullptr);
     simple_backend->Init(cb.callback());
     ASSERT_THAT(cb.WaitForResult(), IsOk());
     simple_cache_impl_ = simple_backend.get();

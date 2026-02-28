@@ -124,9 +124,10 @@ void ServiceWorkerPaymentApp::ValidateCanMakePayment(
     return;
   }
 
-  // Returns true if the `kCanMakePaymentEnabled` pref is disabled.
-  if (!prefs_can_make_payment_ && PaymentsExperimentalFeatures::IsEnabled(
-                                      features::kRestrictIsReadyToPayQuery)) {
+  // Skip sending the CanMakePayment event to the payment app if the
+  // `kCanMakePaymentEnabled` pref is disabled, to avoid leaking information to
+  // the payment app.
+  if (!prefs_can_make_payment_) {
     OnCanMakePaymentEventSkipped(std::move(callback));
     return;
   }
@@ -524,6 +525,12 @@ void ServiceWorkerPaymentApp::OnPaymentAppIdentity(const url::Origin& origin,
   if (payment_handler_host_) {
     payment_handler_host_->set_sw_origin_for_logs(origin);
     payment_handler_host_->set_registration_id_for_logs(registration_id_);
+    payment_handler_host_->set_disconnect_callback(
+        base::BindOnce(&ServiceWorkerPaymentApp::OnPaymentHandlerDisconnected,
+                       weak_ptr_factory_.GetWeakPtr()));
+  }
+  if (auto* payment_app_provider = GetPaymentAppProvider()) {
+    payment_app_provider->SetRegistrationId(registration_id_);
   }
 }
 
@@ -583,6 +590,12 @@ content::PaymentAppProvider* ServiceWorkerPaymentApp::GetPaymentAppProvider() {
              ? nullptr
              : content::PaymentAppProvider::GetOrCreateForWebContents(
                    web_contents_.get());
+}
+
+void ServiceWorkerPaymentApp::OnPaymentHandlerDisconnected() {
+  if (auto* payment_app_provider = GetPaymentAppProvider()) {
+    payment_app_provider->OnPaymentHandlerDisconnected();
+  }
 }
 
 }  // namespace payments

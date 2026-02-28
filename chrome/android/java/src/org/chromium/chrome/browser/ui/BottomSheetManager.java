@@ -175,11 +175,11 @@ class BottomSheetManager extends EmptyBottomSheetObserver implements DestroyObse
                     @Override
                     public void onBottomControlsHeightChanged(
                             int bottomControlsHeight, int bottomControlsMinHeight) {
-                        mSheetController.setBottomControlsHeight(bottomControlsHeight);
+                        mSheetController.setBottomControlsOffset(bottomControlsHeight);
                     }
                 };
         mBrowserControlsVisibilityManager.addObserver(mBrowserControlsObserver);
-        mSheetController.setBottomControlsHeight(
+        mSheetController.setBottomControlsOffset(
                 controlsVisibilityManager.getBottomControlsHeight());
 
         mOmniboxFocusObserver =
@@ -198,7 +198,7 @@ class BottomSheetManager extends EmptyBottomSheetObserver implements DestroyObse
                         }
                     }
                 };
-        mOmniboxFocusStateSupplier.addObserver(mOmniboxFocusObserver);
+        mOmniboxFocusStateSupplier.addSyncObserverAndPostIfNonNull(mOmniboxFocusObserver);
     }
 
     private void setActivityTab(@Nullable Tab tab) {

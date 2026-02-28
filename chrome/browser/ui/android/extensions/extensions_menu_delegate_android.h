@@ -7,6 +7,7 @@
 #include "chrome/browser/ui/browser_window/public/browser_window_interface.h"
 #include "chrome/browser/ui/extensions/extensions_menu_view_model.h"
 #include "chrome/browser/ui/views/extensions/extensions_menu_handler.h"
+#include "third_party/skia/include/core/SkBitmap.h"
 
 #ifndef CHROME_BROWSER_UI_ANDROID_EXTENSIONS_EXTENSIONS_MENU_DELEGATE_ANDROID_H_
 #define CHROME_BROWSER_UI_ANDROID_EXTENSIONS_EXTENSIONS_MENU_DELEGATE_ANDROID_H_
@@ -27,15 +28,22 @@ class ExtensionsMenuDelegateAndroid : public ExtensionsMenuViewModel::Delegate,
       const ExtensionsMenuDelegateAndroid&) = delete;
   ~ExtensionsMenuDelegateAndroid() override;
 
-  // JNI implementations.
+  // JNI implementations:
   void Destroy(JNIEnv* env);
+  base::android::ScopedJavaLocalRef<jobject> GetActionIcon(JNIEnv* env,
+                                                           int action_index);
+  std::vector<base::android::ScopedJavaLocalRef<jobject>> GetMenuEntries(
+      JNIEnv* env);
+  base::android::ScopedJavaLocalRef<jobject> GetSiteSettings(JNIEnv* env);
+  bool IsReady(JNIEnv* env);
+  void OnSiteSettingsToggleChanged(JNIEnv* env, bool is_checked);
 
   // ExtensionsMenuViewModel::Delegate:
   std::unique_ptr<ExtensionActionViewModel> CreateActionViewModel(
       const extensions::ExtensionId& extension_id) override;
 
   // ExtensionsMenuViewModel::Observer:
-  void OnActiveWebContentsChanged() override;
+  void OnPageNavigation() override;
   void OnActionAdded(ExtensionActionViewModel* action_model,
                      int index) override;
   void OnActionRemoved(const ToolbarActionsModel::ActionId& action_id,
@@ -46,6 +54,8 @@ class ExtensionsMenuDelegateAndroid : public ExtensionsMenuViewModel::Delegate,
                                 int index) override;
   void OnHostAccessRequestUpdated(const extensions::ExtensionId& extension_id,
                                   int index) override;
+  void OnActionIconUpdated(
+      const ToolbarActionsModel::ActionId& action_id) override;
   void OnHostAccessRequestsCleared() override;
   void OnHostAccessRequestRemoved(const extensions::ExtensionId& extension_id,
                                   int index) override;
@@ -57,6 +67,8 @@ class ExtensionsMenuDelegateAndroid : public ExtensionsMenuViewModel::Delegate,
 
   // ExtensionsMenuHandler:
   void CloseBubble() override;
+  void OnActionButtonClicked(
+      const extensions::ExtensionId& extension_id) override;
   void OnAllowExtensionClicked(
       const extensions::ExtensionId& extension_id) override;
   void OnDismissExtensionClicked(
@@ -75,6 +87,9 @@ class ExtensionsMenuDelegateAndroid : public ExtensionsMenuViewModel::Delegate,
       const extensions::ExtensionId& extension_id) override;
 
  private:
+  // Notifies the Java side that the menu is ready to be shown.
+  void OnReady();
+
   const raw_ptr<BrowserWindowInterface> browser_;
 
   // The platform-agnostic menu view model.

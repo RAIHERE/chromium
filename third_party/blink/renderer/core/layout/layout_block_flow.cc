@@ -65,6 +65,7 @@
 #include "third_party/blink/renderer/core/paint/object_paint_invalidator.h"
 #include "third_party/blink/renderer/core/paint/paint_layer.h"
 #include "third_party/blink/renderer/core/paint/paint_layer_scrollable_area.h"
+#include "third_party/blink/renderer/core/paint/text_overflow_post_layout_snapshot.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/clear_collection_scope.h"
 #include "third_party/blink/renderer/platform/instrumentation/use_counter.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
@@ -259,26 +260,6 @@ static bool IsMergeableAnonymousBlock(const LayoutBlockFlow* block) {
 
 void LayoutBlockFlow::RemoveChild(LayoutObject* old_child) {
   NOT_DESTROYED();
-  // No need to waste time in merging or removing empty anonymous blocks.
-  // We can just bail out if our document is getting destroyed.
-  if (DocumentBeingDestroyed()) {
-    LayoutBox::RemoveChild(old_child);
-    return;
-  }
-
-  // If this child is a block, and if our previous and next siblings are both
-  // anonymous blocks with inline content, then we can go ahead and fold the
-  // inline content back together.
-  if (!RuntimeEnabledFeatures::LayoutMergeAnonymousFixEnabled() &&
-      !old_child->IsInline()) {
-    auto* prev_block_flow =
-        DynamicTo<LayoutBlockFlow>(old_child->PreviousSibling());
-    auto* next_block_flow =
-        DynamicTo<LayoutBlockFlow>(old_child->NextSibling());
-    if (prev_block_flow && next_block_flow) {
-      prev_block_flow->MergeSiblingContiguousAnonymousBlock(next_block_flow);
-    }
-  }
 
   // If the old_child is block-level we need to check if any adjacent siblings
   // are floating or out-of-flow positioned, and if so reparent them into the
@@ -473,8 +454,9 @@ void LayoutBlockFlow::ReparentSubsequentFloatingOrOutOfFlowSiblings() {
   auto* parent_block_flow = DynamicTo<LayoutBlockFlow>(Parent());
   if (!parent_block_flow)
     return;
-  if (BeingDestroyed() || DocumentBeingDestroyed())
+  if (BeingDestroyed()) {
     return;
+  }
   LayoutObject* child = NextSibling();
   while (child && child->IsFloatingOrOutOfFlowPositioned()) {
     LayoutObject* sibling = child->NextSibling();
@@ -494,8 +476,9 @@ void LayoutBlockFlow::ReparentPrecedingFloatingOrOutOfFlowSiblings() {
   auto* parent_block_flow = DynamicTo<LayoutBlockFlow>(Parent());
   if (!parent_block_flow)
     return;
-  if (BeingDestroyed() || DocumentBeingDestroyed())
+  if (BeingDestroyed()) {
     return;
+  }
   LayoutObject* child = PreviousSibling();
   while (child && child->IsFloatingOrOutOfFlowPositioned()) {
     LayoutObject* sibling = child->PreviousSibling();
@@ -607,7 +590,6 @@ void LayoutBlockFlow::MakeChildrenNonInline(LayoutObject* insertion_point) {
   // This means that we cannot coalesce inlines before |insertionPoint| with
   // inlines following |insertionPoint|, because the new child is going to be
   // inserted in between the inlines, splitting them.
-  DCHECK(!IsInline() || IsAtomicInlineLevel());
   DCHECK(!insertion_point || insertion_point->Parent() == this);
 
   SetChildrenInline(false);
@@ -661,8 +643,23 @@ bool LayoutBlockFlow::ShouldTruncateOverflowingText() const {
     }
     object_to_check = parent;
   }
-  return object_to_check->HasNonVisibleOverflow() &&
-         !object_to_check->StyleRef().TextOverflow().IsClip();
+  if (!object_to_check->HasNonVisibleOverflow() ||
+      object_to_check->StyleRef().TextOverflow().IsClip()) {
+    return false;
+  }
+  if (RuntimeEnabledFeatures::DisableEllipsisWhenScrolledEnabled()) {
+    if (const auto* box = DynamicTo<LayoutBox>(object_to_check)) {
+      if (auto* scrollable_area = box->GetScrollableArea()) {
+        auto* snapshot = scrollable_area->GetTextOverflowPostLayoutSnapshot();
+        if (!snapshot) {
+          snapshot = MakeGarbageCollected<TextOverflowPostLayoutSnapshot>(
+              *scrollable_area);
+        }
+        return !snapshot->IsScrolled();
+      }
+    }
+  }
+  return true;
 }
 
 Node* LayoutBlockFlow::NodeForHitTest() const {
@@ -838,7 +835,7 @@ PositionWithAffinity LayoutBlockFlow::PositionForPoint(
   DCHECK_GE(GetDocument().Lifecycle().GetState(),
             DocumentLifecycle::kPrePaintClean);
 
-  if (IsAtomicInlineLevel()) {
+  if (IsInline()) {
     PositionWithAffinity position =
         PositionForPointIfOutsideAtomicInlineLevel(point);
     if (!position.IsNull())

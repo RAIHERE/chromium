@@ -970,6 +970,9 @@
     <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_NOT_NOW_BUTTON_LABEL" desc="Label for a button to decline a prompt to sign in">
       Continue without an account
     </message>
+    <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_DONT_SIGN_IN_BUTTON_LABEL" translateable="false" desc="Label for a button to decline a prompt to sign in">
+      Don't sign in
+    </message>
     <message name="IDS_PROFILE_PICKER_PROFILE_CREATION_FLOW_STAY_SIGNED_OUT_BUTTON_LABEL" desc="Label for a button to decline a prompt to sign in">
       Stay signed out
     </message>
@@ -1107,6 +1110,14 @@
     </message>
     <message name="IDS_FRE_DEFAULT_BROWSER_SKIP" desc="The label for a button to skip setting Chrome as their default browser.">
       Skip
+    </message>
+
+    <!-- Default Browser Promo Refresh -->
+    <message name="IDS_FRE_REFRESH_DEFAULT_BROWSER_SET_AS_DEFAULT" desc="The label for a button to confirm setting Chrome as their default browser.">
+      Set as default
+    </message>
+    <message name="IDS_FRE_REFRESH_DEFAULT_BROWSER_NO_THANKS" desc="The label for a button to skip setting Chrome as their default browser.">
+      No thanks
     </message>
 
     <!-- Batch Upload Desktop -->
@@ -1368,5 +1379,8 @@
   </if>
     <message name="IDS_SIGN_IN_BENEFITS_IPH_TEXT" desc="Text of the IPH bubble announcing benefits for users who signed in before the sync-to-signin migration.">
       While you're signed in, you can use the bookmarks, extensions, and more saved in your Google Account on all your devices
+    </message>
+    <message name="IDS_SIGN_IN_BENEFITS_WITHOUT_BOOKMARKS_AND_EXTENSIONS_IPH_TEXT" desc="Text of the IPH bubble announcing benefits for users who signed in before the sync-to-signin migration, not mentioning bookmarks and extensions because they require an explicit sign in.">
+      While you're signed in, you can use the themes, settings, and more saved in your Google Account on all your devices
     </message>
 </grit-part>

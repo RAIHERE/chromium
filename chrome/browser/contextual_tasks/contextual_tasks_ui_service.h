@@ -5,26 +5,26 @@
 #ifndef CHROME_BROWSER_CONTEXTUAL_TASKS_CONTEXTUAL_TASKS_UI_SERVICE_H_
 #define CHROME_BROWSER_CONTEXTUAL_TASKS_CONTEXTUAL_TASKS_UI_SERVICE_H_
 
-#include <list>
 #include <map>
+#include <utility>
 #include <vector>
 
 #include "base/functional/callback.h"
 #include "base/memory/weak_ptr.h"
 #include "base/timer/timer.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks.mojom.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "components/contextual_search/contextual_search_session_handle.h"
 #include "components/keyed_service/core/keyed_service.h"
 #include "content/public/browser/frame_tree_node_id.h"
 #include "net/base/backoff_entry.h"
+#include "third_party/omnibox_proto/chrome_aim_entry_point.pb.h"
 #include "url/gurl.h"
 
 class AimEligibilityService;
 class BrowserWindowInterface;
-class ContextualTasksUI;
 class GoogleServiceAuthError;
 class Profile;
-class TabStripModel;
 
 namespace base {
 class Uuid;
@@ -47,6 +47,7 @@ class TabInterface;
 
 namespace contextual_tasks {
 class ContextualTasksService;
+class ContextualTasksUIInterface;
 
 // A service used to coordinate all of the side panel instances showing an AI
 // thread. Events like tab switching and Intercepted navigations from both the
@@ -81,10 +82,10 @@ class ContextualTasksUiService : public KeyedService {
       base::WeakPtr<tabs::TabInterface> tab,
       base::WeakPtr<BrowserWindowInterface> browser);
 
-  // A notification that a navigation to the search results page occurred in the
-  // contextual tasks WebUI while being viewed in a tab (as opposed to side
-  // panel).
-  virtual void OnSearchResultsNavigationInTab(
+  // A notification that a navigation to a link that is not related to the ai
+  // thread occurred in the contextual tasks WebUI while being viewed in a tab
+  // (as opposed to side panel).
+  virtual void OnNonThreadNavigationInTab(
       const GURL& url,
       base::WeakPtr<tabs::TabInterface> tab);
 
@@ -93,7 +94,7 @@ class ContextualTasksUiService : public KeyedService {
   // a tab).
   virtual void OnSearchResultsNavigationInSidePanel(
       content::OpenURLParams url_params,
-      ContextualTasksUI* webui_controller);
+      ContextualTasksUIInterface* web_ui_interface);
 
   // A notification that a navigation is occurring. This method gives the
   // service the opportunity to prevent the navigation from happening in
@@ -112,6 +113,11 @@ class ContextualTasksUiService : public KeyedService {
   // Returns the contextual_task UI for a task.
   virtual GURL GetContextualTaskUrlForTask(const base::Uuid& task_id);
 
+  // Sets the entry point override for a given task.
+  virtual void SetInitialEntryPointForTask(
+      const base::Uuid& task_id,
+      omnibox::ChromeAimEntryPoint entry_point);
+
   // Returns the URL that a task was created for. Once this is retrieved, the
   // entry is removed from the cache.
   virtual std::optional<GURL> GetInitialUrlForTask(const base::Uuid& uuid);
@@ -125,7 +131,8 @@ class ContextualTasksUiService : public KeyedService {
   // loaded in the absence of any other context.
   virtual GURL GetDefaultAiPageUrl();
 
-  // Called when a UI in a given browser window started showing a new task,
+  // Returns the URL for the default AI page for a given task.
+  virtual GURL GetDefaultAiPageUrlForTask(const base::Uuid& task_id);
   // either in a full tab or in the side panel. If |task_id| is invalid, the
   // UI is in a zero-state that is waiting for user to create a new task.
   virtual void OnTaskChanged(BrowserWindowInterface* browser_window_interface,
@@ -142,27 +149,51 @@ class ContextualTasksUiService : public KeyedService {
       std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
           session_handle);
 
+  // Opens the contextual tasks side panel with the protected error page showing
+  // by default.
+  virtual void StartTaskUiInSidePanelWithErrorPage(
+      BrowserWindowInterface* browser_window_interface,
+      tabs::TabInterface* tab_interface,
+      std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
+          session_handle);
+
   // Returns whether the provided URL is to an AI page.
   virtual bool IsAiUrl(const GURL& url);
 
+  // Returns whether the provided task ID is for a task that should show the
+  // error page on load.
+  virtual bool IsPendingErrorPage(const base::Uuid& task_id);
+
   // Returns whether the provided URL is to a contextual tasks WebUI page.
-  bool IsContextualTasksUrl(const GURL& url);
+  static bool IsContextualTasksUrl(const GURL& url);
+
+  // Returns whether the provided URL represents a contextual tasks "display
+  // URL" that should lead to the contextual tasks WebUI page upon navigation.
+  bool IsContextualTasksDisplayUrl(const GURL& url);
 
   // Returns whether the provided URL is a Google search results page. This
   // method does not check for the validity of any parameters that
   // differentiate different modes or queries.
-  bool IsSearchResultsUrl(const GURL& url);
+  static bool IsSearchResultsUrl(const GURL& url);
+
+  // Returns whether the provided URL is a share URL.
+  bool IsShareUrl(const GURL& url);
 
   // Returns whether the provided URL is for a valid (e.g. can be loaded in
   // the embedded page in the WebUI) search results page that contains the
   // correct params and isn't a shopping query.
   bool IsValidSearchResultsPage(const GURL& url);
 
+  // Returns AIM URL found in the search param of the contextual tasks URL.
+  // Returns empty URL if not found or not from AIM.
+  static GURL GetAimUrlFromContextualTasksUrl(const GURL& url);
+
   // Called when the Lens overlay is shown/hidden. No-op if the active UI is not
   // in the side panel since the Lens button is always hidden in a tab.
   virtual void OnLensOverlayStateChanged(
       BrowserWindowInterface* browser_window_interface,
-      bool is_showing);
+      bool is_showing,
+      std::optional<lens::LensOverlayInvocationSource> invocation_source);
 
   // Associates a WebContents with a task, assuming the URL of the WebContents'
   // main frame or side panel is a contextual task URL.
@@ -189,15 +220,6 @@ class ContextualTasksUiService : public KeyedService {
   // new foreground tab.
   virtual void OnImageClickedFromSourcesMenu(const GURL& url,
                                              BrowserWindowInterface* browser);
-
-  void set_auto_tab_context_suggestion_enabled(bool enabled) {
-    auto_tab_context_suggestion_enabled_ = enabled;
-  }
-
-  bool auto_tab_context_suggestion_enabled() const {
-    return auto_tab_context_suggestion_enabled_;
-  }
-
   // Return whether there is a user signed into the browser with valid
   // credentials (aka, an OAuth token can be obtained).
   virtual bool IsSignedInToBrowserWithValidCredentials();
@@ -207,7 +229,13 @@ class ContextualTasksUiService : public KeyedService {
 
   // Fetches an access token for the primary account.
   using GetAccessTokenCallback = base::OnceCallback<void(const std::string&)>;
-  virtual void GetAccessToken(GetAccessTokenCallback callback);
+  virtual void GetAccessToken(
+      GetAccessTokenCallback callback,
+      base::WeakPtr<content::WebContents> web_contents);
+
+  // Gets the entry point override for a given task.
+  omnibox::ChromeAimEntryPoint GetInitialEntryPointForTask(
+      const base::Uuid& task_id);
 
   base::WeakPtr<ContextualTasksUiService> GetWeakPtr() {
     return weak_ptr_factory_.GetWeakPtr();
@@ -236,17 +264,44 @@ class ContextualTasksUiService : public KeyedService {
   void OnOAuthTokenReceived(GoogleServiceAuthError error,
                             signin::AccessTokenInfo access_token_info);
 
+  // Shows the OAuth error dialog for the given `web_contents`.
+  void ShowOauthErrorDialogForWebContents(
+      base::WeakPtr<content::WebContents> web_contents);
+
   // Runs all pending access token callbacks with the provided token.
   void RunPendingAccessTokenCallbacks(const std::string& token);
 
-  // Focus an existing tab based on the provided URL if it exists. The URLs must
-  // be identical in order for the existing tab to be selected.
-  bool MaybeFocusExistingOpenTab(const GURL& url,
-                                 TabStripModel* tab_strip_model,
-                                 const base::Uuid& task_id);
+  // Focus an existing tab based on the provided URL if it exists. The URLs are
+  // compared without text selection directives as they don't change the page
+  // content and only tell the browser what text to highlight on the page. A
+  // pointer to the selected tab is returned if found.
+  // TODO(crbug.com/483442073): Remove the ifdef block once we remove
+  // TabStripModel from MaybeFocusExistingOpenTab.
+  tabs::TabInterface* MaybeFocusExistingOpenTab(const GURL& url,
+                                                TabListInterface* tab_list,
+                                                const base::Uuid& task_id);
+
+  // A callback for checking whether text fragments from a URL are on a page.
+  void OnTextFinderLookupComplete(
+      base::WeakPtr<tabs::TabInterface> tab,
+      const GURL& url,
+      base::Uuid task_id,
+      base::WeakPtr<BrowserWindowInterface> browser,
+      const std::vector<std::pair<std::string, bool>>& lookup_results);
+
+  // Helper method to associate the WebContents with the task and set the
+  // session handle.
+  void InitializeTaskInSidePanel(
+      content::WebContents* web_contents,
+      const base::Uuid& task_id,
+      std::unique_ptr<contextual_search::ContextualSearchSessionHandle>
+          session_handle);
+
+  // Navigates to a share URL.
+  virtual void OnShareUrlNavigation(const GURL& url);
 
   // Checks if the provided URL matches any of the allowed hosts.
-  bool IsAllowedHost(const GURL& url);
+  static bool IsAllowedHost(const GURL& url);
 
   const raw_ptr<Profile> profile_;
 
@@ -261,7 +316,9 @@ class ContextualTasksUiService : public KeyedService {
   std::unique_ptr<signin::AccessTokenFetcher> access_token_fetcher_;
 
   // Pending access token callbacks.
-  std::vector<GetAccessTokenCallback> pending_access_token_callbacks_;
+  std::vector<
+      std::pair<GetAccessTokenCallback, base::WeakPtr<content::WebContents>>>
+      pending_access_token_callbacks_;
 
   // Backoff entry used to control the retry logic for the OAuth token request.
   net::BackoffEntry request_access_token_backoff_;
@@ -269,18 +326,22 @@ class ContextualTasksUiService : public KeyedService {
   // A timer used to refresh the OAuth token before it expires.
   base::OneShotTimer token_refresh_timer_;
 
-  // The hosts of the AI page that is loaded into the WebUI.
-  std::vector<GURL> ai_page_hosts_;
-
   // Map a task's ID to the URL that was used to create it, if it exists. This
   // is primarily used in init flows where the contextual tasks UI is
   // intercepting a query from some other surface like the omnibox. The entry
   // in this map is removed once the UI is loaded with the correct thread.
   std::map<base::Uuid, GURL> task_id_to_creation_url_;
 
-  // Whether to allow active tab context to be suggested on compose box
-  // automatically.
-  bool auto_tab_context_suggestion_enabled_ = true;
+  // Map a task's ID to the entry point that was used to open it. This is used
+  // to populate the aep param for GetInitialUrlForTask.
+  // TODO(crbug.com/480176325): Clean the contents of the map when tasks
+  // are cleaned up.
+  std::map<base::Uuid, omnibox::ChromeAimEntryPoint>
+      task_id_to_entry_point_override_;
+
+  // Map of tasks that should show the error page on load to the source trigger.
+  std::map<base::Uuid, contextual_search::ContextualSearchSource>
+      pending_error_page_tasks_;
 
   base::WeakPtrFactory<ContextualTasksUiService> weak_ptr_factory_{this};
 };

@@ -444,9 +444,14 @@ StringKeyframeVector ProcessKeyframesRule(
               MediaValues::CreateDynamicIfFrameExists(document.GetFrame());
           timing_function = CSSToStyleMap::MapAnimationTimingFunction(
               *media_values, value_list->Item(0));
-        } else {
-          DCHECK(value.IsCSSWideKeyword());
+        } else if (value.IsCSSWideKeyword()) {
           timing_function = CSSTimingData::InitialTimingFunction();
+        } else {
+          // Values like var() may be represented as unparsed at this stage and
+          // cannot be mapped to a TimingFunction yet; fall back to the default.
+          timing_function = default_timing_function
+                                ? default_timing_function
+                                : CSSTimingData::InitialTimingFunction();
         }
         keyframe->SetEasing(std::move(timing_function));
       } else if (!CSSAnimations::IsAnimationAffectingProperty(property)) {
@@ -1422,6 +1427,11 @@ ScrollSnapshotTimeline* CSSAnimations::FindAncestorTimeline(
 
   Element* parent_element = ParentElementForTimelineTraversal(*node);
   if (!parent_element) {
+    if (RuntimeEnabledFeatures::CSSTimelineScopeGlobalEnabled()) {
+      return &node->GetDocument()
+                  .GetDocumentAnimations()
+                  .GetGlobalDeferredTimeline(name);
+    }
     return nullptr;
   }
   return FindAncestorTimeline(name, parent_element,
@@ -1443,6 +1453,11 @@ DeferredTimeline* CSSAnimations::FindAncestorDeferredTimeline(
   }
   Element* parent_element = ParentElementForTimelineTraversal(*element);
   if (!parent_element) {
+    if (RuntimeEnabledFeatures::CSSTimelineScopeGlobalEnabled()) {
+      return &element->GetDocument()
+                  .GetDocumentAnimations()
+                  .GetGlobalDeferredTimeline(name);
+    }
     return nullptr;
   }
   return FindAncestorDeferredTimeline(
@@ -1549,15 +1564,15 @@ bool TimelineTriggerBoundariesMatch(
 
 bool TimelineTriggerRangeBoundariesUnchanged(
     TimelineTrigger* const trigger,
-    TimelineTrigger::RangeBoundary* new_entry_range_start,
-    const TimelineTrigger::RangeBoundary* new_entry_range_end,
+    TimelineTrigger::RangeBoundary* new_activation_range_start,
+    const TimelineTrigger::RangeBoundary* new_activation_range_end,
     const TimelineTrigger::RangeBoundary* new_active_range_start,
     const TimelineTrigger::RangeBoundary* new_active_range_end) {
   DCHECK(trigger);
-  return TimelineTriggerBoundariesMatch(trigger->EntryRangeStart(),
-                                        new_entry_range_start) &&
-         TimelineTriggerBoundariesMatch(trigger->EntryRangeEnd(),
-                                        new_entry_range_end) &&
+  return TimelineTriggerBoundariesMatch(trigger->ActivationRangeStart(),
+                                        new_activation_range_start) &&
+         TimelineTriggerBoundariesMatch(trigger->ActivationRangeEnd(),
+                                        new_activation_range_end) &&
          TimelineTriggerBoundariesMatch(trigger->ActiveRangeStart(),
                                         new_active_range_start) &&
          TimelineTriggerBoundariesMatch(trigger->ActiveRangeEnd(),
@@ -1577,21 +1592,18 @@ TimelineTrigger* CSSAnimations::ComputeTimelineTrigger(
   AnimationTimeline* existing_timeline =
       (existing_trigger ? existing_trigger->GetTimelineInternal() : nullptr);
   AnimationTimeline* new_timeline =
-      animation_index < data->TimelineTriggerSourceList().size()
-          ? ComputeTimeline(element,
-                            data->GetTimelineTriggerSource(animation_index),
-                            update, existing_timeline)
-          : nullptr;
+      ComputeTimeline(element, data->GetTimelineTriggerSource(animation_index),
+                      update, existing_timeline);
   if (!new_timeline) {
     new_timeline = &element->GetDocument().Timeline();
   }
 
-  const std::optional<TimelineOffset>& new_entry_start_offset =
-      CSSAnimationData::GetRepeated(data->TimelineTriggerEntryRangeStartList(),
-                                    animation_index);
-  const std::optional<TimelineOffset>& new_entry_end_offset =
-      CSSAnimationData::GetRepeated(data->TimelineTriggerEntryRangeEndList(),
-                                    animation_index);
+  const std::optional<TimelineOffset>& new_activation_start_offset =
+      CSSAnimationData::GetRepeated(
+          data->TimelineTriggerActivationRangeStartList(), animation_index);
+  const std::optional<TimelineOffset>& new_activation_end_offset =
+      CSSAnimationData::GetRepeated(
+          data->TimelineTriggerActivationRangeEndList(), animation_index);
   const TimelineOffsetOrAuto& new_active_start_offset =
       CSSAnimationData::GetRepeated(data->TimelineTriggerActiveRangeStartList(),
                                     animation_index);
@@ -1599,24 +1611,25 @@ TimelineTrigger* CSSAnimations::ComputeTimelineTrigger(
       CSSAnimationData::GetRepeated(data->TimelineTriggerActiveRangeEndList(),
                                     animation_index);
 
-  Animation::RangeBoundary* new_entry_range_start =
-      Animation::ToRangeBoundary(new_entry_start_offset, zoom);
-  Animation::RangeBoundary* new_entry_range_end =
-      Animation::ToRangeBoundary(new_entry_end_offset, zoom);
+  Animation::RangeBoundary* new_activation_range_start =
+      Animation::ToRangeBoundary(new_activation_start_offset, zoom);
+  Animation::RangeBoundary* new_activation_range_end =
+      Animation::ToRangeBoundary(new_activation_end_offset, zoom);
   Animation::RangeBoundary* new_active_range_start =
       Animation::ToRangeBoundary(new_active_start_offset, zoom);
   Animation::RangeBoundary* new_active_range_end =
       Animation::ToRangeBoundary(new_active_end_offset, zoom);
 
-  bool need_new_trigger =
-      !existing_trigger || existing_timeline != new_timeline ||
-      !TimelineTriggerRangeBoundariesUnchanged(
-          existing_trigger, new_entry_range_start, new_entry_range_end,
-          new_active_range_start, new_active_range_end);
+  bool need_new_trigger = !existing_trigger ||
+                          existing_timeline != new_timeline ||
+                          !TimelineTriggerRangeBoundariesUnchanged(
+                              existing_trigger, new_activation_range_start,
+                              new_activation_range_end, new_active_range_start,
+                              new_active_range_end);
 
   if (need_new_trigger) {
     TimelineTriggerRange* range = MakeGarbageCollected<TimelineTriggerRange>(
-        new_timeline, new_entry_range_start, new_entry_range_end,
+        new_timeline, new_activation_range_start, new_activation_range_end,
         new_active_range_start, new_active_range_end);
 
     HeapVector<Member<TimelineTriggerRange>> ranges;
@@ -2324,8 +2337,7 @@ void CSSAnimations::MaybeApplyPendingUpdate(Element* element) {
     Animation& animation =
         *running_animations_[cancelled_indices[i]]->animation;
     animation.ClearOwningElement();
-    if (animation.IsCSSAnimation() &&
-        !DynamicTo<CSSAnimation>(animation)->GetIgnoreCSSPlayState()) {
+    if (animation.IsCSSAnimation()) {
       animation.cancel();
     }
     animation.Update(kTimingUpdateOnDemand);
@@ -2528,7 +2540,7 @@ void CSSAnimations::CalculateTransitionUpdateForPropertyHandle(
   }
 
   const ComputedStyle& after_change_style =
-      CalculateAfterChangeStyle(state, property);
+      CalculateAfterChangeStyle(state, &property);
 
   const RunningTransition* running_transition = nullptr;
   if (state.active_transitions) {
@@ -2562,7 +2574,7 @@ void CSSAnimations::CalculateTransitionUpdateForPropertyHandle(
   }
 
   const ComputedStyle& before_change_style =
-      CalculateBeforeChangeStyle(state, property);
+      CalculateBeforeChangeStyle(state, &property);
 
   if (ComputedValuesEqual(property, before_change_style, after_change_style)) {
     return;
@@ -2786,11 +2798,20 @@ void CSSAnimations::CalculateTransitionUpdateForStandardProperty(
       CSSTimingData::GetRepeated(state.transition_data->BehaviorList(),
                                  transition_index) ==
           CSSTransitionData::TransitionBehavior::kAllowDiscrete;
+  if (animate_all &&
+      CalculateTransitionUpdateForAll(state, with_discrete, transition_index,
+                                      writing_direction)) {
+    return;
+  }
+
+  // NOTE: If CalculateTransitionUpdateForAll() returned false, the loop below
+  // will still handle “transition: all” correctly, just a bit slower.
   const StylePropertyShorthand& property_list =
       animate_all
           ? PropertiesForTransitionAll(
                 with_discrete, state.animating_element.GetExecutionContext())
           : shorthandForProperty(resolved_id);
+
   // If not a shorthand we only execute one iteration of this loop, and
   // refer to the property directly.
   for (unsigned i = 0; !i || i < property_list.length(); ++i) {
@@ -2806,6 +2827,66 @@ void CSSAnimations::CalculateTransitionUpdateForStandardProperty(
         state, transition_property.property_type, property_handle,
         transition_index, animate_all);
   }
+}
+
+bool CSSAnimations::CalculateTransitionUpdateForAll(
+    TransitionUpdateState& state,
+    bool with_discrete,
+    wtf_size_t transition_index,
+    WritingDirectionMode writing_direction) {
+  // For “animate: all”, there are so many properties to compare that it's
+  // better to do it all in one go (which allows us to skip unchanged groups)
+  // and then use that as a pre-filter. However, the comparison requires us
+  // to know the before- and after-change styles up-front; if there are
+  // animations in the parent, these are calculated dynamically based
+  // on which property we are interested in (we may need to recalculate
+  // parents, but only up to the point where someone explicitly sets
+  // the property in question) and the code isn't ready for calculating that
+  // for “every relevant property”. Thus, we only do this if we don't have
+  // any animation in an ancestor; this is not a fundamental limitation
+  // and could be lifted if need be.
+  if (state.style_recalc_context.has_animating_ancestor) {
+    return false;
+  }
+
+  const ComputedStyle& before_change_style =
+      CalculateBeforeChangeStyle(state, /*transitioning_property=*/nullptr);
+  const ComputedStyle& after_change_style =
+      CalculateAfterChangeStyle(state, /*transitioning_property=*/nullptr);
+
+  // TransitionAllDiff() isn't ready for comparing changes in zoom
+  // (see ComputedValuesEqual() above).
+  if (before_change_style.EffectiveZoom() !=
+      after_change_style.EffectiveZoom()) {
+    return false;
+  }
+
+  CSSBitset diff = with_discrete ? ComputedStyle::TransitionAllWithDiscreteDiff(
+                                       before_change_style, after_change_style)
+                                 : ComputedStyle::TransitionAllDiff(
+                                       before_change_style, after_change_style);
+  if (!diff.HasAny() && !state.active_transitions) {
+    return true;
+  }
+
+  const StylePropertyShorthand& property_list = PropertiesForTransitionAll(
+      with_discrete, state.animating_element.GetExecutionContext());
+
+  // Very similar to the loop in CalculateTransitionUpdateForStandardProperty(),
+  // just a bit more streamlined and adding the Has() check.
+  for (const CSSProperty* logical_property : property_list.properties()) {
+    const CSSProperty& property =
+        logical_property->ToPhysical(writing_direction);
+    if (!diff.Has(logical_property->PropertyID()) &&
+        !(state.active_transitions &&
+          state.active_transitions->Contains(PropertyHandle(property)))) {
+      continue;
+    }
+    CalculateTransitionUpdateForPropertyHandle(
+        state, CSSTransitionData::kTransitionKnownProperty,
+        PropertyHandle(property), transition_index, /*animate_all=*/true);
+  }
+  return true;
 }
 
 void CSSAnimations::CalculateTransitionUpdate(
@@ -2922,7 +3003,7 @@ void CSSAnimations::CalculateTransitionUpdate(
 
 const ComputedStyle& CSSAnimations::CalculateBeforeChangeStyle(
     TransitionUpdateState& state,
-    const PropertyHandle& transitioning_property) {
+    const PropertyHandle* transitioning_property) {
   // Lazy evaluation of the before change style. We only need to update where
   // we are transitioning from if the final destination is changing.
 
@@ -2945,12 +3026,12 @@ const ComputedStyle& CSSAnimations::CalculateBeforeChangeStyle(
   // to the base computed style.
   const ComputedStyle* base_style =
       state.old_style.GetBaseComputedStyleOrThis();
-  if (is_starting_style) {
+  if (is_starting_style && state.style_recalc_context.has_animating_ancestor) {
     // before-change style for @starting-style inherits from the after-change
     // style of the parent.
     if (const ComputedStyle* after_change_style =
             EnsureAfterChangeStyleIfNecessary(state, state.old_style,
-                                              transitioning_property,
+                                              *transitioning_property,
                                               /* for_starting_style */ true)) {
       base_style = after_change_style;
       state.before_change_style_is_accurate_for_starting_style = true;
@@ -3149,13 +3230,14 @@ const ComputedStyle* CSSAnimations::EnsureAfterChangeStyleIfNecessary(
 
 const ComputedStyle& CSSAnimations::CalculateAfterChangeStyle(
     TransitionUpdateState& state,
-    const PropertyHandle& transitioning_property) {
+    const PropertyHandle* transitioning_property) {
   if (!state.style_recalc_context.has_animating_ancestor) {
     return state.base_style;
   }
+  DCHECK(transitioning_property);
   if (!state.after_change_style) {
     state.after_change_style = EnsureAfterChangeStyleIfNecessary(
-        state, state.base_style, transitioning_property,
+        state, state.base_style, *transitioning_property,
         /* for_starting_style */ false);
   }
   if (state.after_change_style) {

@@ -989,7 +989,7 @@ class SessionRestoreImpl : public BrowserCollectionObserver {
                   bool& did_show_browser) {
     // It's possible (particularly for foreign sessions) to receive a tab
     // without valid navigations. In that case, just skip it.
-    // See crbug.com/154129.
+    // See crbug.com/40290475.
     if (tab.navigations.empty()) {
       return;
     }
@@ -1459,11 +1459,11 @@ void SessionRestore::OpenStartupPagesAfterCrash(Browser* browser) {
 }
 
 // static
-std::vector<BrowserWindowInterface*>
-SessionRestore::RestoreForeignSessionWindows(
+void SessionRestore::RestoreForeignSessionWindows(
     Profile* profile,
     std::vector<const sessions::SessionWindow*>::const_iterator begin,
-    std::vector<const sessions::SessionWindow*>::const_iterator end) {
+    std::vector<const sessions::SessionWindow*>::const_iterator end,
+    base::OnceCallback<void(std::vector<BrowserWindowInterface*>)> callback) {
   StartupTabs startup_tabs;
   SessionRestoreImpl restorer(
       profile, static_cast<Browser*>(nullptr), true, false, true,
@@ -1474,7 +1474,7 @@ SessionRestore::RestoreForeignSessionWindows(
   for (Browser* browser : browsers) {
     windows.push_back(browser);
   }
-  return windows;
+  std::move(callback).Run(std::move(windows));
 }
 
 // static

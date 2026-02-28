@@ -43,6 +43,13 @@ public interface TabPersistentStore {
         default void onStateMerged() {}
 
         /**
+         * To be called when the active tab has been loaded.
+         *
+         * @param incognito Whether the active tab is incognito.
+         */
+        default void onActiveTabLoaded(boolean incognito) {}
+
+        /**
          * Called when the metadata file has been saved out asynchronously. This currently does not
          * get called when the metadata file is saved out on the UI thread.
          */
@@ -156,6 +163,12 @@ public interface TabPersistentStore {
      * owned by this TabPersistentStore.
      */
     void clearState();
+
+    /**
+     * Clear the persisted data for the window this store represents. Should only be implemented if
+     * a store does us an associated {@link TabPersistencePolicy} for cleaning.
+     */
+    default void clearCurrentWindow() {}
 
     /** Cleans up any resources used by the TabPersistentStore. */
     void destroy();

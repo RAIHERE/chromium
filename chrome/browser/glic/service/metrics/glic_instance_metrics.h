@@ -113,6 +113,27 @@ enum class GlicInstanceEvent {
 };
 // LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:GlicInstanceEvent)
 
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(SkillsInvokeFunnel)
+enum class SkillsInvokeFunnel {
+  kOpenedMenu = 0,
+  kInvokedSkill = 1,
+  kMaxValue = kInvokedSkill,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:SkillsInvokeFunnel)
+
+// These values are persisted to logs. Entries should not be renumbered and
+// numeric values should never be reused.
+// LINT.IfChange(SkillBuilderEvent)
+enum class SkillBuilderEvent {
+  kClickedPromoChip = 0,
+  kPromptGenerated = 1,
+  kClickedSaveAsSkill = 2,
+  kMaxValue = kClickedSaveAsSkill,
+};
+// LINT.ThenChange(//tools/metrics/histograms/metadata/glic/enums.xml:SkillBuilderEvent)
+
 // Tracks and logs lifecycle events for a single GlicInstance.
 class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
  public:
@@ -130,6 +151,13 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   GlicInstanceMetrics& operator=(const GlicInstanceMetrics&) = delete;
 
   // `GlicInstanceMetricsBackwardsCompatibility`:
+  void OnUserInputSubmitted(mojom::WebClientMode mode) override;
+  void DidRequestContextFromTab(tabs::TabInterface& tab) override;
+  void OnResponseStarted() override;
+  void OnResponseStopped(mojom::ResponseStopCause cause) override;
+  void OnTurnCompleted(mojom::WebClientModel model,
+                       base::TimeDelta duration) override;
+  void OnReaction(mojom::MetricUserInputReactionType reaction_type) override;
   void OnGlicScrollAttempt() override;
   void OnGlicScrollComplete(bool success) override;
 
@@ -222,11 +250,11 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Called when GlicInstanceImpl::ResumeActorTask is called.
   void OnResumeActorTask();
 
-  // Called when GlicInstanceImpl::InterruptActorTask is called.
-  void InterruptActorTask();
-
   // Called when GlicInstanceImpl::UninterruptActorTask is called.
   void UninterruptActorTask();
+
+  // Called when GlicInstanceImpl::InterruptActorTask is called.
+  void InterruptActorTask();
 
   // Called when GlicInstanceImpl::WebUiStateChanged is called.
   void OnWebUiStateChanged(mojom::WebUiState state);
@@ -234,23 +262,18 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Called when the client is ready to show.
   void OnClientReady(EmbedderType type);
 
-  // Turn metrics.
-  void OnUserInputSubmitted(mojom::WebClientMode mode);
-  void DidRequestContextFromFocusedTab();
-  void OnResponseStarted();
-  void OnResponseStopped(mojom::ResponseStopCause cause);
-  void OnTurnCompleted(mojom::WebClientModel model, base::TimeDelta duration);
-
   void OnUserResizeStarted(const gfx::Size& start_size);
   void OnUserResizeEnded(const gfx::Size& end_size);
-
-  void OnReaction(mojom::MetricUserInputReactionType reaction_type);
 
   // Records the number of tabs attached as context for a Glic response.
   void RecordAttachedContextTabCount(int tab_count);
 
   void RecordTabPinningStatusEvent(tabs::TabInterface* tab,
                                    GlicPinningStatusEvent event);
+
+  // Routes skills WebUI actions from the frontend to their respective
+  // metrics funnels.
+  void RecordSkillsWebClientEvent(mojom::SkillsWebClientEvent action);
 
   int GetPinnedTabCount() const;
 
@@ -277,6 +300,7 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
     EmbedderType ui_mode_ = EmbedderType::kUnknown;
     mojom::WebClientMode input_mode_ = mojom::WebClientMode::kUnknown;
     bool pending_scroll_complete_ = false;
+    ukm::SourceId chosen_source_id_ = ukm::NoURLSourceId();
   };
 
   // Logs the given event to the EventTotals histogram, and if the count is 0,
@@ -294,6 +318,8 @@ class GlicInstanceMetrics : public GlicInstanceMetricsBackwardsCompatibility {
   // Records the response latency (from user input submitted to response stop)
   // by the number of attached tabs.
   void RecordResponseLatencyByAttachedTabCount(base::TimeDelta latency);
+
+  void RecordSkillsInvokeFunnelStep(SkillsInvokeFunnel invoke_funnel);
 
   base::flat_map<GlicInstanceEvent, int> event_counts_;
   EmbedderType current_ui_mode_ = EmbedderType::kUnknown;

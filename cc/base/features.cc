@@ -146,7 +146,7 @@ BASE_FEATURE(kHighFramerateRequestFromClient,
 
 void SetIsEligibleForThrottleMainFrameTo60Hz(bool is_eligible) {
   s_is_eligible_for_throttle_main_frame_to_60hz.store(
-      true, std::memory_order_relaxed);
+      is_eligible, std::memory_order_relaxed);
 }
 
 bool IsEligibleForThrottleMainFrameTo60Hz() {
@@ -250,7 +250,7 @@ BASE_FEATURE_PARAM(double,
                    0.2);
 
 BASE_FEATURE(kHandleNonDamagingInputsInScrollJankV4Metric,
-             base::FEATURE_DISABLED_BY_DEFAULT);
+             base::FEATURE_ENABLED_BY_DEFAULT);
 
 constexpr const char kEmitForAllScrolls[] = "emit_for_all_scrolls";
 constexpr const char kEmitForDamagingScrolls[] = "emit_for_damaging_scrolls";
@@ -258,6 +258,9 @@ const base::FeatureParam<std::string> kHistogramEmissionPolicy(
     &kHandleNonDamagingInputsInScrollJankV4Metric,
     "histogram_emission_policy",
     kEmitForDamagingScrolls);
+
+BASE_FEATURE(kOrderScrollJankV4EventMetricsByArrivedInRendererCompositor,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 BASE_FEATURE(kManualBeginFrame, base::FEATURE_DISABLED_BY_DEFAULT);
 
@@ -274,7 +277,10 @@ BASE_FEATURE(kBrowserControlsSmoothScroll, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kBrowserControlsHeightChangeCancelAnimations,
              base::FEATURE_ENABLED_BY_DEFAULT);
 
-// Killswitch for disabling Headless scheduler state machine.
-BASE_FEATURE(kHeadlessSchedulerStateMachine, base::FEATURE_ENABLED_BY_DEFAULT);
+// Killswitch for disabling Webview scheduler state machine.
+BASE_FEATURE(kWebviewSchedulerStateMachine, base::FEATURE_ENABLED_BY_DEFAULT);
+
+BASE_FEATURE(kBrowserControlsScrollSnapAnimation,
+             base::FEATURE_DISABLED_BY_DEFAULT);
 
 }  // namespace features

@@ -612,20 +612,18 @@ found in the LICENSE file.
     </div>
   </div>
   <div class="section">
-    <h1>View Change</h1>
-    <select id="viewChangedCurrentView">
-      <!-- options will be populated by view.ts -->
-    </select>
-    <button id="viewChangedBtn">View Changed</button>
-    <input type="checkbox" id="viewChangedAutomaticallyAccept" checked />
-    <label for="viewChangedAutomaticallyAccept">Automatically accept requested changes</label>
-  </div>
-  <div class="section">
     <h1>MQLS Client ID</h1>
     <button id="mqlsClientIdBtn">Get and log ID</button>
   </div>
   <div class="section">
+    <h1>Invocation Log</h1>
+    <button id="clearInvocationLog">Clear</button>
+    <div id="invocationLog" style="max-height: 200px; overflow-y: auto; white-space: pre-wrap; font-family: monospace;"></div>
+  </div>
+  <div class="section">
     <h1>Skills</h1>
+    <ul id="skillsList">
+    </ul>
     <div>
       <label>Skill ID: <input id="skillIdInput" type="text" /></label>
     </div>
@@ -636,6 +634,7 @@ found in the LICENSE file.
       <button id="createSkillBtn">Create Skill</button>
       <button id="updateSkillBtn">Update Skill</button>
       <button id="getSkillBtn">Get Skill</button>
+      <button id="manageSkillsBtn">Manage Skills</button>
     </div>
   </div>
   <div class="section">
@@ -650,6 +649,11 @@ found in the LICENSE file.
     <button id="registerConversationBtn">Register Conversation</button>
     <br />
     <label>Current Conversation ID: <input id="conversationId" type="text" readonly /></label>
+  </div>
+  <div class="section">
+    <h1>Stress</h1>
+    <button id="stressTestEngageBtn">Engage</button>
+    <button id="stressTestEngageRetainBtn">Engage with retaining memory</button>
   </div>
   <br />
   <div id="status"></div>

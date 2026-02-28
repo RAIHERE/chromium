@@ -37,6 +37,13 @@ class OmniboxAimPopupWebUIContent : public OmniboxPopupWebUIBaseContent {
   // the possibly empty input that should replace the omnibox text.
   void OnPageClosedWithInput(const std::string& input);
 
+  // Refocuses the location bar if screen readers are enabled and the popup is
+  // active.
+  void UpdateLocationBarFocusForScreenReader();
+
+ protected:
+  std::string_view GetMetricPrefix() const override;
+
  private:
   // WebUIContentsWrapper::Host:
   // Called from WebUI code to close the widget. I.e. when user presses

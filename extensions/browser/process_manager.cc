@@ -47,6 +47,7 @@
 #include "extensions/browser/process_manager_observer.h"
 #include "extensions/browser/renderer_startup_helper.h"
 #include "extensions/browser/service_worker/service_worker_task_queue.h"
+#include "extensions/browser/service_worker/worker_id.h"
 #include "extensions/browser/view_type_utils.h"
 #include "extensions/common/constants.h"
 #include "extensions/common/extension.h"
@@ -974,13 +975,12 @@ void ProcessManager::StartTrackingServiceWorkerRunningInstance(
   worker_context_ids_[worker_id] = base::Uuid::GenerateRandomV4();
 
   // Observe the RenderProcessHost for cleaning up on process shutdown.
-  int render_process_id = worker_id.render_process_id;
-  bool inserted = worker_process_to_extension_ids_[render_process_id]
+  bool inserted = worker_process_to_extension_ids_[worker_id.render_process_id]
                       .insert(worker_id.extension_id)
                       .second;
   if (inserted) {
     content::RenderProcessHost* render_process_host =
-        content::RenderProcessHost::FromID(render_process_id);
+        content::RenderProcessHost::FromID(worker_id.render_process_id);
     DCHECK(render_process_host);
     if (!process_observations_.IsObservingSource(render_process_host)) {
       // These will be cleaned up in RenderProcessExited().
@@ -996,7 +996,7 @@ void ProcessManager::RenderProcessExited(
     const content::ChildProcessTerminationInfo& info) {
   DCHECK(process_observations_.IsObservingSource(host));
   process_observations_.RemoveObservation(host);
-  const int render_process_id = host->GetDeprecatedID();
+  const content::ChildProcessId render_process_id = host->GetID();
   // Look up and then clean up the entries that are affected by
   // |render_process_id| destruction.
   //
@@ -1072,6 +1072,10 @@ void ProcessManager::StopTrackingServiceWorkerRunningInstance(
 void ProcessManager::StopTrackingServiceWorkerRunningInstance(
     const ExtensionId& extension_id,
     int64_t worker_version_id) {
+  // NOTE: Multiple notifications can try to remove a worker when the worker
+  // stops (DidStopServiceWorkerContext(), ProcessManager::RenderProcessExit(),
+  // or extension uninstall/disable).
+
   // We need the specific version because an extension could be
   // re-activated before StopTrackingServiceWorkerRunningInstance() is called.
   // In that case we might try to stop tracking the new version instance of the
@@ -1080,23 +1084,11 @@ void ProcessManager::StopTrackingServiceWorkerRunningInstance(
       all_running_extension_workers_.GetAllForExtension(extension_id,
                                                         worker_version_id);
 
-  if (worker_ids_for_extension.empty()) {
-    // Multiple notifications can try to remove a worker when the worker
-    // stops (DidStopServiceWorkerContext(),
-    // ProcessManager::RenderProcessExit(), or extension uninstall/disable).
-    return;
-  }
-
   // TODO(crbug.com/40936639): After the fix releases there should only be one
-  // worker instance tracked for each extension at any time. If there is still
-  // more than one then do not delete it so we will count it and know about it.
-  // Confirm more thoroughly with DUMP_WILL_BE_CHECK() if metrics look
-  // promising.
-  if (worker_ids_for_extension.size() > 1u) {
-    return;
+  // worker instance tracked for each extension at any time.
+  for (const WorkerId& worker_id : worker_ids_for_extension) {
+    StopTrackingServiceWorkerRunningInstance(worker_id);
   }
-
-  StopTrackingServiceWorkerRunningInstance(worker_ids_for_extension[0]);
 }
 
 bool ProcessManager::HasServiceWorker(const WorkerId& worker_id) const {

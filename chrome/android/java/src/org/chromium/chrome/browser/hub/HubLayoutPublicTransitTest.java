@@ -42,7 +42,6 @@ import org.chromium.ui.base.DeviceFormFactor;
 @Features.DisableFeatures({
     ChromeFeatureList.ANDROID_SURFACE_COLOR_UPDATE,
     ChromeFeatureList.GRID_TAB_SWITCHER_SURFACE_COLOR_UPDATE,
-    ChromeFeatureList.GRID_TAB_SWITCHER_UPDATE,
     ChromeFeatureList.ANDROID_THEME_MODULE,
     OmniboxFeatureList.ANDROID_HUB_SEARCH_TAB_GROUPS
 })
@@ -77,7 +76,6 @@ public class HubLayoutPublicTransitTest {
 
     @Test
     @LargeTest
-    @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/446934111
     public void testEnterHubAndLeaveViaAppMenuNewIncognitoTab() {
         WebPageStation firstPage = mCtaTestRule.startOnBlankPage();
         RegularTabSwitcherStation tabSwitcher = firstPage.openRegularTabSwitcher();
@@ -96,7 +94,6 @@ public class HubLayoutPublicTransitTest {
     @LargeTest
     // TODO(crbug.com/457847264): Test disabled for Incognito windowing.
     @DisableFeatures(ChromeFeatureList.ANDROID_OPEN_INCOGNITO_AS_WINDOW)
-    @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/446934111
     public void testChangeTabSwitcherPanes() {
         IncognitoTabSwitcherStation incognitoTabSwitcher =
                 mCtaTestRule
@@ -157,7 +154,6 @@ public class HubLayoutPublicTransitTest {
 
     @Test
     @LargeTest
-    @DisableIf.Device(DeviceFormFactor.DESKTOP) // https://crbug.com/446934111
     public void testIncognitoTabSwitcherStation_newTabGroup() {
         WebPageStation firstPage = mCtaTestRule.startOnBlankPage();
         IncognitoNewTabPageStation incognitoNewTabPageStation =
@@ -183,6 +179,7 @@ public class HubLayoutPublicTransitTest {
     @Test
     @LargeTest
     @EnableFeatures({START_SURFACE_RETURN_TIME})
+    @DisableIf.Device(DeviceFormFactor.DESKTOP)
     public void testExitHubOnStartSurfaceAsNtp() {
         ChromeFeatureList.sStartSurfaceReturnTimeTabletSecs.setForTesting(0);
 

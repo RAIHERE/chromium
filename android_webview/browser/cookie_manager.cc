@@ -398,6 +398,9 @@ void CookieManager::SetMojoCookieManagerAsync(
     return;
   }
 
+  LOG(WARNING) << "Transferring cookies from provisional CookieManager to "
+                  "network service. For issues with the provisional "
+                  "CookieManager, see crbug.com/478873476.";
   GetCookieStore()->FlushStore(base::BindOnce(
       &CookieManager::SwapMojoCookieManagerAsync, base::Unretained(this),
       std::move(cookie_manager_remote), std::move(complete)));
@@ -452,13 +455,9 @@ bool CookieManager::GetShouldAcceptCookies(JNIEnv* env) {
 
 void CookieManager::SetCookie(JNIEnv* env,
                               const JavaRef<jstring>& url,
-                              std::string& cookie_value,
-                              const JavaRef<jobject>& java_callback) {
-  DCHECK(java_callback) << "Unexpected null Java callback";
+                              const std::string& cookie_value,
+                              base::OnceCallback<void(bool)> callback) {
   GURL host(ConvertJavaStringToUTF16(env, url));
-  base::OnceCallback<void(bool)> callback =
-      base::BindOnce(&base::android::RunBooleanCallbackAndroid,
-                     ScopedJavaGlobalRef<jobject>(java_callback));
 
   ExecCookieTask(base::BindOnce(&CookieManager::SetCookieHelper,
                                 base::Unretained(this), host, cookie_value,
@@ -467,7 +466,7 @@ void CookieManager::SetCookie(JNIEnv* env,
 
 void CookieManager::SetCookieSync(JNIEnv* env,
                                   const JavaRef<jstring>& url,
-                                  std::string& value) {
+                                  const std::string& value) {
   GURL host(ConvertJavaStringToUTF16(env, url));
   std::string cookie_value(value);
 
@@ -587,12 +586,7 @@ void CookieManager::GetCookieListCompleted(
 
 void CookieManager::RemoveSessionCookies(
     JNIEnv* env,
-    const JavaRef<jobject>& java_callback) {
-  DCHECK(java_callback) << "Unexpected null Java callback";
-  base::OnceCallback<void(bool)> callback =
-      base::BindOnce(&base::android::RunBooleanCallbackAndroid,
-                     ScopedJavaGlobalRef<jobject>(java_callback));
-
+    base::OnceCallback<void(bool)> callback) {
   ExecCookieTask(base::BindOnce(&CookieManager::RemoveSessionCookiesHelper,
                                 base::Unretained(this), std::move(callback)));
 }
@@ -626,13 +620,7 @@ void CookieManager::RemoveCookiesCompleted(
 }
 
 void CookieManager::RemoveAllCookies(JNIEnv* env,
-                                     const JavaRef<jobject>& java_callback) {
-  DCHECK(java_callback) << "Unexpected null Java callback";
-
-  base::OnceCallback<void(bool)> callback =
-      base::BindOnce(&base::android::RunBooleanCallbackAndroid,
-                     ScopedJavaGlobalRef<jobject>(java_callback));
-
+                                     base::OnceCallback<void(bool)> callback) {
   ExecCookieTask(base::BindOnce(&CookieManager::RemoveAllCookiesHelper,
                                 base::Unretained(this), std::move(callback)));
 }

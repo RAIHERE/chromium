@@ -1815,7 +1815,7 @@ Called by update_extension_histograms.py.-->
   <int value="966" label="DELETED_AUDIOMODEM_RECEIVE"/>
   <int value="967" label="DELETED_AUDIOMODEM_STOPRECEIVE"/>
   <int value="968" label="WEBRTCLOGGINGPRIVATE_STORE"/>
-  <int value="969" label="WEBRTCLOGGINGPRIVATE_UPLOADSTORED"/>
+  <int value="969" label="DELETED_WEBRTCLOGGINGPRIVATE_UPLOADSTORED"/>
   <int value="970" label="FILEMANAGERPRIVATEINTERNAL_SETENTRYTAG"/>
   <int value="971" label="INPUTMETHODPRIVATE_FETCHALLDICTIONARYWORDS"/>
   <int value="972" label="INPUTMETHODPRIVATE_ADDWORDTODICTIONARY"/>
@@ -2876,6 +2876,7 @@ Called by update_extension_histograms.py.-->
   <int value="1958" label="AUTOFILLPRIVATE_TOGGLEAUTOFILLAIREAUTHREQUIREMENT"/>
   <int value="1959"
       label="AUTOFILLPRIVATE_GETREQUIREDATTRIBUTETYPESFORENTITYTYPENAME"/>
+  <int value="1960" label="PDFVIEWERPRIVATE_GLICSUMMARIZE"/>
 </enum>
 
 <!-- LINT.ThenChange(//extensions/browser/extension_function_histogram_value.h:HistogramValue) -->
@@ -3265,6 +3266,7 @@ Called by update_extension_permission.py.-->
   <int value="261" label="kOmniboxDirectInput"/>
   <int value="262" label="kExperimentalActor"/>
   <int value="263" label="kEnterpriseLogin"/>
+  <int value="264" label="kProxyOverrideRulesPrivate"/>
 </enum>
 
 <enum name="ExtensionPolicyReinstallReason">
@@ -3417,6 +3419,18 @@ Called by update_extension_permission.py.-->
   <int value="1" label="User is in the developer mode"/>
 </enum>
 
+<enum name="IsExtensionAllowedResult">
+  <int value="0" label="Unspecified"/>
+  <int value="1" label="Extension install cloud policy checks disabled"/>
+  <int value="2" label="Has non-default installation mode"/>
+  <int value="3" label="Policy not ready"/>
+  <int value="4" label="No policy service"/>
+  <int value="5" label="Extension allowed"/>
+  <int value="6" label="Extension blocked"/>
+  <int value="7" label="No policy for extension"/>
+  <int value="8" label="No cloud policy manager"/>
+</enum>
+
 <enum name="IsForceInstalledExtensionFailedWithCrxHeaderInvalidFromCWSBoolean">
   <summary>
     A boolean for whether a force installed extension which failed with error
@@ -3503,7 +3517,7 @@ Called by update_extension_permission.py.-->
   <int value="5" label="Channel not opened (not externally connectable)"/>
   <int value="6" label="Worker started for channel open"/>
   <int value="7"
-      label="Channel not opened (source channel invalid, opener port invaid,
+      label="Channel not opened (source channel invalid, opener port invalid,
              no receiver port, or receiver port invalid)"/>
   <int value="8" label="Channel not opened (receiver port isn't valid)"/>
   <int value="9"
@@ -3524,6 +3538,9 @@ Called by update_extension_permission.py.-->
   <int value="17"
       label="Channel not opened (extension uninstalled/disabled while channel
              open in-flight)"/>
+  <int value="18"
+      label="Channel not opened (opener port using different message
+             serialization format)"/>
 </enum>
 
 <enum name="ReadDynamicRulesJSONStatus">

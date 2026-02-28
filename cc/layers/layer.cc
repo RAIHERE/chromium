@@ -1227,6 +1227,19 @@ void Layer::SetXrHitTestOrder(std::vector<ElementId> xr_hit_test_order) {
 }
 #endif
 
+void Layer::SetCanvasChildId(ElementId id) {
+  DCHECK(IsPropertyChangeAllowed());
+  const auto& rare_inputs = inputs_.Read(*this).rare_inputs;
+  if (!rare_inputs && !id) {
+    return;
+  }
+  if (rare_inputs && rare_inputs->canvas_child_id == id) {
+    return;
+  }
+  EnsureRareInputs().canvas_child_id = id;
+  SetNeedsCommit();
+}
+
 RenderSurfaceReason Layer::GetRenderSurfaceReason() const {
   if (!IsAttached())
     return RenderSurfaceReason::kNone;
@@ -1493,9 +1506,9 @@ void Layer::PushDirtyPropertiesTo(LayerImpl* layer,
     layer->SetBounds(inputs.bounds);
 
     layer->SetOffsetToTransformParent(offset_to_transform_parent_.Read(*this));
-    bool has_canvas_subtree_id =
-        inputs.rare_inputs && inputs.rare_inputs->canvas_subtree_id;
-    layer->SetDrawsContent(draws_content() && !has_canvas_subtree_id);
+    bool has_canvas_child_id =
+        inputs.rare_inputs && inputs.rare_inputs->canvas_child_id;
+    layer->SetDrawsContent(draws_content() && !has_canvas_child_id);
     layer->SetHitTestOpaqueness(inputs.hit_test_opaqueness);
     // subtree_property_changed_ is propagated to all descendants while building
     // property trees. So, it is enough to check it only for the current layer.
@@ -1538,7 +1551,6 @@ void Layer::PushDirtyPropertiesTo(LayerImpl* layer,
       layer->SetTrackedElementBounds(
           inputs.rare_inputs->tracked_element_bounds);
       layer->SetWheelEventHandlerRegion(inputs.rare_inputs->wheel_event_region);
-      layer->SetCanvasSubtreeId(inputs.rare_inputs->canvas_subtree_id);
     } else {
       layer->ResetRareProperties();
     }
@@ -1731,19 +1743,6 @@ void Layer::SetElementId(ElementId id) {
   if (IsAttached() && inputs.element_id)
     layer_tree_host()->RegisterElement(inputs.element_id, this);
 
-  SetNeedsCommit();
-}
-
-void Layer::SetCanvasSubtreeId(ElementId id) {
-  DCHECK(IsPropertyChangeAllowed());
-  const auto& rare_inputs = inputs_.Read(*this).rare_inputs;
-  if (!rare_inputs && !id) {
-    return;
-  }
-  if (rare_inputs && rare_inputs->canvas_subtree_id == id) {
-    return;
-  }
-  EnsureRareInputs().canvas_subtree_id = id;
   SetNeedsCommit();
 }
 

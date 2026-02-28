@@ -69,6 +69,9 @@ BASE_DECLARE_FEATURE(kApiOdfsConfigPrivate);
 // `enterprise.reportingPrivate.onDataMaskingRulesTriggered` API.
 BASE_DECLARE_FEATURE(kApiEnterpriseReportingPrivateOnDataMaskingRulesTriggered);
 
+// Controls the availability of the new `proxyOverrideRulesPrivate` API.
+BASE_DECLARE_FEATURE(kApiProxyOverrideRulesPrivate);
+
 // Controls the availability of the deprecated nacl_arch in
 // runtime.getPlatformInfo() API.
 BASE_DECLARE_FEATURE(kApiRuntimeGetPlatformInfoNaClArch);
@@ -89,12 +92,6 @@ BASE_DECLARE_FEATURE(kAllowWithholdingExtensionPermissionsOnInstall);
 // process things that renderer process never run content scripts from the
 // extension).
 BASE_DECLARE_FEATURE(kCheckingNoExtensionIdInExtensionIpcs);
-
-// If enabled, `ResetURLLoaderFactories()` will not reset extensions'
-// service workers URLLoaderFactories used for fetching scripts and
-// sub-resources. This avoids disrupting the worker(s) registration(s)
-// when they are in flight.
-BASE_DECLARE_FEATURE(kSkipResetServiceWorkerURLLoaderFactories);
 
 // If enabled, <webview>s will be allowed to request permission from an
 // embedding Chrome App to request access to Human Interface Devices.
@@ -262,8 +259,13 @@ BASE_DECLARE_FEATURE(kDebuggerAPIRestrictedToDevMode);
 
 // Creates a `browser` object that can be used in place of `chrome` where
 // extension APIs are available. It does not include non-extension APIs like
-// `loadTimes` , `csi`, etc. or deprecated APIs (e.g. `app`).
-BASE_DECLARE_FEATURE(kExtensionBrowserNamespaceAlternative);
+// `loadTimes`, `csi`, etc. or deprecated APIs (e.g. `app`).
+// Also aligns one-time message (e.g. runtime.sendMessage) behavior more closely
+// with the mozilla/webextension-polyfill. This includes supporting
+// chrome.runtime.onMessage() listeners returning a Promise. Also in more error
+// cases (like listeners sending unserializable responses or throwing errors
+// during execution) the error is passed back to the sender.
+BASE_DECLARE_FEATURE(kExtensionBrowserNamespaceAndPolyfillSupport);
 
 // Optimizes service worker start requests by checking readiness before
 // initiating a start.
@@ -296,13 +298,6 @@ BASE_DECLARE_FEATURE(kExtensionContentVerificationUsesExtensionRoot);
 // these inconsistencies.
 BASE_DECLARE_FEATURE(kContentVerifyJobUseJobVersionForHashing);
 
-// Aligns one-time message (e.g. runtime.sendMessage) behavior more closely with
-// the mozilla/webextension-polyfill. This includes supporting
-// chrome.runtime.onMessage() listeners returning a Promise. Also in more error
-// cases (like listeners sending unserializable responses or throwing errors
-// during execution) the error is passed back to the sender.
-BASE_DECLARE_FEATURE(kRuntimeOnMessageWebExtensionPolyfillSupport);
-
 // Enables the shouldShowPromotion API to determine which promotion to show for
 // Chrome Enterprise on CWS.
 BASE_DECLARE_FEATURE(kEnableShouldShowPromotion);
@@ -322,10 +317,10 @@ BASE_DECLARE_FEATURE(kSearchEngineUnconditionalDialog);
 BASE_DECLARE_FEATURE(kWebRequestSecurityInfo);
 
 // When enabled, filtered webRequest event listeners for service worker-based
-// extensions are persisted to ExtensionPrefs. This allows the browser to know
-// about the listeners before starting the extension service worker (e.g. on
-// browser startup).
-BASE_DECLARE_FEATURE(kWebRequestPersistFilteredEvents);
+// extensions are persisted to ExtensionPrefs by the general mechanism in
+// EventRouter. If disabled, they're instead persisted by the custom mechanism
+// in WebRequestEventRouter.
+BASE_DECLARE_FEATURE(kWebRequestPersistFilteredEventsViaEventRouter);
 
 }  // namespace extensions_features
 

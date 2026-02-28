@@ -64,6 +64,17 @@ void ExtensionsRendererClient::Set(ExtensionsRendererClient* client) {
   g_client = client;
 }
 
+bool ExtensionsRendererClient::IsPolicyActivityLoggingEnabled() const {
+  return false;
+}
+
+void ExtensionsRendererClient::SetPolicyActivityLoggingEnabled(bool enabled) {}
+
+PolicyActivityLogFilter*
+ExtensionsRendererClient::GetPolicyActivityLogFilter() {
+  return nullptr;
+}
+
 void ExtensionsRendererClient::OnExtensionLoaded(const Extension& extension) {
   resource_request_policy_->OnExtensionLoaded(extension);
 }
@@ -135,7 +146,7 @@ bool ExtensionsRendererClient::AllowPopup() {
     return false;
   }
 
-  // See http://crbug.com/117446 for the subtlety of this check.
+  // See http://crbug.com/40054678 for the subtlety of this check.
   switch (current_context->context_type()) {
     case mojom::ContextType::kUnspecified:
     case mojom::ContextType::kWebPage:

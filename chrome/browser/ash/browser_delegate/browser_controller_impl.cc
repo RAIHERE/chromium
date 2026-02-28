@@ -11,6 +11,8 @@
 #include "chrome/browser/ash/browser_delegate/browser_delegate_impl.h"
 #include "chrome/browser/ash/browser_delegate/browser_type.h"
 #include "chrome/browser/ash/browser_delegate/browser_type_conversion.h"
+#include "chrome/browser/lifetime/application_lifetime_desktop.h"
+#include "chrome/browser/lifetime/browser_shutdown.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/ui/autofill/chrome_autofill_client.h"
 #include "chrome/browser/ui/browser.h"
@@ -55,7 +57,7 @@ bool BrowserMatches(BrowserWindowInterface* browser,
 namespace ash {
 
 BrowserControllerImpl::BrowserControllerImpl() {
-  observation_.Observe(BrowserList::GetInstance());
+  observation_.Observe(GlobalBrowserCollection::GetInstance());
 }
 
 BrowserControllerImpl::~BrowserControllerImpl() = default;
@@ -242,6 +244,22 @@ BrowserDelegate* BrowserControllerImpl::CreateWebApp(
       web_app::CreateWebAppWindowMaybeWithHomeTab(app_id, cparams));
 }
 
+void BrowserControllerImpl::MayCloseAllBrowsers() {
+  return chrome::CloseAllBrowsers();
+}
+
+void BrowserControllerImpl::MayCloseAllBrowsersAndQuit() {
+  return chrome::CloseAllBrowsersAndQuit();
+}
+
+bool BrowserControllerImpl::IsTryingToQuit() {
+  return browser_shutdown::IsTryingToQuit();
+}
+
+bool BrowserControllerImpl::HasShutdownStarted() {
+  return browser_shutdown::HasShutdownStarted();
+}
+
 void BrowserControllerImpl::AddObserver(Observer* observer) {
   observers_.AddObserver(observer);
 }
@@ -250,21 +268,22 @@ void BrowserControllerImpl::RemoveObserver(Observer* observer) {
   observers_.RemoveObserver(observer);
 }
 
-void BrowserControllerImpl::OnBrowserAdded(Browser* browser) {
+void BrowserControllerImpl::OnBrowserCreated(BrowserWindowInterface* browser) {
   ash::BrowserDelegate* browser_delegate = GetDelegate(browser);
   for (auto& observer : observers_) {
     observer.OnBrowserCreated(browser_delegate);
   }
 }
 
-void BrowserControllerImpl::OnBrowserSetLastActive(Browser* browser) {
+void BrowserControllerImpl::OnBrowserActivated(
+    BrowserWindowInterface* browser) {
   ash::BrowserDelegate* browser_delegate = GetDelegate(browser);
   for (auto& observer : observers_) {
     observer.OnBrowserActivated(browser_delegate);
   }
 }
 
-void BrowserControllerImpl::OnBrowserRemoved(Browser* browser) {
+void BrowserControllerImpl::OnBrowserClosed(BrowserWindowInterface* browser) {
   ash::BrowserDelegate* browser_delegate = GetDelegate(browser);
   for (auto& observer : observers_) {
     observer.OnBrowserClosed(browser_delegate);

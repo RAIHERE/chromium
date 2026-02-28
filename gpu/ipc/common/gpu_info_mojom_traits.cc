@@ -58,8 +58,8 @@ EnumTraits<gpu::mojom::SkiaBackendType, gpu::SkiaBackendType>::ToMojom(
       return gpu::mojom::SkiaBackendType::kGraphiteDawnD3D11;
     case gpu::SkiaBackendType::kGraphiteDawnD3D12:
       return gpu::mojom::SkiaBackendType::kGraphiteDawnD3D12;
-    case gpu::SkiaBackendType::kGraphiteMetal:
-      return gpu::mojom::SkiaBackendType::kGraphiteMetal;
+    case gpu::SkiaBackendType::kGraphiteDawnOpenGLES:
+      return gpu::mojom::SkiaBackendType::kGraphiteDawnOpenGLES;
   }
   NOTREACHED() << "Invalid SkiaBackendType:" << static_cast<int>(type);
 }
@@ -93,8 +93,8 @@ bool EnumTraits<gpu::mojom::SkiaBackendType, gpu::SkiaBackendType>::FromMojom(
     case gpu::mojom::SkiaBackendType::kGraphiteDawnD3D12:
       *out = gpu::SkiaBackendType::kGraphiteDawnD3D12;
       return true;
-    case gpu::mojom::SkiaBackendType::kGraphiteMetal:
-      *out = gpu::SkiaBackendType::kGraphiteMetal;
+    case gpu::mojom::SkiaBackendType::kGraphiteDawnOpenGLES:
+      *out = gpu::SkiaBackendType::kGraphiteDawnOpenGLES;
       return true;
   }
   NOTREACHED() << "Invalid SkiaBackendType: " << input;
@@ -173,6 +173,10 @@ EnumTraits<gpu::mojom::VideoCodecProfile, gpu::VideoCodecProfile>::ToMojom(
       return gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE8;
     case gpu::VideoCodecProfile::DOLBYVISION_PROFILE9:
       return gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE9;
+    case gpu::VideoCodecProfile::DOLBYVISION_PROFILE10:
+      return gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE10;
+    case gpu::VideoCodecProfile::DOLBYVISION_PROFILE20:
+      return gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE20;
     case gpu::VideoCodecProfile::THEORAPROFILE_ANY:
       return gpu::mojom::VideoCodecProfile::THEORAPROFILE_ANY;
     case gpu::VideoCodecProfile::AV1PROFILE_PROFILE_MAIN:
@@ -290,6 +294,12 @@ bool EnumTraits<gpu::mojom::VideoCodecProfile, gpu::VideoCodecProfile>::
       return true;
     case gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE9:
       *out = gpu::VideoCodecProfile::DOLBYVISION_PROFILE9;
+      return true;
+    case gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE10:
+      *out = gpu::VideoCodecProfile::DOLBYVISION_PROFILE10;
+      return true;
+    case gpu::mojom::VideoCodecProfile::DOLBYVISION_PROFILE20:
+      *out = gpu::VideoCodecProfile::DOLBYVISION_PROFILE20;
       return true;
     case gpu::mojom::VideoCodecProfile::THEORAPROFILE_ANY:
       *out = gpu::VideoCodecProfile::THEORAPROFILE_ANY;

@@ -8,7 +8,7 @@ import("//chrome/browser/buildflags.gni")
 import("//extensions/buildflags/buildflags.gni")
 import("//third_party/jni_zero/jni_zero.gni")
 
-android_library("java") {
+android_library("core_java") {
   sources = [
     "java/src/org/chromium/chrome/browser/toolbar/ConstraintsChecker.java",
     "java/src/org/chromium/chrome/browser/toolbar/ControlContainer.java",
@@ -69,13 +69,6 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/toolbar/forward_button/ForwardButtonCoordinator.java",
     "java/src/org/chromium/chrome/browser/toolbar/home_button/HomeButton.java",
     "java/src/org/chromium/chrome/browser/toolbar/home_button/HomeButtonCoordinator.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonData.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonView.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsContainerView.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsCoordinator.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsMediator.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsProperties.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsViewBinder.java",
     "java/src/org/chromium/chrome/browser/toolbar/incognito/IncognitoIndicatorCoordinator.java",
     "java/src/org/chromium/chrome/browser/toolbar/load_progress/LoadProgressCoordinator.java",
     "java/src/org/chromium/chrome/browser/toolbar/load_progress/LoadProgressMediator.java",
@@ -108,9 +101,13 @@ android_library("java") {
     "java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarHeaderPreference.java",
     "java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarPreference.java",
     "java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarSettingsFragment.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonCoordinator.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonMediator.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonProperties.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonView.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonViewBinder.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/ActionModeController.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/CaptureReadinessResult.java",
-    "java/src/org/chromium/chrome/browser/toolbar/top/HomeButtonDisplay.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/NavigationPopup.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/OptionalBrowsingModeButtonController.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/PhoneCaptureStateToken.java",
@@ -162,6 +159,7 @@ android_library("java") {
     "//chrome/browser/incognito:java",
     "//chrome/browser/keyboard_accessory/android/java",
     "//chrome/browser/language/android:java",
+    "//chrome/browser/magic_stack/android:java",
     "//chrome/browser/ntp_customization:java",
     "//chrome/browser/paint_preview/android:java",
     "//chrome/browser/preferences:java",
@@ -172,8 +170,8 @@ android_library("java") {
     "//chrome/browser/segmentation_platform:factory_java",
     "//chrome/browser/settings:java",
     "//chrome/browser/settings:search_java",
-    "//chrome/browser/share/android:java_resources",
     "//chrome/browser/signin/services/android:java",
+    "//chrome/browser/sync/android:java",
     "//chrome/browser/tab:java",
     "//chrome/browser/tab_ui/android:java",
     "//chrome/browser/tabmodel:java",
@@ -196,7 +194,6 @@ android_library("java") {
     "//chrome/browser/url_constants/android:java",
     "//chrome/browser/user_education:java",
     "//chrome/browser/util:java",
-    "//components/browser_ui/bottomsheet/android:java",
     "//components/browser_ui/desktop_windowing/android:java",
     "//components/browser_ui/settings/android:java",
     "//components/browser_ui/styles/android:java",
@@ -216,6 +213,8 @@ android_library("java") {
     "//components/security_state/content/android:java",
     "//components/security_state/core:security_state_enums_java",
     "//components/segmentation_platform/public:public_java",
+    "//components/signin/public/android:java",
+    "//components/sync/android:sync_java",
     "//components/user_prefs/android:java",
     "//content/public/android:content_java",
     "//third_party/android_deps:material_design_java",
@@ -245,38 +244,12 @@ android_library("java") {
   ]
 
   resources_package = "org.chromium.chrome.browser.toolbar"
+}
 
+java_group("java") {
+  deps = [ ":core_java" ]
   if (enable_extensions_core) {
-    sources += [
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionButtonProperties.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionButtonViewBinder.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionContextMenuUtils.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionDragHelper.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionIconUtil.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionListCoordinator.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionListMediator.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionListRecyclerView.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionPopup.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionsUpdateHelper.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionToolbarCoordinatorImpl.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuCoordinator.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuItemProperties.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuItemViewBinder.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediator.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuProperties.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuViewBinder.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsToolbarDragTouchHandler.java",
-    ]
-
-    deps += [
-      "//base/version_info/android:version_constants_java",
-      "//components/embedder_support/android:content_view_java",
-      "//components/embedder_support/android:web_contents_delegate_java",
-      "//components/thin_webview:factory_java",
-      "//components/thin_webview:java",
-      "//extensions/browser:extension_action_enums",
-      "//third_party/androidx:androidx_recyclerview_recyclerview_java",
-    ]
+    deps += [ "java/src/org/chromium/chrome/browser/toolbar/extensions:java" ]
   }
 }
 
@@ -325,8 +298,6 @@ android_resources("java_resources") {
     "java/res/drawable-xxxhdpi/popup_bg_bottom.9.png",
     "java/res/drawable/home_surface_search_box_background.xml",
     "java/res/drawable/ic_close_all_tabs.xml",
-    "java/res/drawable/ic_switch_out_of_incognito.xml",
-    "java/res/drawable/ic_switch_to_incognito.xml",
     "java/res/drawable/ic_widgets.xml",
     "java/res/drawable/menu_bg_bottom_tinted.xml",
     "java/res/drawable/modern_toolbar_text_box_background_with_primary_color_square.xml",
@@ -348,7 +319,6 @@ android_resources("java_resources") {
     "java/res/layout/address_bar_preference.xml",
     "java/res/layout/bottom_control_container.xml",
     "java/res/layout/control_container.xml",
-    "java/res/layout/home_page_buttons_layout.xml",
     "java/res/layout/menu_button.xml",
     "java/res/layout/navigation_popup_item.xml",
     "java/res/layout/optional_button_layout.xml",
@@ -399,11 +369,6 @@ robolectric_library("junit") {
     "java/src/org/chromium/chrome/browser/toolbar/back_button/BackButtonMediatorTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/bottom/BottomControlsMediatorTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/home_button/HomeButtonCoordinatorTest.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonViewUnitTest.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsContainerViewUnitTest.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsCoordinatorUnitTest.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsMediatorUnitTest.java",
-    "java/src/org/chromium/chrome/browser/toolbar/home_page_button/HomePageButtonsViewBinderUnitTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/incognito/IncognitoIndicatorCoordinatorUnitTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/load_progress/LoadProgressMediatorTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/menu_button/MenuButtonCoordinatorTest.java",
@@ -414,6 +379,7 @@ robolectric_library("junit") {
     "java/src/org/chromium/chrome/browser/toolbar/optional_button/OptionalButtonViewTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/reload_button/ReloadButtonMediatorTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/settings/AddressBarSettingsFragmentUnitTest.java",
+    "java/src/org/chromium/chrome/browser/toolbar/signin_button/SigninButtonMediatorTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/OptionalBrowsingModeButtonControllerTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/PhoneCaptureStateTokenTest.java",
     "java/src/org/chromium/chrome/browser/toolbar/top/TabSwitcherActionMenuCoordinatorUnitTest.java",
@@ -443,7 +409,6 @@ robolectric_library("junit") {
     "//chrome/browser/fullscreen/android:java",
     "//chrome/browser/incognito:java",
     "//chrome/browser/language/android:java",
-    "//chrome/browser/ntp_customization:java",
     "//chrome/browser/preferences:java",
     "//chrome/browser/prefs/android:java",
     "//chrome/browser/profiles/android:java",
@@ -470,8 +435,8 @@ robolectric_library("junit") {
     "//chrome/browser/ui/browser_window/public/android:java",
     "//chrome/browser/url_constants/android:java",
     "//chrome/browser/user_education:java",
+    "//chrome/test/android:chrome_java_transit",
     "//chrome/test/android:chrome_java_unit_test_support",
-    "//components/browser_ui/bottomsheet/android:java",
     "//components/browser_ui/desktop_windowing/android:java",
     "//components/browser_ui/settings/android:java",
     "//components/browser_ui/styles/android:java",
@@ -504,6 +469,7 @@ robolectric_library("junit") {
     "//third_party/androidx:androidx_test_core_java",
     "//third_party/androidx:androidx_test_ext_junit_java",
     "//third_party/androidx:androidx_test_runner_java",
+    "//third_party/google-truth:google_truth_java",
     "//third_party/hamcrest:hamcrest_java",
     "//third_party/hamcrest:hamcrest_library_java",
     "//third_party/jni_zero:jni_zero_java",
@@ -517,40 +483,14 @@ robolectric_library("junit") {
   ]
 
   if (enable_extensions_core) {
-    sources += [
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionDragHelperTest.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionListMediatorTest.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionActionsUpdateHelperTest.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuCoordinatorTest.java",
-      "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionsMenuMediatorTest.java",
-    ]
+    deps += [ "java/src/org/chromium/chrome/browser/toolbar/extensions:junit" ]
   }
 }
 
 if (enable_extensions_core) {
-  android_library("javatests") {
+  java_group("javatests") {
     testonly = true
-    resources_package = "org.chromium.chrome.browser.toolbar"
-    sources = [ "java/src/org/chromium/chrome/browser/toolbar/extensions/ExtensionToolbarTest.java" ]
-    deps = [
-      ":java",
-      ":java_resources",
-      "//base:base_java",
-      "//base:base_java_test_support",
-      "//base:base_java_test_support_uncommon",
-      "//chrome/android:chrome_java",
-      "//chrome/browser/flags:java",
-      "//chrome/browser/profiles/android:java",
-      "//chrome/browser/ui/android/extensions:java",
-      "//chrome/browser/ui/android/extensions:test_support_java",
-      "//chrome/test/android:chrome_java_integration_test_support",
-      "//chrome/test/android:chrome_java_transit",
-      "//content/public/test/android:content_java_test_support",
-      "//third_party/androidx:androidx_test_espresso_espresso_core_java",
-      "//third_party/androidx:androidx_test_runner_java",
-      "//third_party/hamcrest:hamcrest_core_java",
-      "//third_party/junit",
-      "//ui/android:ui_java_test_support",
-    ]
+    deps =
+        [ "java/src/org/chromium/chrome/browser/toolbar/extensions:javatests" ]
   }
 }

@@ -78,6 +78,15 @@ const ValuablesDataManager* AutofillClient::GetValuablesDataManager() const {
   return const_cast<AutofillClient*>(this)->GetValuablesDataManager();
 }
 
+WalletPassAccessManager* AutofillClient::GetWalletPassAccessManager() {
+  return nullptr;
+}
+
+const WalletPassAccessManager* AutofillClient::GetWalletPassAccessManager()
+    const {
+  return const_cast<AutofillClient*>(this)->GetWalletPassAccessManager();
+}
+
 AutofillOptimizationGuideDecider*
 AutofillClient::GetAutofillOptimizationGuideDecider() const {
   return nullptr;
@@ -246,7 +255,8 @@ base::span<const Suggestion> AutofillClient::GetAutofillSuggestions() const {
 void AutofillClient::UpdateAutofillSuggestions(
     const std::vector<Suggestion>& suggestions,
     FillingProduct main_filling_product,
-    AutofillSuggestionTriggerSource trigger_source) {
+    AutofillSuggestionTriggerSource trigger_source,
+    AutofillSuggestionsIgnoreFocusLoss ignore_focus_loss) {
   NOTIMPLEMENTED();
 }
 
@@ -256,7 +266,7 @@ bool AutofillClient::IsCvcSavingSupported() const {
 
 bool AutofillClient::IsCreditCardUploadEnabled() const {
   return ::autofill::IsCreditCardUploadEnabled(
-      GetSyncService(), *GetPrefs(),
+      GetSyncService(),
       GetPersonalDataManager()
           .payments_data_manager()
           .GetCountryCodeForExperimentGroup(),
@@ -296,13 +306,30 @@ AutofillClient::GetMqlsUploadService() {
 void AutofillClient::ShowEntityImportBubble(
     EntityInstance new_entity,
     std::optional<EntityInstance> old_entity,
+    bool save_is_synchronous,
     EntityImportPromptResultCallback prompt_closed_callback) {}
+
+void AutofillClient::CloseEntityImportBubble() {
+  NOTIMPLEMENTED();
+}
+
+void AutofillClient::ShowAutofillAiLocalSaveNotification() {
+  NOTIMPLEMENTED();
+}
+
+void AutofillClient::ShowAutofillAiFailureNotification(std::u16string message) {
+  NOTIMPLEMENTED();
+}
 
 void AutofillClient::ShowEmailVerifiedToast() {
   NOTIMPLEMENTED();
 }
 
 OtpFieldDetector* AutofillClient::GetOtpFieldDetector() {
+  return nullptr;
+}
+
+FormPredictionsTracker* AutofillClient::GetFormPredictionsTracker() {
   return nullptr;
 }
 

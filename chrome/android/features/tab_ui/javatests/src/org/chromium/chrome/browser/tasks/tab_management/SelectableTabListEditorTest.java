@@ -187,7 +187,9 @@ public class SelectableTabListEditorTest {
                             DeviceFormFactor.isNonMultiDisplayContextOnTablet(cta)
                                     ? (ViewGroup) cta.findViewById(R.id.tab_switcher_view_holder)
                                     : compositorViewHolder;
-                    mSnackbarManager = new SnackbarManager(cta, rootView, null);
+                    mSnackbarManager =
+                            new SnackbarManager(
+                                    cta, rootView, null, null, cta.getModalDialogManager());
                     var currentTabGroupModelFilterSupplier =
                             mTabModelSelector.getCurrentTabGroupModelFilterSupplier();
                     mAppHeaderStateProvider =
@@ -216,6 +218,7 @@ public class SelectableTabListEditorTest {
                                     mAppHeaderStateProvider,
                                     mEdgeToEdgeSupplier,
                                     CreationMode.FULL_SCREEN,
+                                    /* itemPickerSelectionHandler= */ null,
                                     /* undoBarExplicitTrigger= */ null,
                                     /* componentName= */ null,
                                     TabListEditorCoordinator.UNLIMITED_SELECTION,
@@ -356,6 +359,7 @@ public class SelectableTabListEditorTest {
     @Restriction({DeviceFormFactor.TABLET_OR_DESKTOP, DeviceRestriction.RESTRICTION_TYPE_NON_AUTO})
     @Feature("DesktopWindow")
     @SmallTest
+    @DisabledTest(message = "crbug.com/484108560")
     public void testMarginWithAppHeaders() {
         // Height to apply as top margin.
         int appHeaderHeight =

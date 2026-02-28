@@ -18,6 +18,9 @@ FakePageLoadMetricsObserverDelegate::FakePageLoadMetricsObserverDelegate()
       page_end_user_initiated_info_(UserInitiatedInfo::NotUserInitiated()),
       visibility_tracker_(base::DefaultTickClock::GetInstance(),
                           /*is_shown=*/true),
+      soft_navigation_contentful_paint_candidate_(
+          false,
+          blink::LargestContentfulPaintType::kNone),
       navigation_id_(g_next_navigation_id_++),
       navigation_start_(base::TimeTicks::Now()) {}
 FakePageLoadMetricsObserverDelegate::~FakePageLoadMetricsObserverDelegate() =
@@ -149,20 +152,15 @@ const NormalizedCLSData& FakePageLoadMetricsObserverDelegate::
   return normalized_cls_data_;
 }
 
-const ResponsivenessMetricsNormalization&
-FakePageLoadMetricsObserverDelegate::GetResponsivenessMetricsNormalization()
+const InteractionToNextPaintCalculator&
+FakePageLoadMetricsObserverDelegate::GetInteractionToNextPaintCalculator()
     const {
-  return responsiveness_metrics_normalization_;
+  return interaction_to_next_paint_calculator_;
 }
 
-const ResponsivenessMetricsNormalization& FakePageLoadMetricsObserverDelegate::
-    GetSoftNavigationIntervalResponsivenessMetricsNormalization() const {
-  return responsiveness_metrics_normalization_;
-}
-
-const mojom::InputTiming&
-FakePageLoadMetricsObserverDelegate::GetPageInputTiming() const {
-  return page_input_timing_;
+const InteractionToNextPaintCalculator& FakePageLoadMetricsObserverDelegate::
+    GetSoftNavigationIntervalInteractionToNextPaintCalculator() const {
+  return interaction_to_next_paint_calculator_;
 }
 
 const std::optional<blink::SubresourceLoadMetrics>&
@@ -193,6 +191,12 @@ FakePageLoadMetricsObserverDelegate::GetLargestContentfulPaintHandler() const {
 const LargestContentfulPaintHandler& FakePageLoadMetricsObserverDelegate::
     GetExperimentalLargestContentfulPaintHandler() const {
   return experimental_largest_contentful_paint_handler_;
+}
+
+const ContentfulPaintTimingInfo&
+FakePageLoadMetricsObserverDelegate::GetSoftNavigationLargestContentfulPaint()
+    const {
+  return soft_navigation_contentful_paint_candidate_.MergeTextAndImageTiming();
 }
 
 ukm::SourceId FakePageLoadMetricsObserverDelegate::GetPageUkmSourceId() const {

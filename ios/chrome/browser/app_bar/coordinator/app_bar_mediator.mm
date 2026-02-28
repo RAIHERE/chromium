@@ -14,6 +14,7 @@
 #import "ios/chrome/browser/shared/coordinator/scene/state/incognito_state.h"
 #import "ios/chrome/browser/shared/coordinator/scene/state/tab_grid_state.h"
 #import "ios/chrome/browser/shared/model/url/chrome_url_constants.h"
+#import "ios/chrome/browser/shared/model/web_state_list/tab_group.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list.h"
 #import "ios/chrome/browser/shared/model/web_state_list/web_state_list_observer_bridge.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
@@ -31,6 +32,9 @@
 
 // The web state list currently observed by this mediator.
 @property(nonatomic, assign) WebStateList* currentWebStateList;
+
+// The TabGroup currently visible.
+@property(nonatomic, assign) const TabGroup* currentTabGroup;
 
 @end
 
@@ -109,6 +113,37 @@
 - (void)didChangeWebStateList:(WebStateList*)webStateList
                        change:(const WebStateListChange&)change
                        status:(const WebStateListStatus&)status {
+  switch (change.type()) {
+    case WebStateListChange::Type::kStatusOnly:
+    case WebStateListChange::Type::kMove:
+    case WebStateListChange::Type::kReplace:
+      // Do nothing when web state count is the same.
+      break;
+    case WebStateListChange::Type::kDetach:
+    case WebStateListChange::Type::kInsert:
+      [self updateConsumer];
+      break;
+    case WebStateListChange::Type::kGroupCreate:
+      break;
+    case WebStateListChange::Type::kGroupVisualDataUpdate:
+      break;
+    case WebStateListChange::Type::kGroupMove: {
+      const WebStateListChangeGroupMove& move =
+          change.As<WebStateListChangeGroupMove>();
+      if (move.moved_group() == self.currentTabGroup) {
+        [self updateConsumer];
+      }
+      break;
+    }
+    case WebStateListChange::Type::kGroupDelete: {
+      const WebStateListChangeGroupDelete& deletion =
+          change.As<WebStateListChangeGroupDelete>();
+      if (deletion.deleted_group() == self.currentTabGroup) {
+        self.currentTabGroup = nullptr;
+      }
+      break;
+    }
+  }
   [self updateConsumer];
 }
 
@@ -132,11 +167,12 @@
 
 - (void)willEnterTabGrid {
   _currentPage = _tabGridState.currentPage;
-  [self.consumer willEnterTabGrid];
+  self.currentTabGroup = _tabGridState.visibleTabGroup;
+  [self.consumer setTabGridVisible:YES];
 }
 
 - (void)willExitTabGrid {
-  [self.consumer willExitTabGrid];
+  [self.consumer setTabGridVisible:NO];
   [self updateForIncognitoVisible:_incognitoState.incognitoContentVisible];
 }
 
@@ -148,24 +184,35 @@
   [self updateForTabGridPage:page];
 }
 
+- (void)willShowTabGroup:(const TabGroup*)group {
+  if (!_tabGridState.tabGridVisible) {
+    return;
+  }
+  self.currentTabGroup = group;
+}
+
+- (void)willHideTabGroup {
+  self.currentTabGroup = nullptr;
+  if (!_tabGridState.tabGridVisible) {
+    return;
+  }
+  [self updateForTabGridPage:_tabGridState.currentPage];
+}
+
 #pragma mark - AppBarMutator
 
 - (void)createNewTabFromView:(UIView*)sender {
   if (_tabGridState.tabGridVisible) {
     switch (_tabGridState.currentPage) {
       case TabGridPageRegularTabs:
+      case TabGridPageTabGroups:
+        // This is an intentional fallthrough. Tabs created while on the tab
+        // group page of the tab grid should be non-incognito.
         [self openNewTabInTabGridInIncognito:NO];
-        break;
-
+        return;
       case TabGridPageIncognitoTabs:
         [self openNewTabInTabGridInIncognito:YES];
-        break;
-      case TabGridPageTabGroups: {
-        [self.regularTabGroupsCommands showTabGroupCreationWithoutTabs];
-        base::RecordAction(
-            base::UserMetricsAction("MobileTabGridCreateTabGroup"));
-        break;
-      }
+        return;
     }
   } else {
     CGPoint center = [sender.superview convertPoint:sender.center toView:nil];
@@ -176,6 +223,13 @@
 
     [IntentDonationHelper donateIntent:IntentType::kOpenNewTab];
   }
+}
+
+- (void)createNewTabGroupFromView:(UIView*)sender {
+  if (!_tabGridState.tabGridVisible) {
+    return;
+  }
+  [self.regularTabGroupsCommands showTabGroupCreationWithoutTabs];
 }
 
 #pragma mark - Properties
@@ -191,6 +245,14 @@
   [self updateConsumer];
 }
 
+- (void)setCurrentTabGroup:(const TabGroup*)currentTabGroup {
+  if (_currentTabGroup == currentTabGroup) {
+    return;
+  }
+  _currentTabGroup = currentTabGroup;
+  [self updateConsumer];
+}
+
 #pragma mark - Private
 
 // Updates the consumer with the current state of the web state list.
@@ -198,20 +260,32 @@
   if (!self.consumer || !self.currentWebStateList) {
     return;
   }
-  [self.consumer updateTabCount:self.currentWebStateList->count()];
+  NSUInteger tabCount;
+  if (self.currentTabGroup) {
+    tabCount = static_cast<NSUInteger>(self.currentTabGroup->range().count());
+  } else {
+    tabCount = self.currentWebStateList->count();
+  }
+  [self.consumer updateTabCount:tabCount];
+  [self.consumer setTabGridVisible:_tabGridState.tabGridVisible];
 }
 
 // Updates for entering tab grid `page`.
 - (void)updateForTabGridPage:(TabGridPage)page {
   switch (page) {
     case TabGridPageIncognitoTabs:
+      [self.consumer setTabGroupsPageVisible:NO];
       self.currentWebStateList = _incognitoWebStateList;
       break;
     case TabGridPageRegularTabs:
+      [self.consumer setTabGroupsPageVisible:NO];
       self.currentWebStateList = _regularWebStateList;
       break;
     case TabGridPageTabGroups:
-      // TODO(crbug.com/472279443): Handle tab groups page.
+      CHECK_NE(TabGridPageTabGroups, _tabGridState.originPage);
+      CHECK_EQ(TabGridPageTabGroups, _currentPage);
+      [self updateForTabGridPage:_tabGridState.originPage];
+      [self.consumer setTabGroupsPageVisible:YES];
       break;
   }
 }

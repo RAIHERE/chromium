@@ -52,14 +52,12 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.mockito.quality.Strictness;
 import org.robolectric.annotation.Config;
-import org.robolectric.shadows.ShadowLooper;
 
 import org.chromium.base.Callback;
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableNonNullObservableSupplier;
-import org.chromium.base.task.test.ShadowPostTask;
-import org.chromium.base.test.BaseRobolectricTestRule;
 import org.chromium.base.test.BaseRobolectricTestRunner;
+import org.chromium.base.test.RobolectricUtil;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.HistogramWatcher;
 import org.chromium.base.test.util.UserActionTester;
@@ -542,7 +540,7 @@ public class BookmarkManagerMediatorTest {
         mMediator.onAttachedToWindow();
         mMediator.addUiObserver(mBookmarkUiObserver);
 
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
     }
 
     private void finishLoading() {
@@ -1401,7 +1399,7 @@ public class BookmarkManagerMediatorTest {
                 .getValue()
                 .bookmarkNodeRemoved(mFolderItem2, 0, mBookmarkItem21, false);
 
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
         assertEquals(3, mModelList.size());
         verify(mBookmarkUiObserver, times(1)).onUiModeChanged(BookmarkUiMode.FOLDER);
     }
@@ -1482,8 +1480,7 @@ public class BookmarkManagerMediatorTest {
                 .when(mSelectionDelegate)
                 .getSelectedItemsAsList();
 
-        // Pretend to delete folder 2 and folder 3. Pause the looper to get the removes to dedupe.
-        ShadowPostTask.reset();
+        // Pretend to delete folder 2 and folder 3.
         doReturn(Arrays.asList(mBookmarkId21)).when(mBookmarkModel).getChildIds(mFolderId1);
         verify(mBookmarkModel).addObserver(mBookmarkModelObserverArgumentCaptor.capture());
         when(mBookmarkModel.searchBookmarks(eq(queryString), anyInt()))
@@ -1497,7 +1494,7 @@ public class BookmarkManagerMediatorTest {
                 .bookmarkNodeRemoved(
                         mFolderItem1, 0, mFolderItem3, /* isDoingExtensiveChanges= */ false);
 
-        ShadowLooper.idleMainLooper();
+        RobolectricUtil.runAllBackgroundAndUi();
         verifyCurrentBookmarkIds(null, mBookmarkId21);
         // Only 1 selection update should be sent out. This minimizes event notification spam and
         // complexity for observers.
@@ -2281,7 +2278,7 @@ public class BookmarkManagerMediatorTest {
         mBookmarkModelObserverArgumentCaptor.getValue().bookmarkModelChanged();
 
         // Should still be in search mode, and should have refreshed and picked up new results.
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
         assertEquals(BookmarkUiMode.SEARCHING, mMediator.getCurrentUiMode());
         verifyCurrentBookmarkIds(null, mFolderId2);
     }
@@ -2311,9 +2308,6 @@ public class BookmarkManagerMediatorTest {
 
     @Test
     public void testModelChangesDeduped() {
-        // Remove test impl from setUp, to resume paused behavior.
-        ShadowPostTask.reset();
-
         finishLoading();
         mMediator.openFolder(mFolderId1);
         verify(mBookmarkModel, times(1)).getChildIds(mFolderId1);
@@ -2330,7 +2324,7 @@ public class BookmarkManagerMediatorTest {
             observer.bookmarkNodeChanged(mFolderItem1);
             observer.bookmarkNodeRemoved(mFolderItem1, 1, mFolderItem3, false);
         }
-        ShadowLooper.idleMainLooper();
+        RobolectricUtil.runAllBackgroundAndUi();
 
         // Measure number of #setBookmarks by counting #getChildIds.
         verify(mBookmarkModel, times(2)).getChildIds(mFolderId1);
@@ -2339,9 +2333,6 @@ public class BookmarkManagerMediatorTest {
 
     @Test
     public void testDestroyDuringPendingRefresh() {
-        // Remove test impl from setUp, to resume paused behavior.
-        ShadowPostTask.reset();
-
         finishLoading();
         mMediator.openFolder(mFolderId1);
         verify(mBookmarkModel, times(1)).getChildIds(mFolderId1);
@@ -2357,7 +2348,7 @@ public class BookmarkManagerMediatorTest {
 
         mMediator.onDestroy();
         // Now give the pending task time to run. It should no-op, and not crash.
-        ShadowLooper.idleMainLooper();
+        RobolectricUtil.runAllBackgroundAndUi();
     }
 
     @Test
@@ -2384,7 +2375,7 @@ public class BookmarkManagerMediatorTest {
         verify(mBookmarkModel).addObserver(mBookmarkModelObserverArgumentCaptor.capture());
         BookmarkModelObserver observer = mBookmarkModelObserverArgumentCaptor.getValue();
         observer.bookmarkModelChanged();
-        BaseRobolectricTestRule.runAllBackgroundAndUi();
+        RobolectricUtil.runAllBackgroundAndUi();
         assertBookmarkListEmpty();
 
         // Neither of these can do anything, the models are gone. But more importantly, they should

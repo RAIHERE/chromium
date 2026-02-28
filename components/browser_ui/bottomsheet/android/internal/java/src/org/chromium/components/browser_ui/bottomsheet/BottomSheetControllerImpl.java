@@ -118,7 +118,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController, ScrimCo
     private @Nullable BottomSheetContent mContentWhenSuppressed;
 
     private int mAppHeaderHeight;
-    private int mBottomControlsHeight;
+    private int mBottomControlsOffset;
     private boolean mIsAnchoredToBottomControls;
 
     /**
@@ -232,7 +232,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController, ScrimCo
                 mAlwaysFullWidth,
                 mEdgeToEdgeBottomInsetSupplier,
                 mAppHeaderHeight,
-                mBottomControlsHeight);
+                mBottomControlsOffset);
 
         // Initialize the queue with a comparator that checks content priority.
         mContentQueue =
@@ -348,9 +348,9 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController, ScrimCo
     }
 
     @Override
-    public void setBottomControlsHeight(int bottomControlsHeight) {
-        if (mBottomControlsHeight == bottomControlsHeight) return;
-        mBottomControlsHeight = bottomControlsHeight;
+    public void setBottomControlsOffset(int bottomControlsOffset) {
+        if (mBottomControlsOffset == bottomControlsOffset) return;
+        mBottomControlsOffset = bottomControlsOffset;
         var scrimManager = mScrimManagerSupplier.get();
         if (scrimManager != null) {
             // Set the appropriate offset for the current scrim state.
@@ -664,7 +664,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController, ScrimCo
             mKeyboardVisibilityDelegate.hideKeyboard(mBottomSheetContainer);
             nextContent
                     .getBackPressStateChangedSupplier()
-                    .addObserver(mContentBackPressStateChangedObserver);
+                    .addSyncObserverAndPostIfNonNull(mContentBackPressStateChangedObserver);
         }
         mBottomSheet.showContent(nextContent);
         mBottomSheet.setSheetState(mBottomSheet.getOpeningState(), animate);
@@ -745,7 +745,7 @@ class BottomSheetControllerImpl implements ManagedBottomSheetController, ScrimCo
             // the bottom controls.
             mIsAnchoredToBottomControls = true;
             mBottomSheetContainer.setZ(0.0f);
-            mBottomSheet.setBottomMargin(mBottomControlsHeight);
+            mBottomSheet.setBottomMargin(mBottomControlsOffset);
         }
     }
 

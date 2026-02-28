@@ -23,6 +23,7 @@
 #include "net/ssl/ssl_connection_status_flags.h"
 #include "net/test/cert_test_util.h"
 #include "net/test/test_data_directory.h"
+#include "net/third_party/quiche/src/quiche/quic/core/quic_versions.h"
 #include "net/traffic_annotation/network_traffic_annotation.h"
 
 namespace net {
@@ -49,12 +50,6 @@ FakeServiceEndpointResolution&
 FakeServiceEndpointResolution::CompleteStartSynchronously(int rv) {
   start_result_ = rv;
   endpoints_crypto_ready_ = true;
-  return *this;
-}
-
-FakeServiceEndpointResolution& FakeServiceEndpointResolution::set_start_result(
-    int start_result) {
-  start_result_ = start_result;
   return *this;
 }
 
@@ -135,9 +130,25 @@ FakeServiceEndpointRequest& FakeServiceEndpointRequest::set_priority(
   return *this;
 }
 
+FakeServiceEndpointRequest& FakeServiceEndpointRequest::set_start_callback(
+    base::OnceClosure start_callback) {
+  DCHECK(!start_callback_);
+  start_callback_ = std::move(start_callback);
+  return *this;
+}
+
 FakeServiceEndpointRequest&
 FakeServiceEndpointRequest::CompleteStartSynchronously(int rv) {
   resolution_.CompleteStartSynchronously(rv);
+  return *this;
+}
+
+FakeServiceEndpointRequest&
+FakeServiceEndpointRequest::CompleteStartAsynchronously(int rv) {
+  DCHECK(!resolution_.endpoints_crypto_ready());
+  DCHECK_EQ(resolution_.start_result(), ERR_IO_PENDING);
+  set_start_callback(base::BindOnce(&FakeServiceEndpointRequest::CompleteAsync,
+                                    weak_ptr_factory_.GetWeakPtr(), rv));
   return *this;
 }
 
@@ -160,6 +171,10 @@ int FakeServiceEndpointRequest::Start(Delegate* delegate) {
   CHECK(!delegate_);
   CHECK(delegate);
   delegate_ = delegate;
+  if (start_callback_) {
+    base::SequencedTaskRunner::GetCurrentDefault()->PostTask(
+        FROM_HERE, std::move(start_callback_));
+  }
   return resolution_.start_result();
 }
 
@@ -192,6 +207,11 @@ bool FakeServiceEndpointRequest::IsStaleWhileRefresing() const {
 void FakeServiceEndpointRequest::ChangeRequestPriority(
     RequestPriority priority) {
   resolution_.set_priority(priority);
+}
+
+void FakeServiceEndpointRequest::CompleteAsync(int rv) {
+  set_crypto_ready(true);
+  CallOnServiceEndpointRequestFinished(rv);
 }
 
 FakeServiceEndpointResolver::FakeServiceEndpointResolver() = default;
@@ -295,6 +315,11 @@ ServiceEndpointBuilder& ServiceEndpointBuilder::set_alpns(
     std::vector<std::string> alpns) {
   endpoint_.metadata.supported_protocol_alpns = std::move(alpns);
   return *this;
+}
+
+ServiceEndpointBuilder& ServiceEndpointBuilder::set_alpn(
+    quic::ParsedQuicVersion quic_version) {
+  return set_alpns({quic::AlpnForVersion(quic_version)});
 }
 
 ServiceEndpointBuilder& ServiceEndpointBuilder::set_ech_config_list(

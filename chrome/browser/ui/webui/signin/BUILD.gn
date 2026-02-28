@@ -158,6 +158,7 @@ source_set("signin_impl") {
     "//base",
     "//chrome/browser:browser_process",
     "//chrome/browser/consent_auditor",
+    "//chrome/browser/enterprise/browser_management:management_identity",
     "//chrome/browser/profiles:profile",
     "//chrome/browser/profiles:profile_util",
     "//chrome/browser/resources/signin:resources",
@@ -201,6 +202,7 @@ source_set("signin_impl") {
 
     deps += [
       ":login_ui_service",
+      "//chrome/browser/new_tab_page/chrome_colors:selected_colors_info",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/sync",
       "//chrome/browser/ui/tabs:tab_strip",
@@ -342,6 +344,7 @@ if (!is_chromeos) {
       "//chrome/browser/profiles:profile",
       "//chrome/browser/profiles:profile_util",
       "//chrome/browser/ui:browser_list",
+      "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/webui/top_chrome",
       "//chrome/common",
       "//components/signin/public/identity_manager",
@@ -380,6 +383,7 @@ if (!is_chromeos) {
       "//chrome/app/theme:chrome_unscaled_resources_grit",
       "//chrome/browser:browser_process",
       "//chrome/browser:resources",
+      "//chrome/browser/enterprise/browser_management:management_identity",
       "//chrome/browser/new_tab_page/chrome_colors:generate_chrome_colors_info",
       "//chrome/browser/profiles",
       "//chrome/browser/profiles:profile",
@@ -446,6 +450,7 @@ source_set("unit_tests") {
     "//chrome/browser:browser_process",
     "//chrome/browser/consent_auditor",
     "//chrome/browser/consent_auditor:test_support",
+    "//chrome/browser/enterprise/browser_management:management_identity",
     "//chrome/browser/extensions",
     "//chrome/browser/extensions:test_support",
     "//chrome/browser/profiles:profile_util",
@@ -492,7 +497,10 @@ source_set("unit_tests") {
       "dice_web_signin_intercept_handler_unittest.cc",
       "signin_utils_desktop_unittest.cc",
     ]
-    deps += [ "//chrome/browser/ui/profiles" ]
+    deps += [
+      "//chrome/browser/new_tab_page/chrome_colors:selected_colors_info",
+      "//chrome/browser/ui/profiles",
+    ]
   }
 
   # TODO(crbug.com/40031409): Fix code that adds exit-time destructors and

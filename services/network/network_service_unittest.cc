@@ -1279,12 +1279,12 @@ class NetworkServiceTestWithService : public testing::Test {
     request.url = url;
     request.method = "GET";
     request.request_initiator = url::Origin();
-    StartLoadingURL(request, OriginatingProcess::browser(), options);
+    StartLoadingURL(request, OriginatingProcessId::browser(), options);
     client_->RunUntilComplete();
   }
 
   void StartLoadingURL(const ResourceRequest& request,
-                       OriginatingProcess process_id,
+                       OriginatingProcessId process_id,
                        int options = mojom::kURLLoadOptionNone) {
     client_ = std::make_unique<TestURLLoaderClient>();
     mojo::Remote<mojom::URLLoaderFactory> loader_factory;
@@ -1428,7 +1428,7 @@ TEST_F(NetworkServiceTestWithService, RawRequestHeadersAbsent) {
   request.url = test_server()->GetURL("/server-redirect?/echo");
   request.method = "GET";
   request.request_initiator = url::Origin();
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilRedirectReceived();
   EXPECT_TRUE(client()->has_received_redirect());
   loader()->FollowRedirect({}, {}, {}, std::nullopt);
@@ -1497,12 +1497,12 @@ TEST_F(NetworkServiceTestWithService, SetNetworkConditions) {
       url::Origin::Create(GURL("https://initiator.example.com"));
   request.method = "GET";
 
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilComplete();
   EXPECT_EQ(net::OK, client()->completion_status().error_code);
 
   request.throttling_profile_id = profile_id;
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilComplete();
   EXPECT_EQ(net::ERR_INTERNET_DISCONNECTED,
             client()->completion_status().error_code);
@@ -1514,7 +1514,7 @@ TEST_F(NetworkServiceTestWithService, SetNetworkConditions) {
     network_conditions.back()->conditions->offline = false;
     context()->SetNetworkConditions(profile_id, std::move(network_conditions));
   }
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilComplete();
   EXPECT_EQ(net::OK, client()->completion_status().error_code);
 
@@ -1527,12 +1527,12 @@ TEST_F(NetworkServiceTestWithService, SetNetworkConditions) {
   }
 
   request.throttling_profile_id = profile_id;
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilComplete();
   EXPECT_EQ(net::ERR_INTERNET_DISCONNECTED,
             client()->completion_status().error_code);
   context()->SetNetworkConditions(profile_id, {});
-  StartLoadingURL(request, OriginatingProcess::browser());
+  StartLoadingURL(request, OriginatingProcessId::browser());
   client()->RunUntilComplete();
   EXPECT_EQ(net::OK, client()->completion_status().error_code);
 }
@@ -1640,7 +1640,8 @@ class TestNetworkChangeManagerClient
  public:
   explicit TestNetworkChangeManagerClient(
       mojom::NetworkService* network_service)
-      : connection_type_(mojom::ConnectionType::CONNECTION_UNKNOWN) {
+      : connection_type_(
+            net::NetworkChangeNotifier::ConnectionType::CONNECTION_UNKNOWN) {
     mojo::Remote<mojom::NetworkChangeManager> manager_remote;
     network_service->GetNetworkChangeManager(
         manager_remote.BindNewPipeAndPassReceiver());
@@ -1658,20 +1659,22 @@ class TestNetworkChangeManagerClient
   ~TestNetworkChangeManagerClient() override = default;
 
   // NetworkChangeManagerClient implementation:
-  void OnInitialConnectionType(mojom::ConnectionType type) override {
+  void OnInitialConnectionType(
+      net::NetworkChangeNotifier::ConnectionType type) override {
     if (type == connection_type_) {
       run_loop_.Quit();
     }
   }
 
-  void OnNetworkChanged(mojom::ConnectionType type) override {
+  void OnNetworkChanged(
+      net::NetworkChangeNotifier::ConnectionType type) override {
     if (type == connection_type_) {
       run_loop_.Quit();
     }
   }
 
   // Waits for the desired |connection_type| notification.
-  void WaitForNotification(mojom::ConnectionType type) {
+  void WaitForNotification(net::NetworkChangeNotifier::ConnectionType type) {
     connection_type_ = type;
     run_loop_.Run();
   }
@@ -1680,7 +1683,7 @@ class TestNetworkChangeManagerClient
 
  private:
   base::RunLoop run_loop_;
-  mojom::ConnectionType connection_type_;
+  net::NetworkChangeNotifier::ConnectionType connection_type_;
   mojo::Receiver<mojom::NetworkChangeManagerClient> receiver_{this};
 };
 
@@ -1706,7 +1709,8 @@ TEST_F(NetworkChangeTest, NetworkChangeManagerRequest) {
   TestNetworkChangeManagerClient manager_client(service());
   net::NetworkChangeNotifier::NotifyObserversOfNetworkChangeForTests(
       net::NetworkChangeNotifier::CONNECTION_3G);
-  manager_client.WaitForNotification(mojom::ConnectionType::CONNECTION_3G);
+  manager_client.WaitForNotification(
+      net::NetworkChangeNotifier::ConnectionType::CONNECTION_3G);
 }
 
 class NetworkServiceNetworkChangeTest : public testing::Test {
@@ -1746,7 +1750,8 @@ TEST_F(NetworkServiceNetworkChangeTest, NetworkChangeManagerRequest) {
   net::NetworkChangeNotifier::NotifyObserversOfNetworkChangeForTests(
       net::NetworkChangeNotifier::CONNECTION_3G);
 
-  manager_client.WaitForNotification(mojom::ConnectionType::CONNECTION_3G);
+  manager_client.WaitForNotification(
+      net::NetworkChangeNotifier::ConnectionType::CONNECTION_3G);
 }
 
 class NetworkServiceNetworkDelegateTest : public NetworkServiceTest {
@@ -1781,14 +1786,14 @@ class NetworkServiceNetworkDelegateTest : public NetworkServiceTest {
     request.url = url;
     request.method = "GET";
     request.request_initiator = url::Origin();
-    StartLoadingURL(request, OriginatingProcess::browser(), options,
+    StartLoadingURL(request, OriginatingProcessId::browser(), options,
                     std::move(url_loader_network_observer));
     client_->RunUntilComplete();
   }
 
   void StartLoadingURL(
       const ResourceRequest& request,
-      OriginatingProcess process_id,
+      OriginatingProcessId process_id,
       int options = mojom::kURLLoadOptionNone,
       mojo::PendingRemote<mojom::URLLoaderNetworkServiceObserver>
           url_loader_network_observer = mojo::NullRemote()) {

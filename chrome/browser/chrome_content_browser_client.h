@@ -599,6 +599,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   void SessionEnding(std::optional<DWORD> control_type) override;
   bool ShouldEnableAudioProcessHighPriority() override;
   bool ShouldRestrictCoreSharingOnRenderer() override;
+  std::optional<std::wstring> GetWindowsSecurityAttributeName() const override;
 #endif
   void ExposeInterfacesToRenderer(
       service_manager::BinderRegistry* registry,
@@ -1183,6 +1184,7 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
   MaybeCreateKeepAliveRequestTracker(
       const network::ResourceRequest& request,
       std::optional<ukm::SourceId> ukm_source_id,
+      content::BrowserContext* browser_context,
       content::KeepAliveRequestTracker::IsContextDetachedCallback
           is_context_detached_callback) override;
 
@@ -1190,11 +1192,18 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       const ui::ClipboardSequenceNumberToken& seqno) override;
 
   bool UsePrefetchPrerenderIntegration() override;
-  bool UsePreloadServingMetrics() override;
+
 #if !BUILDFLAG(IS_ANDROID)
   bool ShouldDisallowCredentialRequest(
       content::WebContents* web_contents) override;
 #endif  //! BUILDFLAG(IS_ANDROID)
+  void ModifyRequestHeadersForPrefetch(
+      const GURL& url,
+      std::vector<std::string>& removed_headers,
+      net::HttpRequestHeaders& modified_headers,
+      net::HttpRequestHeaders& modified_cors_exempt_headers) override;
+  void UpdateCorsExemptHeaderForPrefetch(
+      network::mojom::NetworkContextParams* params) override;
 
   void RecordAssistedLogin(
       content::ContentBrowserClient::AssistedLoginType login_type) override;
@@ -1203,6 +1212,11 @@ class ChromeContentBrowserClient : public content::ContentBrowserClient {
       content::BrowserContext* browser_context) override;
 
   std::string GetDnsTxtResolverUrlPrefix() override;
+
+  bool ShouldAllowPrefetchRedirection(
+      content::BrowserContext& browser_context,
+      const GURL& url,
+      const std::string& embedder_histogram_suffix) override;
 
  protected:
   static bool HandleWebUI(GURL* url, content::BrowserContext* browser_context);

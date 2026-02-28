@@ -162,14 +162,22 @@ class CORE_EXPORT HTMLSelectElement final
   const ListItems& GetListItems() const;
 
   // NearestAncestorSelectNoNesting is called with <hr>, <option>, and
-  // <optgroup> elements to determine if they have an ancestor <select> which
-  // they are associated with. An ancestor <select> will not be returned in some
-  // cases, such as nested <option>s, in order to match the logic in
-  // RecalcListItems and OptionList. This method also returns an <optgroup> if
-  // there is an <optgroup> in between the provided element and the returned
-  // <select>.
-  static std::pair<HTMLSelectElement*, HTMLOptGroupElement*>
-  AssociatedSelectAndOptgroup(const Element&);
+  // <optgroup> elements to determine if they have an ancestor <select> or
+  // <datalist> which they are associated with. An ancestor <select> will not be
+  // returned in some cases, such as nested <option>s, in order to match the
+  // logic in RecalcListItems and OptionList. This method also returns an
+  // <optgroup> if there is an <optgroup> in between the provided element and
+  // the returned <select>.
+  struct SelectOptgroupDatalist {
+    STACK_ALLOCATED();
+
+   public:
+    HTMLSelectElement* select;
+    HTMLOptGroupElement* optgroup;
+    HTMLDataListElement* datalist;
+  };
+  static SelectOptgroupDatalist AssociatedSelectAndOptgroupAndDatalist(
+      const Element&);
 
   void AccessKeyAction(SimulatedClickCreationScope creation_scope) override;
   void SelectOptionByAccessKey(HTMLOptionElement*);
@@ -211,16 +219,18 @@ class CORE_EXPORT HTMLSelectElement final
   LayoutUnit ClientPaddingRight() const;
   void SelectOptionByPopup(int list_index);
   void SelectOptionByPopup(HTMLOptionElement* option);
-  void SelectMultipleOptionsByPopup(const Vector<int>& list_indices);
-  // SelectOptionFromPopoverPickerOrBaseListbox is called when an option element
+  void SelectMultipleOptions(const Vector<int>& list_indices);
+  // SelectOptionFromPopoverPickerOrListbox is called when an option element
   // is clicked in the following modes:
   // - When UsesPopoverPickerElement() returns true
   // - When ListBoxSelectType is being used and appearance:base-select is
-  // applied
+  //   applied
+  // - When this element is a listbox and is being controlled by a filtering
+  //   input for the FilterableSelect feature.
   // TODO(crbug.com/357649033): This method has a lot of duplicated logic with
   // HTMLSelectElement::SelectOption. These two methods should probably be
   // merged.
-  void SelectOptionFromPopoverPickerOrBaseListbox(HTMLOptionElement* option);
+  void SelectOptionFromPopoverPickerOrListbox(HTMLOptionElement* option);
   // A popup is canceled when the popup was hidden without selecting an item.
   void PopupDidCancel();
   // Provisional selection is a selection made using arrow keys or type ahead.
@@ -320,6 +330,8 @@ class CORE_EXPORT HTMLSelectElement final
   // This should only be called when UsesMenuList() returns true.
   void SetIsAppearanceBasePickerForDisplayNone(bool);
 
+  void SelectedContentElementInsertedLegacy(
+      HTMLSelectedContentElement* selectedcontent);
   void SelectedContentElementInserted(
       HTMLSelectedContentElement* selectedcontent);
   void SelectedContentElementRemoved(
@@ -348,9 +360,24 @@ class CORE_EXPORT HTMLSelectElement final
   // and <datalist> elements.
   static bool ShouldIgnoreDescendantsForOptionTraversals(Element* element);
 
-  // Used for the (experimental) declarative WebMCP prototype.
-  bool SupportsWebMCP() const override { return true; }
-  void FillWebMCPData(JSONValue& data) override;
+  HTMLOptionElement* ActiveOption() { return active_option_; }
+  // Called when an input element targeting a select for filtering is focused,
+  // which makes an option start matching :active-option if possible.
+  void StartFiltering();
+  // Called when an input element targeting a select element is blurred, which
+  // makes the options stop matching :active-option.
+  void StopFiltering();
+  // Called when the user presses the down arrow in the input element while
+  // filtering a select element to move the :active-option forwards in the list
+  // of options.
+  void MoveActiveOptionForwards();
+  // Called when the user presses the up arrow in the input element while
+  // filtering a select element to move the :active-option backwards in the list
+  // of options.
+  void MoveActiveOptionBackwards();
+  // Called when the user presses the enter key in the input element while
+  // filtering a select element to toggle the selectedness of the active option.
+  void ToggleActiveOption(Event&);
 
  private:
   mojom::blink::FormControlType FormControlType() const override;
@@ -374,6 +401,7 @@ class CORE_EXPORT HTMLSelectElement final
   bool IsEnumeratable() const override { return true; }
   bool IsInteractiveContent() const override;
   bool IsLabelable() const override { return true; }
+  FocusgroupFlags NativeArrowKeyAxes() const final;
 
   FormControlState SaveFormControlState() const override;
   void RestoreFormControlState(const FormControlState&) override;
@@ -473,6 +501,8 @@ class CORE_EXPORT HTMLSelectElement final
   bool uses_menu_list_ = true;
   bool is_multiple_ = false;
   mutable bool should_recalc_list_items_ = false;
+
+  Member<HTMLOptionElement> active_option_;
 
   friend class ListBoxSelectType;
   friend class MenuListSelectType;

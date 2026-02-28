@@ -24,6 +24,10 @@ class TabSlotView;
 
 enum class BrowserFrameActiveState;
 
+namespace tabs {
+class TabInterface;
+}
+
 namespace gfx {
 class Point;
 }  // namespace gfx
@@ -113,6 +117,11 @@ class TabSlotController {
   virtual void ShowContextMenuForTab(Tab* tab,
                                      const gfx::Point& p,
                                      ui::mojom::MenuSourceType source_type) = 0;
+
+  virtual void TabKeyboardFocusChangedTo(const tabs::TabInterface* tab) = 0;
+
+  // Returns the number of tabs in the tabstrip.
+  virtual int GetTabCount() const = 0;
 
   // Returns whether `tab` is the active tab. The active tab is the one whose
   // content is shown in the browser.
@@ -234,12 +243,6 @@ class TabSlotController {
   virtual Browser* GetBrowser() = 0;
 
   virtual BrowserWindowInterface* GetBrowserWindowInterface() = 0;
-
-#if BUILDFLAG(IS_CHROMEOS)
-  // Returns whether the current app instance is locked for OnTask. Only
-  // relevant for non-web browser scenarios.
-  virtual bool IsLockedForOnTask() = 0;
-#endif
 
  protected:
   virtual ~TabSlotController() = default;

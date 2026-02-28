@@ -9,7 +9,6 @@
 #include <array>
 #include <string>
 #include <string_view>
-#include <unordered_set>
 
 #include "base/files/file_util.h"
 #include "base/format_macros.h"
@@ -21,6 +20,7 @@
 #include "base/test/metrics/histogram_tester.h"
 #include "base/test/scoped_feature_list.h"
 #include "base/test/with_feature_override.h"
+#include "base/values.h"
 #include "build/build_config.h"
 #include "chrome/browser/profiles/avatar_menu.h"
 #include "chrome/browser/profiles/profile_attributes_entry.h"
@@ -38,6 +38,7 @@
 #include "components/prefs/scoped_user_pref_update.h"
 #include "components/profile_metrics/state.h"
 #include "components/signin/public/base/signin_switches.h"
+#include "components/signin/public/identity_manager/signin_constants.h"
 #include "components/supervised_user/core/common/supervised_user_constants.h"
 #include "components/sync_preferences/pref_service_syncable.h"
 #include "content/public/test/browser_task_environment.h"
@@ -45,6 +46,7 @@
 #include "google_apis/gaia/gaia_id.h"
 #include "testing/gmock/include/gmock/gmock.h"
 #include "testing/gtest/include/gtest/gtest.h"
+#include "third_party/abseil-cpp/absl/container/flat_hash_set.h"
 #include "third_party/skia/include/core/SkBitmap.h"
 #include "ui/base/l10n/l10n_util.h"
 #include "ui/base/resource/resource_bundle.h"
@@ -125,7 +127,7 @@ void VerifyInitialValues(ProfileAttributesEntry* entry,
   EXPECT_EQ(is_omitted, entry->IsOmitted());
   EXPECT_EQ(is_signed_in_with_credential_provider,
             entry->IsSignedInWithCredentialProvider());
-  EXPECT_EQ(std::string(), entry->GetHostedDomain());
+  EXPECT_EQ(std::nullopt, entry->GetHostedDomain());
   EXPECT_EQ(signin::Tribool::kUnknown, entry->GetIsManaged());
 }
 
@@ -772,17 +774,6 @@ TEST_F(ProfileAttributesStorageTest, EntryAccessors) {
   EXPECT_FALSE(entry->IsUsingDefaultName());
   VerifyAndResetCallExpectations();
 
-  // GaiaIds.
-  EXPECT_TRUE(entry->GetGaiaIds().empty());
-  base::flat_set<GaiaId> accounts1({GaiaId("a")});
-  base::flat_set<GaiaId> accounts2({GaiaId("b"), GaiaId("c")});
-  entry->SetGaiaIds(accounts1);
-  EXPECT_EQ(accounts1, entry->GetGaiaIds());
-  entry->SetGaiaIds(accounts2);
-  EXPECT_EQ(accounts2, entry->GetGaiaIds());
-  entry->SetGaiaIds({});
-  EXPECT_TRUE(entry->GetGaiaIds().empty());
-
   TEST_STRING16_ACCESSORS(ProfileAttributesEntry, entry, ShortcutName);
   TEST_ACCESSORS(ProfileAttributesEntry, entry, BackgroundStatus, true, false);
 
@@ -932,7 +923,7 @@ TEST_F(ProfileAttributesStorageTest, ProfileActiveTime) {
 
   // Store the time and check for the result. Allow for a difference one second
   // because the 64-bit integral representation in base::Time is rounded off to
-  // a double, which is what base::Value stores. http://crbug.com/346827
+  // a double, which is what base::Value stores. http://crbug.com/40353148
   base::Time lower_bound = base::Time::Now() - base::Seconds(1);
   entry->SetActiveTimeToNow();
   base::Time upper_bound = base::Time::Now() + base::Seconds(1);
@@ -1273,7 +1264,7 @@ TEST_F(ProfileAttributesStorageTest, ChooseAvatarIconIndexForNewProfile) {
   // the final |icon_index| to add a profile. Multiple checks are needed because
   // ChooseAvatarIconIndexForNewProfile is non-deterministic.
   const int num_iterations = 10;
-  std::unordered_set<int> used_icon_indices;
+  absl::flat_hash_set<int> used_icon_indices;
 
   for (size_t i = 0; i < total_icon_count; ++i) {
     EXPECT_EQ(i, storage()->GetNumberOfProfiles());
@@ -2354,6 +2345,56 @@ TEST_F(ProfileAttributesStorageTest, EnterpriseLabelOverridesLocalProfileName) {
   entry->SetEnterpriseProfileLabel(u"management_label");
   EXPECT_EQ(u"management_label", entry->GetEnterpriseProfileLabel());
   EXPECT_EQ(u"management_label", entry->GetLocalProfileName());
+}
+
+TEST_F(ProfileAttributesStorageTest, GetHostedDomainFormatStability) {
+  AddTestingProfile();
+  base::FilePath path = GetProfilePath("testing_profile_path0");
+  ProfileAttributesEntry* entry = storage()->GetProfileAttributesWithPath(path);
+  ASSERT_NE(entry, nullptr);
+
+  PrefService* local_state = g_browser_process->local_state();
+
+  // 1. NO_HOSTED_DOMAIN -> ""
+  {
+    ScopedDictPrefUpdate update(local_state, prefs::kProfileAttributes);
+    base::DictValue* profile_dict =
+        update->FindDict(path.BaseName().MaybeAsASCII());
+    ASSERT_TRUE(profile_dict);
+    profile_dict->Set("hosted_domain", signin::constants::kNoHostedDomainFound);
+  }
+  EXPECT_EQ(entry->GetHostedDomain(), "");
+  EXPECT_EQ(entry->GetIsManaged(), signin::Tribool::kFalse);
+
+  // 2. domain.com -> domain.com
+  {
+    ScopedDictPrefUpdate update(local_state, prefs::kProfileAttributes);
+    base::DictValue* profile_dict =
+        update->FindDict(path.BaseName().MaybeAsASCII());
+    profile_dict->Set("hosted_domain", "example.com");
+  }
+  EXPECT_EQ(entry->GetHostedDomain(), "example.com");
+  EXPECT_EQ(entry->GetIsManaged(), signin::Tribool::kTrue);
+
+  // 3. empty string -> nullopt
+  {
+    ScopedDictPrefUpdate update(local_state, prefs::kProfileAttributes);
+    base::DictValue* profile_dict =
+        update->FindDict(path.BaseName().MaybeAsASCII());
+    profile_dict->Set("hosted_domain", "");
+  }
+  EXPECT_EQ(entry->GetHostedDomain(), std::nullopt);
+  EXPECT_EQ(entry->GetIsManaged(), signin::Tribool::kUnknown);
+
+  // 4. missing -> nullopt
+  {
+    ScopedDictPrefUpdate update(local_state, prefs::kProfileAttributes);
+    base::DictValue* profile_dict =
+        update->FindDict(path.BaseName().MaybeAsASCII());
+    profile_dict->Remove("hosted_domain");
+  }
+  EXPECT_EQ(entry->GetHostedDomain(), std::nullopt);
+  EXPECT_EQ(entry->GetIsManaged(), signin::Tribool::kUnknown);
 }
 
 INSTANTIATE_FEATURE_OVERRIDE_TEST_SUITE(

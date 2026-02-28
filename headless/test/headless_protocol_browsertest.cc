@@ -594,6 +594,10 @@ HEADLESS_PROTOCOL_TEST(ScreenDetailsMultipleScreens,
 HEADLESS_PROTOCOL_TEST(ScreenDetailsMultipleScreensScaled,
                        "shared/screen-details-multiple-screens-scaled.js")
 
+HEADLESS_PROTOCOL_TEST(
+    ScreenDetailsMultipleScreensPrimaryScaled,
+    "shared/screen-details-multiple-screens-primary-scaled.js")
+
 HEADLESS_PROTOCOL_TEST(ScreenDetailsPixelRatio,
                        "shared/screen-details-pixel-ratio.js")
 
@@ -703,6 +707,11 @@ HEADLESS_PROTOCOL_TEST(RemoveScreenGetScreenDetails,
                        "shared/remove-screen-get-screen-details.js")
 
 HEADLESS_PROTOCOL_TEST(AddRemoveScreen, "shared/add-remove-screen.js")
+
+HEADLESS_PROTOCOL_TEST(SetPrimaryScreen, "shared/set-primary-screen.js")
+
+HEADLESS_PROTOCOL_TEST(SetPrimaryScreenScaled,
+                       "shared/set-primary-screen-scaled.js")
 
 HEADLESS_PROTOCOL_TEST(DispatchMouseEventScreenCoordinates,
                        "shared/dispatch-mouse-event-screen-coordinates.js")

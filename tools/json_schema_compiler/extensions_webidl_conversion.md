@@ -147,7 +147,26 @@ enum VendorIdSource {
   "usb"
 };
 ```
-Each enum value should be put on a new line. Descriptive comments above the whole enum should be moved along with them.
+Descriptive comments above the whole enum should be moved along with them.
+
+### Referencing Types from other Namespaces
+Some schemas currently reference Types which are defined in other schema files, which are indicated by the Type name being prefixed with the "namespace" of the API it is defined in, followed by a period and then the the name of the Dictionary or Enum it is referencing e.g. `extensionTypes.FrameType` or `tabs.Tab`. Since WebIDL does not allow Type names to contain periods these need to be updated during conversion.
+If a schema uses a Type like this, we instead create a local `Typedef object` at the top level of the file that uses a name combining the capitalized namespace and Type name and gives it an `ExternalExtensionType=]` extended attribute with the original string used for the type.
+e.g.
+```
+dictionary contentScripts {
+  extensionTypes.RunAt? run_at;
+}
+```
+Would become:
+```
+[ExternalExtensionType="extensionTypes.RunAt"]
+typedef object ExtensionTypesRunAt;
+
+dictionary contentScripts {
+  ExtensionTypesRunAt run_at;
+}
+```
 
 ### Functions and Callbacks to Promises
 All functions that used a trailing callback must be converted to return a `Promise`.
@@ -255,7 +274,7 @@ interface OnFooEvent : ExtensionEvent {
 };
 ```
 
-3. **Add Event Attribute.** In the main API interface (e.g., `Alarms`), add a `static attribute` for the event. The general descriptive comment for the event (e.g., "Fired when...") should be moved above this new attribute.
+3. **Add Event Attribute.** In the main API interface (e.g., `Alarms`), add a `static attribute` for the event. The general descriptive comment for the event (e.g., "Fired when...") and any extended attributes which were on the original event definition (e.g. `[maxListeners=1]`) should be moved to this new attribute definition.
 ```
 // Fired when something interesting happens.
 static attribute OnFooEvent onFoo;

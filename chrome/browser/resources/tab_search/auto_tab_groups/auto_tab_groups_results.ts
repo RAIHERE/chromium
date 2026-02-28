@@ -22,7 +22,6 @@ const NON_SCROLLABLE_VERTICAL_SPACING: number = 198;
 export interface AutoTabGroupsResultsElement {
   $: {
     feedbackButtons: CrFeedbackButtonsElement,
-    header: HTMLElement,
     learnMore: HTMLElement,
     scrollable: HTMLElement,
   };
@@ -33,6 +32,14 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     return 'auto-tab-groups-results';
   }
 
+  static override get styles() {
+    return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
+  }
+
   static override get properties() {
     return {
       session: {type: Object},
@@ -41,19 +48,11 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     };
   }
 
-  accessor session: TabOrganizationSession|undefined;
-  accessor availableHeight: number = 0;
-
   protected accessor feedbackSelectedOption_: CrFeedbackOption =
       CrFeedbackOption.UNSPECIFIED;
 
-  static override get styles() {
-    return getCss();
-  }
-
-  override render() {
-    return getHtml.bind(this)();
-  }
+  accessor session: TabOrganizationSession|undefined;
+  accessor availableHeight: number = 0;
 
   override willUpdate(changedProperties: PropertyValues<this>) {
     super.willUpdate(changedProperties);
@@ -68,6 +67,10 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     }
   }
 
+  override firstUpdated() {
+    this.$.scrollable.addEventListener('scroll', this.updateScroll_.bind(this));
+  }
+
   override updated(changedProperties: PropertyValues<this>) {
     super.updated(changedProperties);
 
@@ -78,10 +81,6 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     if (changedProperties.has('session')) {
       this.updateScroll_();
     }
-  }
-
-  override firstUpdated() {
-    this.$.scrollable.addEventListener('scroll', this.updateScroll_.bind(this));
   }
 
   focusInput() {
@@ -130,7 +129,7 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     this.updateScroll_();
   }
 
-  protected onCreateAllGroupsClick_(event: CustomEvent) {
+  protected onCreateGroupClick_(event: CustomEvent) {
     event.stopPropagation();
     event.preventDefault();
 
@@ -150,13 +149,13 @@ export class AutoTabGroupsResultsElement extends CrLitElement {
     this.fire('learn-more-click');
   }
 
-  protected onLearnMoreKeyDown_(event: KeyboardEvent) {
+  protected onLearnMoreKeydown_(event: KeyboardEvent) {
     if (event.key === 'Enter') {
       this.onLearnMoreClick_();
     }
   }
 
-  protected onFeedbackKeyDown_(event: KeyboardEvent) {
+  protected onFeedbackKeydown_(event: KeyboardEvent) {
     if ((event.key !== 'ArrowLeft' && event.key !== 'ArrowRight')) {
       return;
     }

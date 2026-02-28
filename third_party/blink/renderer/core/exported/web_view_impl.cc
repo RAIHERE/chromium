@@ -190,6 +190,8 @@
 #include "third_party/blink/renderer/platform/weborigin/known_ports.h"
 #include "third_party/blink/renderer/platform/widget/widget_base.h"
 #include "third_party/blink/renderer/platform/wtf/casting.h"
+#include "third_party/blink/renderer/platform/wtf/functional.h"
+#include "third_party/blink/renderer/platform/wtf/text/string_to_number.h"
 #include "third_party/icu/source/common/unicode/uscript.h"
 #include "ui/base/ui_base_features.h"
 #include "ui/gfx/geometry/skia_conversions.h"
@@ -238,6 +240,11 @@ static const int minReadableCaretHeightForTextArea = 13;
 static const float minScaleChangeToTriggerZoom = 1.5f;
 static const float leftBoxRatio = 0.3f;
 static const int caretPadding = 10;
+
+#if !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
+static constexpr base::TimeDelta kWindowingControlsChangeTimeout =
+    base::Seconds(5);
+#endif
 
 namespace blink {
 
@@ -361,11 +368,11 @@ void ApplyCommandLineToSettings(WebSettings* settings) {
   WebString network_quiet_timeout = WebString::FromUTF8(
       command_line.GetSwitchValueASCII(switches::kNetworkQuietTimeout));
   if (!network_quiet_timeout.IsEmpty()) {
-    bool ok;
-    double network_quiet_timeout_seconds =
-        String(network_quiet_timeout).ToDouble(&ok);
-    if (ok)
-      settings->SetNetworkQuietTimeout(network_quiet_timeout_seconds);
+    auto network_quiet_timeout_seconds =
+        StringToDouble(String(network_quiet_timeout));
+    if (network_quiet_timeout_seconds) {
+      settings->SetNetworkQuietTimeout(*network_quiet_timeout_seconds);
+    }
   }
 
   if (command_line.HasSwitch(switches::kBlinkSettings)) {
@@ -381,29 +388,6 @@ void ApplyCommandLineToSettings(WebSettings* settings) {
                                      : setting.substr(pos + 1).ToString()));
     }
   }
-}
-
-ui::mojom::blink::WindowOpenDisposition NavigationPolicyToDisposition(
-    NavigationPolicy policy) {
-  switch (policy) {
-    case kNavigationPolicyDownload:
-      return ui::mojom::blink::WindowOpenDisposition::SAVE_TO_DISK;
-    case kNavigationPolicyCurrentTab:
-      return ui::mojom::blink::WindowOpenDisposition::CURRENT_TAB;
-    case kNavigationPolicyNewBackgroundTab:
-      return ui::mojom::blink::WindowOpenDisposition::NEW_BACKGROUND_TAB;
-    case kNavigationPolicyNewForegroundTab:
-      return ui::mojom::blink::WindowOpenDisposition::NEW_FOREGROUND_TAB;
-    case kNavigationPolicyNewWindow:
-      return ui::mojom::blink::WindowOpenDisposition::NEW_WINDOW;
-    case kNavigationPolicyNewPopup:
-      return ui::mojom::blink::WindowOpenDisposition::NEW_POPUP;
-    case kNavigationPolicyPictureInPicture:
-      return ui::mojom::blink::WindowOpenDisposition::NEW_PICTURE_IN_PICTURE;
-    case kNavigationPolicyLinkPreview:
-      NOTREACHED();
-  }
-  NOTREACHED() << "Unexpected NavigationPolicy";
 }
 
 // Records the queuing duration for activation IPC.
@@ -744,16 +728,6 @@ void WebViewImpl::EnableFakePageScaleAnimationForTesting(bool enable) {
   fake_page_scale_animation_page_scale_factor_ = 0;
 }
 
-void WebViewImpl::AcceptLanguagesChanged() {
-  FontCache::AcceptLanguagesChanged(
-      String::FromUTF8(renderer_preferences_.accept_languages));
-
-  if (!GetPage())
-    return;
-
-  GetPage()->AcceptLanguagesChanged();
-}
-
 gfx::Rect WebViewImpl::WidenRectWithinPageBounds(const gfx::Rect& source,
                                                  int target_margin,
                                                  int minimum_margin) {
@@ -1074,8 +1048,6 @@ void WebViewImpl::ZoomToFindInPageRect(const gfx::Rect& rect_in_root_frame) {
   StartPageScaleAnimation(scroll, false, scale, kFindInPageAnimationDuration);
 }
 
-#if !BUILDFLAG(IS_MAC)
-// Mac has no way to open a context menu based on a keyboard event.
 WebInputEventResult WebViewImpl::SendContextMenuEvent() {
   // The contextMenuController() holds onto the last context menu that was
   // popped up on the page until a new one is created. We need to clear
@@ -1100,11 +1072,6 @@ WebInputEventResult WebViewImpl::SendContextMenuEvent() {
         nullptr, kMenuSourceKeyboard);
   }
 }
-#else
-WebInputEventResult WebViewImpl::SendContextMenuEvent() {
-  return WebInputEventResult::kNotHandled;
-}
-#endif
 
 WebPagePopupImpl* WebViewImpl::OpenPagePopup(PagePopupClient* client) {
   DCHECK(client);
@@ -1950,8 +1917,12 @@ void WebView::ApplyWebPreferences(const web_pref::WebPreferences& prefs,
   RuntimeEnabledFeatures::SetPaymentRequestEnabled(
       prefs.payment_request_enabled);
 
-  if (prefs.ai_prompt_api_enabled) {
+  if (prefs.ai_ot_apis_enabled) {
     RuntimeEnabledFeatures::SetAIPromptAPIEnabled(true);
+    RuntimeEnabledFeatures::SetAIPromptAPIMultimodalInputEnabled(true);
+    RuntimeEnabledFeatures::SetAIProofreadingAPIEnabled(true);
+    RuntimeEnabledFeatures::SetAIRewriterAPIEnabled(true);
+    RuntimeEnabledFeatures::SetAIWriterAPIEnabled(true);
   }
 
 #if BUILDFLAG(IS_MAC) && BUILDFLAG(USE_EXTERNAL_POPUP_MENU)
@@ -3015,10 +2986,10 @@ void WebViewImpl::UpdatePageDefinedViewportConstraints(
 
   Document* document = GetPage()->DeprecatedLocalMainFrame()->GetDocument();
 
-  Length default_min_width =
+  ViewportLength default_min_width =
       document->GetViewportData().ViewportDefaultMinWidth();
   if (default_min_width.IsAuto())
-    default_min_width = Length::ExtendToZoom();
+    default_min_width = ViewportLength::ExtendToZoom();
 
   float old_initial_scale =
       GetPageScaleConstraintsSet().PageDefinedConstraints().initial_scale;
@@ -3028,16 +2999,19 @@ void WebViewImpl::UpdatePageDefinedViewportConstraints(
   if (SettingsImpl()->ClobberUserAgentInitialScaleQuirk() &&
       GetPageScaleConstraintsSet().UserAgentConstraints().initial_scale != -1 &&
       GetPageScaleConstraintsSet().UserAgentConstraints().initial_scale <= 1) {
-    if (description.max_width == Length::DeviceWidth() ||
+    if (description.max_width.IsDeviceWidth() ||
         (description.max_width.IsAuto() &&
          GetPageScaleConstraintsSet().PageDefinedConstraints().initial_scale ==
-             1.0f))
+             1.0f)) {
       SetInitialPageScaleOverride(-1);
+    }
   }
 
   Settings& page_settings = GetPage()->GetSettings();
   GetPageScaleConstraintsSet().AdjustForAndroidWebViewQuirks(
-      description, default_min_width.IntValue(),
+      description,
+      default_min_width.IsFixed() ? static_cast<int>(default_min_width.Pixels())
+                                  : 0,
       SettingsImpl()->SupportDeprecatedTargetDensityDPI(),
       page_settings.GetWideViewportQuirkEnabled(),
       page_settings.GetUseWideViewport(),
@@ -3169,30 +3143,6 @@ void WebViewImpl::TakeFocus(bool reverse) {
   }
 }
 
-void WebViewImpl::Show(const LocalFrameToken& opener_frame_token,
-                       NavigationPolicy policy,
-                       const gfx::Rect& requested_rect,
-                       const gfx::Rect& adjusted_rect,
-                       bool opened_by_user_gesture) {
-  // This is only called on local main frames.
-  DCHECK(local_main_frame_host_remote_);
-  DCHECK(web_widget_);
-  web_widget_->SetPendingWindowRect(adjusted_rect);
-  const WebWindowFeatures& web_window_features = page_->GetWindowFeatures();
-  mojom::blink::WindowFeaturesPtr window_features =
-      mojom::blink::WindowFeatures::New();
-  window_features->bounds = requested_rect;
-  window_features->has_x = web_window_features.x_set;
-  window_features->has_y = web_window_features.y_set;
-  window_features->has_width = web_window_features.width_set;
-  window_features->has_height = web_window_features.height_set;
-  window_features->is_popup = web_window_features.is_popup;
-  local_main_frame_host_remote_->ShowCreatedWindow(
-      opener_frame_token, NavigationPolicyToDisposition(policy),
-      std::move(window_features), opened_by_user_gesture,
-      BindOnce(&WebViewImpl::DidShowCreatedWindow, Unretained(this)));
-}
-
 void WebViewImpl::DidShowCreatedWindow() {
   web_widget_->AckPendingWindowRect();
 }
@@ -3217,9 +3167,11 @@ void WebViewImpl::Minimize(WindowingControlsChangeCallback callback) {
   if (window_show_state_change_callback_.has_value()) {
     std::move(callback).Run(/*succeeded=*/false);
   } else {
+    uint64_t id = base::RandUint64();
     window_show_state_change_callback_.emplace(
-        WindowShowStateChangeType::kMinimize, std::move(callback));
+        id, WindowShowStateChangeType::kMinimize, std::move(callback));
     local_main_frame_host_remote_->Minimize();
+    PostDelayedRejectionForAWCPromise(id);
   }
 }
 
@@ -3228,9 +3180,11 @@ void WebViewImpl::Maximize(WindowingControlsChangeCallback callback) {
   if (window_show_state_change_callback_.has_value()) {
     std::move(callback).Run(/*succeeded=*/false);
   } else {
+    uint64_t id = base::RandUint64();
     window_show_state_change_callback_.emplace(
-        WindowShowStateChangeType::kMaximize, std::move(callback));
+        id, WindowShowStateChangeType::kMaximize, std::move(callback));
     local_main_frame_host_remote_->Maximize();
+    PostDelayedRejectionForAWCPromise(id);
   }
 }
 
@@ -3239,9 +3193,11 @@ void WebViewImpl::Restore(WindowingControlsChangeCallback callback) {
   if (window_show_state_change_callback_.has_value()) {
     std::move(callback).Run(/*succeeded=*/false);
   } else {
+    uint64_t id = base::RandUint64();
     window_show_state_change_callback_.emplace(
-        WindowShowStateChangeType::kRestore, std::move(callback));
+        id, WindowShowStateChangeType::kRestore, std::move(callback));
     local_main_frame_host_remote_->Restore();
+    PostDelayedRejectionForAWCPromise(id);
   }
 }
 
@@ -3260,8 +3216,11 @@ void WebViewImpl::SetResizable(bool resizable,
     } else {
       // We need to wait for the window resizable property to be changed by the
       // operating system.
-      set_resizable_change_callback_.emplace(resizable, std::move(callback));
+      uint64_t id = base::RandUint64();
+      set_resizable_change_callback_.emplace(id, resizable,
+                                             std::move(callback));
       local_main_frame_host_remote_->SetResizable(resizable);
+      PostDelayedRejectionForAWCPromise(id);
     }
   }
 }
@@ -3274,10 +3233,8 @@ void WebViewImpl::OnWindowShowStateChanged(
     return;
   }
 
+  CHECK_NE(old_state, new_state);
   using ui::mojom::blink::WindowShowState;
-  if (old_state == new_state) {
-    return;
-  }
   switch (new_state) {
     case WindowShowState::kDefault:
     case WindowShowState::kNormal:
@@ -3307,8 +3264,8 @@ void WebViewImpl::OnResizableChanged(bool new_resizable) {
   }
 
   if (set_resizable_change_callback_.has_value() &&
-      set_resizable_change_callback_->first == new_resizable) {
-    std::move(set_resizable_change_callback_->second).Run(/*succeeded=*/true);
+      set_resizable_change_callback_->requested_resizable == new_resizable) {
+    std::move(set_resizable_change_callback_->callback).Run(/*succeeded=*/true);
     set_resizable_change_callback_.reset();
   }
 }
@@ -3345,10 +3302,34 @@ void WebViewImpl::WasRestored() {
 void WebViewImpl::HandleWindowShowStateChangeCallbackWith(
     WindowShowStateChangeType type) {
   if (window_show_state_change_callback_.has_value() &&
-      window_show_state_change_callback_->first == type) {
-    std::move(window_show_state_change_callback_->second)
+      window_show_state_change_callback_->requested_action == type) {
+    std::move(window_show_state_change_callback_->callback)
         .Run(/*succeeded=*/true);
     window_show_state_change_callback_.reset();
+  }
+}
+
+void WebViewImpl::PostDelayedRejectionForAWCPromise(uint64_t id) {
+  GetPage()
+      ->GetAgentGroupScheduler()
+      .DefaultTaskRunner()
+      ->PostNonNestableDelayedTask(
+          FROM_HERE,
+          BindOnce(&WebViewImpl::RejectAWCPromise, Unretained(this), id),
+          kWindowingControlsChangeTimeout);
+}
+
+void WebViewImpl::RejectAWCPromise(uint64_t id) {
+  if (window_show_state_change_callback_.has_value() &&
+      window_show_state_change_callback_->id == id) {
+    std::move(window_show_state_change_callback_->callback)
+        .Run(/*succeeded=*/false);
+    window_show_state_change_callback_.reset();
+  } else if (set_resizable_change_callback_.has_value() &&
+             set_resizable_change_callback_->id == id) {
+    std::move(set_resizable_change_callback_->callback)
+        .Run(/*succeeded=*/false);
+    set_resizable_change_callback_.reset();
   }
 }
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
@@ -3774,8 +3755,14 @@ void WebViewImpl::UpdateRendererPreferences(
     SetFocusRingColor(renderer_preferences_.focus_ring_color);
   }
 
-  if (old_accept_languages != renderer_preferences_.accept_languages)
-    AcceptLanguagesChanged();
+  if (old_accept_languages != renderer_preferences_.accept_languages) {
+    FontCache::AcceptLanguagesChanged(
+        String::FromUTF8(renderer_preferences_.accept_languages));
+    if (GetPage()) {
+      GetPage()->GetSettings().SetAcceptLanguages(
+          String::FromUTF8(renderer_preferences_.accept_languages));
+    }
+  }
 
   GetSettings()->SetCaretBrowsingEnabled(
       renderer_preferences_.caret_browsing_enabled);

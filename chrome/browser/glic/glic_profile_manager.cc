@@ -28,9 +28,11 @@
 #include "chrome/common/chrome_features.h"
 #include "chrome/common/chrome_switches.h"
 #include "content/public/browser/network_service_instance.h"
+#include "url/gurl.h"
 
 #if !BUILDFLAG(IS_ANDROID)
 #include "chrome/browser/ui/browser.h"
+#include "chrome/browser/ui/browser_tabstrip.h"
 #include "chrome/browser/ui/profiles/profile_picker.h"
 #include "chrome/browser/ui/scoped_tabbed_browser_displayer.h"
 #endif
@@ -38,7 +40,8 @@
 namespace {
 bool g_prewarming_enabled_for_testing_ = true;
 std::optional<Profile*> g_forced_profile_for_launch_;
-std::optional<network::mojom::ConnectionType> g_forced_connection_type_;
+std::optional<net::NetworkChangeNotifier::ConnectionType>
+    g_forced_connection_type_;
 }  // namespace
 
 namespace glic {
@@ -301,7 +304,7 @@ void GlicProfileManager::DidSelectProfile(Profile* profile) {
       GlicKeyedServiceFactory::GetGlicKeyedService(profile);
 
   if (!GlicEnabling::HasConsentedForProfile(profile) &&
-      !GlicEnabling::IsTrustFirstOnboardingEnabled()) {
+      !GlicEnabling::IsTrustFirstOnboardingEnabledForProfile(profile)) {
 #if !BUILDFLAG(IS_ANDROID)
     // Open a browser and show the FRE in a new tab.
     chrome::ScopedTabbedBrowserDisplayer displayer(profile);
@@ -309,6 +312,18 @@ void GlicProfileManager::DidSelectProfile(Profile* profile) {
                                    mojom::InvocationSource::kProfilePicker);
 #else
     NOTIMPLEMENTED() << "OpenFreDialogInNewTab";
+#endif
+  } else if (GlicEnabling::IsTrustFirstOnboardingEnabledForProfile(profile)) {
+#if !BUILDFLAG(IS_ANDROID)
+    // Open a browser and show the FRE in a new tab.
+    chrome::ScopedTabbedBrowserDisplayer displayer(profile);
+    Browser* browser = displayer.browser();
+    chrome::AddAndReturnTabAt(browser, GURL(), /*index=*/-1,
+                              /*foreground=*/true);
+    service->ToggleUI(browser, /*prevent_close=*/true,
+                      mojom::InvocationSource::kProfilePicker);
+#else
+    NOTIMPLEMENTED() << "ToggleUIOnNewTab";
 #endif
   } else {
     // Toggle glic but prevent close if it is already open for the selected
@@ -359,7 +374,7 @@ void GlicProfileManager::ForceProfileForLaunchForTesting(
 
 // static
 void GlicProfileManager::ForceConnectionTypeForTesting(
-    std::optional<network::mojom::ConnectionType> connection_type) {
+    std::optional<net::NetworkChangeNotifier::ConnectionType> connection_type) {
   g_forced_connection_type_ = connection_type;
 }
 
@@ -411,7 +426,8 @@ void GlicProfileManager::CanPreloadForProfile(Profile* profile,
   }
 
   auto on_got_connection_type = [](ShouldPreloadCallback callback,
-                                   network::mojom::ConnectionType type) {
+                                   net::NetworkChangeNotifier::ConnectionType
+                                       type) {
     std::move(callback).Run(
         network::NetworkConnectionTracker::IsConnectionCellular(type)
             ? GlicPrewarmingChecksResult::kCellularConnection
@@ -420,7 +436,7 @@ void GlicProfileManager::CanPreloadForProfile(Profile* profile,
   auto callbacks = base::SplitOnceCallback(std::move(callback));
 
   // Attempt to synchronously query the connection type.
-  network::mojom::ConnectionType connection_type;
+  net::NetworkChangeNotifier::ConnectionType connection_type;
   bool synchronously_got_connection_type = false;
   if (g_forced_connection_type_) {
     synchronously_got_connection_type = true;

@@ -16,6 +16,7 @@
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/check_op.h"
+#include "base/feature_list.h"
 #include "base/functional/callback.h"
 #include "base/location.h"
 #include "base/memory/weak_ptr.h"
@@ -267,11 +268,6 @@ void RunIdleTasks() {
   blink::test::RunPendingTasks();
 }
 
-void WaitForHibernation() {
-  // Hibernation is posted as an idle task.
-  RunIdleTasks();
-}
-
 }  // namespace
 
 // Helper class to registers an event listener and wait for it to fire.
@@ -381,6 +377,15 @@ class CanvasRenderingContext2DTestBase : public ::testing::Test,
     test::RunPendingTasks();
   }
 
+  void WaitForHibernation() {
+    if (base::FeatureList::IsEnabled(features::kCanvas2DHibernationDefer)) {
+      task_environment_.FastForwardBy(
+          CanvasHibernationHandler::kMaxHibernationDelay);
+    } else {
+      RunIdleTasks();
+    }
+  }
+
   test::TaskEnvironment task_environment_{
       base::test::TaskEnvironment::TimeSource::MOCK_TIME};
   std::unique_ptr<frame_test_helpers::WebViewHelper> web_view_helper_;
@@ -428,8 +433,8 @@ class CanvasRenderingContext2DTest : public CanvasRenderingContext2DTestBase {
  public:
   void CreateContextProvider(SetIsContextLost set_context_lost) override {
     test_context_provider_ = viz::TestContextProvider::CreateRaster();
-    InitializeSharedGpuContextRaster(test_context_provider_.get(),
-                                     /*cache=*/nullptr, set_context_lost);
+    InitializeSharedGpuContext(test_context_provider_.get(),
+                               /*cache=*/nullptr, set_context_lost);
     ConfigureContextProvider(*test_context_provider_);
   }
 };
@@ -569,12 +574,12 @@ void CanvasRenderingContext2DTestBase::TearDown() {
 
 //============================================================================
 
-class FakeCanvasResourceProvider : public CanvasResourceProviderSharedImage {
+class FakeCanvasResourceProvider : public Canvas2DResourceProviderSharedImage {
  public:
   FakeCanvasResourceProvider(gfx::Size size,
                              RasterModeHint hint,
                              CanvasResourceProvider::Delegate* delegate)
-      : CanvasResourceProviderSharedImage(
+      : Canvas2DResourceProviderSharedImage(
             size,
             GetN32FormatForCanvas(),
             kPremul_SkAlphaType,
@@ -668,11 +673,9 @@ MATCHER(IsValid, "") {
 
 TEST_P(CanvasRenderingContext2DTest, NoRecreationOfResourceProviderAfterDraw) {
   CreateContext(kNonOpaque);
-  uint32_t gen_id =
-      Context2D()->GetOrCreateResourceProvider()->ContentUniqueID();
+  auto* resource_provider = Context2D()->GetOrCreateResourceProvider();
   Context2D()->fillRect(3, 3, 1, 1);
-  EXPECT_EQ(gen_id,
-            Context2D()->GetOrCreateResourceProvider()->ContentUniqueID());
+  EXPECT_EQ(resource_provider, Context2D()->GetOrCreateResourceProvider());
 }
 
 TEST_P(CanvasRenderingContext2DTest,
@@ -729,11 +732,9 @@ TEST_P(CanvasRenderingContext2DTest,
   // Install a CanvasResourceProvider that does not support direct compositing.
   gfx::Size size = CanvasElement().Size();
   auto provider = Canvas2DResourceProviderBitmap::CreateForTesting(
-      size,
-      Canvas2DColorParams(PredefinedColorSpace::kSRGB,
-                          CanvasPixelFormat::kUint8,
-                          /*has_alpha=*/true),
-      CanvasResourceProvider::ShouldInitialize::kNo);
+      size, Canvas2DColorParams(PredefinedColorSpace::kSRGB,
+                                CanvasPixelFormat::kUint8,
+                                /*has_alpha=*/true));
 
   Context2D()->SetCanvas2DResourceProviderForTesting(std::move(provider), size);
 
@@ -1531,12 +1532,13 @@ TEST_P(CanvasRenderingContext2DTest,
        UnacceleratedLowLatencyIsNotSingleBuffered) {
   // Ensure that the context will create a SharedImage provider for the test to
   // be meaningful.
-  ScopedCanvas2dImageChromiumForTest canvas_2d_image_chromium(true);
+  SharedGpuContext::SetNativeMappableSharedImagesSupportedForCanvas2DForTesting(
+      true);
   ScopedTestingPlatformSupport<GpuCompositingTestPlatform> platform;
   const_cast<gpu::Capabilities&>(SharedGpuContext::ContextProviderWrapper()
                                      ->ContextProvider()
                                      .GetCapabilities())
-      .mappable_formats.insert(viz::SinglePlaneFormat::kBGRA_8888);
+      .texture_format_bgra8888 = true;
 
   CreateContext(kNonOpaque, kLowLatency);
   // No need to set-up the layer bridge when testing low latency mode.
@@ -1545,7 +1547,7 @@ TEST_P(CanvasRenderingContext2DTest,
   EXPECT_TRUE(CanvasElement().LowLatencyEnabled());
   EXPECT_FALSE(Context2D()
                    ->GetOrCreateResourceProvider()
-                   ->AsSharedImageProvider()
+                   ->As2DSharedImageProvider()
                    ->IsSingleBuffered());
   EXPECT_EQ(CanvasElement().GetRasterModeForCanvas2D(), RasterMode::kCPU);
 }
@@ -1714,17 +1716,17 @@ TEST_P(CanvasRenderingContext2DTest, AutoFlushDelayedByLayer) {
 }
 
 TEST_P(CanvasRenderingContext2DTest,
-       SoftwareCanvasIsCompositedIfImageChromium) {
-  ScopedCanvas2dImageChromiumForTest canvas_2d_image_chromium(true);
+       SoftwareCanvasIsCompositedIfNativeMappableBuffersAreSupported) {
+  SharedGpuContext::SetNativeMappableSharedImagesSupportedForCanvas2DForTesting(
+      true);
 
-  // Ensure that native support for BGRA GMBs is present, as otherwise
-  // compositing will not occur irrespective of whether
-  // `ScopedCanvas2dImageChromium` is enabled.
+  // Ensure that support for BGRA overlays is present, as otherwise compositing
+  // will not occur regardless.
   ScopedTestingPlatformSupport<GpuCompositingTestPlatform> platform;
   const_cast<gpu::Capabilities&>(SharedGpuContext::ContextProviderWrapper()
                                      ->ContextProvider()
                                      .GetCapabilities())
-      .mappable_formats.insert(viz::SinglePlaneFormat::kBGRA_8888);
+      .texture_format_bgra8888 = true;
 
   CreateContext(kNonOpaque);
   EXPECT_TRUE(Context2D()->GetOrCreateResourceProvider());
@@ -1736,20 +1738,20 @@ TEST_P(CanvasRenderingContext2DTest,
 }
 
 TEST_P(CanvasRenderingContext2DTest,
-       SoftwareCanvasIsNotCompositedIfNotImageChromium) {
-  ScopedCanvas2dImageChromiumForTest canvas_2d_image_chromium(false);
+       SoftwareCanvasIsNotCompositedIfNativeMappableBuffersAreNotSupported) {
+  SharedGpuContext::SetNativeMappableSharedImagesSupportedForCanvas2DForTesting(
+      false);
 
   CreateContext(kNonOpaque);
   EXPECT_TRUE(Context2D()->GetOrCreateResourceProvider());
 
-  // Ensure that native support for BGRA GMBs is present, as otherwise
-  // compositing will not occur irrespective of whether
-  // `ScopedCanvas2dImageChromium` is enabled.
+  // Ensure that support for BGRA overlays is present, as otherwise compositing
+  // will not occur regardless.
   ScopedTestingPlatformSupport<GpuCompositingTestPlatform> platform;
   const_cast<gpu::Capabilities&>(SharedGpuContext::ContextProviderWrapper()
                                      ->ContextProvider()
                                      .GetCapabilities())
-      .mappable_formats.insert(viz::SinglePlaneFormat::kBGRA_8888);
+      .texture_format_bgra8888 = true;
 
   // Draw to the canvas and verify that the canvas is not composited.
   Context2D()->fillRect(0, 0, 1, 1);
@@ -2323,20 +2325,28 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
   // gets a chance to run.
   SetDocumentVisibility(GetDocument(), PageVisibilityState::kVisible);
 
-  // Move the page to the background again and verify that hibernation is not
-  // newly scheduled, as the hibernation scheduled on the first backgrounding is
-  // still pending.
+  // Go back to background. A new hibernation task is scheduled.
   {
     base::HistogramTester histogram_tester;
     SetDocumentVisibility(GetDocument(), PageVisibilityState::kHidden);
 
     histogram_tester.ExpectUniqueSample(
         kCanvasHibernationEventHistogramName,
-        CanvasHibernationHandler::HibernationEvent::kHibernationScheduled, 0);
+        CanvasHibernationHandler::HibernationEvent::kHibernationScheduled, 1);
     EXPECT_FALSE(handler.IsHibernating());
   }
 
-  WaitForHibernation();
+  {
+    base::HistogramTester histogram_tester;
+
+    WaitForHibernation();
+    // The first hibernation task returned due to epoch mismatch.
+    histogram_tester.ExpectUniqueSample(
+        kCanvasHibernationEventHistogramName,
+        CanvasHibernationHandler::HibernationEvent::
+            kHibernationAbortedDueToEpochMismatch,
+        1);
+  }
 
   EXPECT_EQ(CanvasElement().GetRasterModeForCanvas2D(), RasterMode::kCPU);
   EXPECT_TRUE(handler.IsHibernating());
@@ -2871,7 +2881,7 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, ResetEndsHibernation) {
 
   // Hide the page and run hibernation task.
   SetDocumentVisibility(GetDocument(), PageVisibilityState::kHidden);
-  RunIdleTasks();
+  WaitForHibernation();
   EXPECT_TRUE(handler.IsHibernating());
 
   // Reset the canvas, ending hibernation.
@@ -2936,10 +2946,7 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, ResetDoesntAbortHibernation) {
   {
     base::HistogramTester histogram_tester;
     RunInTask(base::BindLambdaForTesting([this] { Context2D()->reset(); }));
-
-    // Run hibernation task. Hibernation aborts since there's no more resources.
-    RunIdleTasks();
-
+    WaitForHibernation();
     EXPECT_TRUE(handler.IsHibernating());
   }
 }
@@ -2985,8 +2992,8 @@ TEST_P(CanvasRenderingContext2DTestAccelerated,
 
   Context2D()->fillRect(3, 3, 1, 1);
 
-  const CanvasResourceProviderSharedImage* provider =
-      Context2D()->GetResourceProviderForTesting()->AsSharedImageProvider();
+  const Canvas2DResourceProviderSharedImage* provider =
+      Context2D()->GetResourceProviderForTesting()->As2DSharedImageProvider();
   ASSERT_THAT(provider, NotNull());
   EXPECT_EQ(provider->NumInflightResourcesForTesting(), 1);
 
@@ -3245,9 +3252,9 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, HibernationWithUnclosedLayer) {
                            exception_state);
                      },
                      Unretained(this)));
-  blink::test::RunPendingTasks();
+  // Make sure the task above runs.
+  RunIdleTasks();
 
-  // Hibernate the canvas. Hibernation is handled in a idle task.
   SetDocumentVisibility(GetDocument(), PageVisibilityState::kHidden);
   WaitForHibernation();
 
@@ -3310,7 +3317,7 @@ TEST_P(CanvasRenderingContext2DTestAccelerated, LowLatencyIsNotSingleBuffered) {
   EXPECT_TRUE(CanvasElement().LowLatencyEnabled());
   EXPECT_FALSE(Context2D()
                    ->GetOrCreateResourceProvider()
-                   ->AsSharedImageProvider()
+                   ->As2DSharedImageProvider()
                    ->IsSingleBuffered());
   EXPECT_EQ(CanvasElement().GetRasterModeForCanvas2D(), RasterMode::kGPU);
 }
@@ -3514,8 +3521,7 @@ class CanvasRenderingContext2DTestImageChromium
       viz::TestContextProvider& context_provider) override {
     auto* test_raster = context_provider.GetTestRasterInterface();
     test_raster->set_max_texture_size(1024);
-    test_raster->set_supports_mappable_format(
-        viz::SinglePlaneFormat::kBGRA_8888, true);
+    test_raster->set_texture_format_bgra8888(true);
 
     gpu::SharedImageCapabilities shared_image_caps;
     shared_image_caps.supports_scanout_shared_images = true;
@@ -3538,17 +3544,17 @@ TEST_P(CanvasRenderingContext2DTestImageChromium, LowLatencyIsSingleBuffered) {
   EXPECT_EQ(CanvasElement().GetRasterModeForCanvas2D(), RasterMode::kGPU);
   EXPECT_TRUE(Context2D()
                   ->GetOrCreateResourceProvider()
-                  ->AsSharedImageProvider()
+                  ->As2DSharedImageProvider()
                   ->IsSingleBuffered());
   auto frame1_resource = Context2D()
                              ->GetOrCreateResourceProvider()
-                             ->AsSharedImageProvider()
+                             ->As2DSharedImageProvider()
                              ->ProduceCanvasResource(FlushReason::kOther);
   EXPECT_TRUE(frame1_resource);
   DrawSomething();
   auto frame2_resource = Context2D()
                              ->GetOrCreateResourceProvider()
-                             ->AsSharedImageProvider()
+                             ->As2DSharedImageProvider()
                              ->ProduceCanvasResource(FlushReason::kOther);
   EXPECT_TRUE(frame2_resource);
   EXPECT_EQ(frame1_resource.get(), frame2_resource.get());
@@ -3587,17 +3593,17 @@ TEST_P(CanvasRenderingContext2DTestSwapChain, LowLatencyIsSingleBuffered) {
   EXPECT_EQ(CanvasElement().GetRasterModeForCanvas2D(), RasterMode::kGPU);
   EXPECT_TRUE(Context2D()
                   ->GetOrCreateResourceProvider()
-                  ->AsSharedImageProvider()
+                  ->As2DSharedImageProvider()
                   ->IsSingleBuffered());
   auto frame1_resource = Context2D()
                              ->GetOrCreateResourceProvider()
-                             ->AsSharedImageProvider()
+                             ->As2DSharedImageProvider()
                              ->ProduceCanvasResource(FlushReason::kOther);
   EXPECT_TRUE(frame1_resource);
   DrawSomething();
   auto frame2_resource = Context2D()
                              ->GetOrCreateResourceProvider()
-                             ->AsSharedImageProvider()
+                             ->As2DSharedImageProvider()
                              ->ProduceCanvasResource(FlushReason::kOther);
   EXPECT_TRUE(frame2_resource);
   EXPECT_EQ(frame1_resource.get(), frame2_resource.get());

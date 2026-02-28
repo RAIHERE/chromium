@@ -12,6 +12,7 @@
 #include <string_view>
 #include <utility>
 
+#include "base/base64.h"
 #include "base/check.h"
 #include "base/check_deref.h"
 #include "base/functional/bind.h"
@@ -34,12 +35,14 @@
 #include "chrome/browser/web_applications/isolated_web_apps/isolation_data.h"
 #include "chrome/browser/web_applications/isolated_web_apps/jobs/prepare_install_info_job.h"
 #include "chrome/browser/web_applications/isolated_web_apps/remove_isolated_web_app_data.h"
+#include "chrome/browser/web_applications/jobs/finalize_update_job.h"
 #include "chrome/browser/web_applications/locks/app_lock.h"
 #include "chrome/browser/web_applications/web_app.h"
 #include "chrome/browser/web_applications/web_app_command_manager.h"
 #include "chrome/browser/web_applications/web_app_install_finalizer.h"
 #include "chrome/browser/web_applications/web_app_install_info.h"
 #include "chrome/browser/web_applications/web_app_install_utils.h"
+#include "chrome/browser/web_applications/web_app_provider.h"
 #include "chrome/browser/web_applications/web_app_registry_update.h"
 #include "chrome/browser/web_applications/web_app_sync_bridge.h"
 #include "chrome/browser/web_applications/web_app_utils.h"
@@ -138,7 +141,7 @@ void IsolatedWebAppApplyUpdateCommand::CheckTrustAndSignatures(
   command_helper_->CheckTrustAndSignatures(
       IwaSourceWithMode::FromStorageLocation(profile().GetPath(),
                                              pending_update_info().location),
-      &profile(),
+      IwaUpdateOperation{}, &profile(),
       base::BindOnce(
           &IsolatedWebAppApplyUpdateCommand::OnTrustAndSignaturesChecked,
           weak_factory_.GetWeakPtr(), std::move(next_step_callback)));
@@ -166,11 +169,12 @@ void IsolatedWebAppApplyUpdateCommand::HandleKeyRotationOrDowngradeIfNecessary(
                                               std::move(next_step_callback));
   } else {
     // Handle key rotation for same-version updates.
-    if (LookupRotatedKey(url_info_.web_bundle_id(), GetMutableDebugValue()) ==
-        KeyRotationLookupResult::kKeyFound) {
-      KeyRotationData data =
-          GetKeyRotationData(url_info_.web_bundle_id(), isolation_data());
-      if (!data.current_installation_has_rk && data.pending_update_has_rk) {
+    if (auto kr_data =
+            GetKeyRotationData(url_info_.web_bundle_id(), isolation_data())) {
+      GetMutableDebugValue().Set("rotated_key",
+                                 base::Base64Encode(kr_data->rotated_key));
+      if (!kr_data->current_installation_has_rk &&
+          kr_data->pending_update_has_rk) {
         std::move(next_step_callback).Run();
         return;
       }
@@ -194,8 +198,8 @@ void IsolatedWebAppApplyUpdateCommand::PrepareInstallInfo(
       profile(),
       IwaSourceWithMode::FromStorageLocation(profile().GetPath(),
                                              pending_update_info().location),
-      pending_update_info().version, *web_contents_, *command_helper_,
-      lock_->web_contents_manager().CreateUrlLoader(),
+      IwaUpdateOperation{}, pending_update_info().version, *web_contents_,
+      *command_helper_, lock_->web_contents_manager().CreateUrlLoader(),
       std::move(next_step_callback));
 }
 
@@ -211,8 +215,11 @@ void IsolatedWebAppApplyUpdateCommand::FinalizeUpdate(
       "actual_version", install_info.isolated_web_app_version().GetString());
   GetMutableDebugValue().Set("app_title", install_info.title.AsDebugValue());
 
-  lock_->install_finalizer().FinalizeUpdate(
-      install_info,
+  WebAppProvider* provider = WebAppProvider::GetForWebApps(&profile());
+
+  install_update_job_ = std::make_unique<FinalizeUpdateJob>(
+      lock_.get(), lock_.get(), *provider, install_info);
+  install_update_job_->Start(
       base::BindOnce(&IsolatedWebAppApplyUpdateCommand::OnFinalized,
                      weak_factory_.GetWeakPtr()));
 }
@@ -220,10 +227,10 @@ void IsolatedWebAppApplyUpdateCommand::FinalizeUpdate(
 void IsolatedWebAppApplyUpdateCommand::OnFinalized(
     const webapps::AppId& app_id,
     webapps::InstallResultCode update_result_code) {
-  CHECK_EQ(app_id, url_info_.app_id());
-
+  install_update_job_.reset();
   if (update_result_code ==
       webapps::InstallResultCode::kSuccessAlreadyInstalled) {
+    CHECK_EQ(app_id, url_info_.app_id());
     ReportSuccess();
   } else {
     ReportFailure(base::StringPrintf("Error during finalization: %s",

@@ -8,16 +8,18 @@
 #include "base/run_loop.h"
 #include "base/test/bind.h"
 #include "base/test/scoped_feature_list.h"
+#include "base/unguessable_token.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks.mojom.h"
+#include "chrome/browser/contextual_tasks/contextual_tasks_cookie_synchronizer.h"
 #include "chrome/browser/contextual_tasks/contextual_tasks_service_factory.h"
 #include "chrome/browser/profiles/profile.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
 #include "chrome/browser/signin/identity_test_environment_profile_adaptor.h"
+#include "chrome/browser/tab_list/tab_list_interface.h"
 #include "chrome/browser/ui/browser.h"
 #include "chrome/browser/ui/browser_commands.h"
 #include "chrome/browser/ui/lens/lens_search_controller.h"
 #include "chrome/browser/ui/tabs/public/tab_features.h"
-#include "chrome/browser/ui/tabs/tab_list_interface.h"
 #include "chrome/common/webui_url_constants.h"
 #include "chrome/test/base/in_process_browser_test.h"
 #include "chrome/test/base/ui_test_utils.h"
@@ -25,12 +27,14 @@
 #include "components/contextual_tasks/public/contextual_tasks_service.h"
 #include "components/contextual_tasks/public/features.h"
 #include "components/contextual_tasks/public/mock_contextual_tasks_service.h"
+#include "components/lens/lens_overlay_invocation_source.h"
 #include "components/omnibox/browser/searchbox.mojom.h"
 #include "components/signin/public/base/consent_level.h"
 #include "components/signin/public/identity_manager/identity_manager.h"
 #include "components/signin/public/identity_manager/identity_test_environment.h"
 #include "components/signin/public/identity_manager/identity_test_utils.h"
 #include "components/tabs/public/tab_interface.h"
+#include "components/zoom/zoom_controller.h"
 #include "content/public/browser/navigation_controller.h"
 #include "content/public/browser/web_contents.h"
 #include "content/public/test/browser_test.h"
@@ -65,21 +69,40 @@ class MockContextualTasksPage : public contextual_tasks::mojom::Page {
   MOCK_METHOD(void, OnHandshakeComplete, (), (override));
   MOCK_METHOD(void,
               OnContextUpdated,
-              (std::vector<contextual_tasks::mojom::TabPtr>,
-               std::vector<contextual_tasks::mojom::UploadedFilePtr>,
-               std::vector<contextual_tasks::mojom::ImagePtr>),
+              (std::vector<contextual_tasks::mojom::ContextInfoPtr>),
               (override));
   MOCK_METHOD(void, HideInput, (), (override));
   MOCK_METHOD(void, RestoreInput, (), (override));
   MOCK_METHOD(void, OnZeroStateChange, (bool is_zero_state), (override));
   MOCK_METHOD(void, OnAiPageStatusChanged, (bool), (override));
-  MOCK_METHOD(void, OnLensOverlayStateChanged, (bool), (override));
+  MOCK_METHOD(void,
+              OnLensOverlayStateChanged,
+              (bool is_showing, bool maybe_show_overlay_hint_text),
+              (override));
   MOCK_METHOD(void,
               SetTaskDetails,
               (const base::Uuid&, const std::string&, const std::string&),
               (override));
+  MOCK_METHOD(void, SetAimUrl, (const GURL&), (override));
   MOCK_METHOD(void, ShowErrorPage, (), (override));
   MOCK_METHOD(void, HideErrorPage, (), (override));
+  MOCK_METHOD(void, ShowOauthErrorDialog, (), (override));
+  MOCK_METHOD(void,
+              UpdateComposeboxPosition,
+              (contextual_tasks::mojom::ComposeboxPositionPtr),
+              (override));
+  MOCK_METHOD(void, LockInput, (), (override));
+  MOCK_METHOD(void, UnlockInput, (), (override));
+  MOCK_METHOD(void,
+              InjectInput,
+              (const std::string& title,
+               const std::string& thumbnail,
+               const base::UnguessableToken& file_token),
+              (override));
+  MOCK_METHOD(void,
+              RemoveInjectedInput,
+              (const base::UnguessableToken& file_token),
+              (override));
 
   mojo::PendingRemote<contextual_tasks::mojom::Page> BindAndGetRemote() {
     return receiver_.BindNewPipeAndPassRemote();
@@ -100,6 +123,18 @@ class MockLensSearchController : public LensSearchController {
               (lens::LensOverlayInvocationSource invocation_source,
                bool should_show_csb),
               (override));
+};
+
+class MockContextualTasksCookieSynchronizer
+    : public contextual_tasks::ContextualTasksCookieSynchronizer {
+ public:
+  MockContextualTasksCookieSynchronizer(
+      content::BrowserContext* context,
+      signin::IdentityManager* identity_manager)
+      : ContextualTasksCookieSynchronizer(context, identity_manager) {}
+  ~MockContextualTasksCookieSynchronizer() override = default;
+
+  MOCK_METHOD(void, CopyCookiesToWebviewStoragePartition, (), (override));
 };
 
 }  // namespace
@@ -199,7 +234,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUIBrowserTest,
             client_message.ParseFromArray(message.data(), message.size()));
         ASSERT_TRUE(client_message.has_set_cobrowsing_display_mode());
         EXPECT_EQ(client_message.set_cobrowsing_display_mode()
-                      .payload()
+                      .params()
                       .display_mode(),
                   lens::CobrowsingDisplayModeParams::COBROWSING_TAB);
         run_loop.Quit();
@@ -235,7 +270,7 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksUIBrowserTest,
             client_message.ParseFromArray(message.data(), message.size()));
         ASSERT_TRUE(client_message.has_set_cobrowsing_display_mode());
         EXPECT_EQ(client_message.set_cobrowsing_display_mode()
-                      .payload()
+                      .params()
                       .display_mode(),
                   lens::CobrowsingDisplayModeParams::COBROWSING_SIDEPANEL);
         run_loop.Quit();
@@ -297,29 +332,56 @@ IN_PROC_BROWSER_TEST_F(ContextualTasksLensBrowserTest, HandleLensButtonClick) {
 }
 
 IN_PROC_BROWSER_TEST_F(ContextualTasksUIBrowserTest,
+                       OnInnerWebContentsCreated_TriggersCookieSync) {
+  auto mock_synchronizer = std::make_unique<
+      testing::StrictMock<MockContextualTasksCookieSynchronizer>>(
+      browser()->profile(), identity_test_env_->identity_manager());
+
+  EXPECT_CALL(*mock_synchronizer, CopyCookiesToWebviewStoragePartition())
+      .Times(1);
+
+  controller_->SetCookieSynchronizerForTesting(std::move(mock_synchronizer));
+
+  // Create inner contents to trigger the observer.
+  std::unique_ptr<content::WebContents> inner_contents =
+      content::WebContents::Create(
+          content::WebContents::CreateParams(browser()->profile()));
+
+  TriggerOnInnerWebContentsCreated(inner_contents.get());
+}
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksUIBrowserTest,
                        OnLensOverlayStateChanged) {
   testing::NiceMock<MockContextualTasksPage> mock_page;
 
   mojo::PendingReceiver<contextual_tasks::mojom::PageHandler> handler_receiver;
   // The initial call to CreatePageHandler should call
   // OnLensOverlayStateChanged.
-  EXPECT_CALL(mock_page, OnLensOverlayStateChanged(false));
+  EXPECT_CALL(mock_page, OnLensOverlayStateChanged(
+                             /*is_showing=*/false,
+                             /*maybe_show_overlay_hint_text=*/false));
   controller_->CreatePageHandler(mock_page.BindAndGetRemote(),
                                  std::move(handler_receiver));
 
   {
     base::RunLoop run_loop;
-    EXPECT_CALL(mock_page, OnLensOverlayStateChanged(true))
+    EXPECT_CALL(mock_page,
+                OnLensOverlayStateChanged(
+                    /*is_showing=*/true, /*maybe_show_overlay_hint_text=*/true))
         .WillOnce(testing::InvokeWithoutArgs(&run_loop, &base::RunLoop::Quit));
-    controller_->OnLensOverlayStateChanged(true);
+    controller_->OnLensOverlayStateChanged(
+        true, lens::LensOverlayInvocationSource::kContextualTasksComposebox);
     run_loop.Run();
   }
 
   {
     base::RunLoop run_loop;
-    EXPECT_CALL(mock_page, OnLensOverlayStateChanged(false))
+    EXPECT_CALL(mock_page, OnLensOverlayStateChanged(
+                               /*is_showing=*/false,
+                               /*maybe_show_overlay_hint_text=*/false))
         .WillOnce(testing::InvokeWithoutArgs(&run_loop, &base::RunLoop::Quit));
-    controller_->OnLensOverlayStateChanged(false);
+    controller_->OnLensOverlayStateChanged(
+        false, lens::LensOverlayInvocationSource::kAppMenu);
     run_loop.Run();
   }
 }
@@ -374,4 +436,27 @@ IN_PROC_BROWSER_TEST_F(
 
   // Verify third inner contents is observed.
   EXPECT_EQ(controller_->GetInnerFrameUrl(), url3);
+}
+
+class ContextualTasksNoMockBrowserTest : public InProcessBrowserTest {
+ public:
+  ContextualTasksNoMockBrowserTest() {
+    feature_list_.InitWithFeatures(
+        {contextual_tasks::kContextualTasks,
+         contextual_tasks::kContextualTasksForceEntryPointEligibility},
+        {});
+  }
+
+ private:
+  base::test::ScopedFeatureList feature_list_;
+};
+
+IN_PROC_BROWSER_TEST_F(ContextualTasksNoMockBrowserTest, CanZoom) {
+  EXPECT_TRUE(ui_test_utils::NavigateToURL(
+      browser(), GURL(chrome::kChromeUIContextualTasksURL)));
+  content::WebContents* web_contents =
+      TabListInterface::From(browser())->GetActiveTab()->GetContents();
+  auto* zoom_controller = zoom::ZoomController::FromWebContents(web_contents);
+  ASSERT_EQ(zoom::ZoomController::ZoomMode::ZOOM_MODE_DEFAULT,
+            zoom_controller->zoom_mode());
 }

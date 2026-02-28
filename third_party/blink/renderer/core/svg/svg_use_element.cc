@@ -214,7 +214,7 @@ void SVGUseElement::UpdateDocumentContent(
 void SVGUseElement::UpdateTargetReference() {
   const String& url_string = HrefString();
   element_url_ = GetDocument().CompleteURL(url_string);
-  element_url_is_local_ = url_string.StartsWith('#');
+  element_url_is_local_ = url_string.starts_with('#');
   if (!IsStructurallyExternal() || !GetDocument().IsActive() ||
       !element_url_.IsValid()) {
     UpdateDocumentContent(nullptr);
@@ -329,8 +329,8 @@ void SVGUseElement::ClearResourceReference() {
 }
 
 Element* SVGUseElement::ResolveTargetElement() {
-  AtomicString element_identifier(DecodeURLEscapeSequences(
-      element_url_.FragmentIdentifier(), DecodeURLMode::kUTF8OrIsomorphic));
+  AtomicString element_identifier(DecodeUrlEscapeSequences(
+      element_url_.FragmentIdentifier(), DecodeUrlMode::kUtf8OrIsomorphic));
 
   if (!IsStructurallyExternal()) {
     if (!element_url_.HasFragmentIdentifier()) {

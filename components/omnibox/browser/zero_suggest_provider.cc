@@ -190,17 +190,20 @@ bool StoreRemoteResponse(const std::string& response_json,
     return false;
   }
 
+  const auto page_class = input.current_page_classification();
+
   if (!SearchSuggestionParser::ParseSuggestResults(
           *response_data, input, client->GetSchemeClassifier(),
           /*default_result_relevance=*/
           omnibox::kDefaultRemoteZeroSuggestRelevance,
-          /*is_keyword_result=*/false, results)) {
+          /*is_keyword_result=*/false,
+          {.allow_empty_suggestion = omnibox::IsOmniboxComposebox(page_class)},
+          results)) {
     return false;
   }
 
   const bool has_contextual_input =
       input.lens_overlay_suggest_inputs().has_value();
-  const auto page_class = input.current_page_classification();
   if (!ShouldCacheResultTypeInContext(result_type, has_contextual_input,
                                       page_class)) {
     return true;
@@ -258,7 +261,9 @@ bool ReadStoredResponse(const AutocompleteProviderClient* client,
           *response_data, input, client->GetSchemeClassifier(),
           /*default_result_relevance=*/
           omnibox::kDefaultRemoteZeroSuggestRelevance,
-          /*is_keyword_result=*/false, results)) {
+          /*is_keyword_result=*/false,
+          {.allow_empty_suggestion = omnibox::IsOmniboxComposebox(page_class)},
+          results)) {
     return false;
   }
 
@@ -342,12 +347,6 @@ std::u16string TruncateUTF16(const std::u16string& input, size_t max_length) {
   return input.substr(0, it.array_pos());
 }
 
-std::string EncodeURIComponent(const std::string& component) {
-  url::RawCanonOutputT<char> encoded;
-  url::EncodeURIComponent(component, &encoded);
-  return std::string(encoded.view());
-}
-
 void MaybeAddContextualSuggestParams(
     const AutocompleteProviderClient* client,
     const AutocompleteInput& input,
@@ -380,9 +379,9 @@ void MaybeAddContextualSuggestParams(
         client->IsPersonalizedUrlDataCollectionActive()) {
       std::string page_title =
           !input.context_tab_title().empty()
-              ? EncodeURIComponent(base::UTF16ToUTF8(TruncateUTF16(
+              ? url::EncodeUriComponent(base::UTF16ToUTF8(TruncateUTF16(
                     input.context_tab_title(), kMaxPageTitleLength)))
-              : EncodeURIComponent(base::UTF16ToUTF8(
+              : url::EncodeUriComponent(base::UTF16ToUTF8(
                     TruncateUTF16(input.current_title(), kMaxPageTitleLength)));
       if (client->ShouldSendPageTitleSuggestParam() && !page_title.empty()) {
         additional_query_params.push_back(
@@ -622,7 +621,7 @@ void ZeroSuggestProvider::Start(const AutocompleteInput& input,
           : std::string();
   search_terms_args.lens_overlay_suggest_inputs =
       input.lens_overlay_suggest_inputs();
-  search_terms_args.aim_tool_mode = input.aim_tool_mode();
+  search_terms_args.input_state = input.input_state();
 
   MaybeAddContextualSuggestParams(client(), input, search_terms_args);
 

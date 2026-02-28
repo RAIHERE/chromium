@@ -72,7 +72,6 @@
 #include "content/browser/browser_plugin/browser_plugin_embedder.h"
 #include "content/browser/browser_plugin/browser_plugin_guest.h"
 #include "content/browser/btm/btm_bounce_detector.h"
-#include "content/browser/btm/btm_navigation_flow_detector.h"
 #include "content/browser/child_process_security_policy_impl.h"
 #include "content/browser/closewatcher/close_listener_manager.h"
 #include "content/browser/compositor/surface_utils.h"
@@ -92,6 +91,7 @@
 #include "content/browser/host_zoom_map_impl.h"
 #include "content/browser/media/audio_stream_monitor.h"
 #include "content/browser/media/media_web_contents_observer.h"
+#include "content/browser/memory/scheduler_loop_quarantine_web_contents_observer.h"
 #include "content/browser/permissions/permission_controller_impl.h"
 #include "content/browser/permissions/permission_util.h"
 #include "content/browser/preloading/prefetch/prefetch_request.h"
@@ -179,6 +179,7 @@
 #include "content/public/common/content_switches.h"
 #include "content/public/common/referrer_type_converters.h"
 #include "content/public/common/url_constants.h"
+#include "content/public/common/widget_type.h"
 #include "ipc/constants.mojom.h"
 #include "media/base/media_switches.h"
 #include "net/base/url_util.h"
@@ -2043,6 +2044,17 @@ RenderWidgetHostView* WebContentsImpl::GetTopLevelRenderWidgetHostView() {
     return GetOuterWebContents()->GetTopLevelRenderWidgetHostView();
   }
   return GetRenderManager()->GetRenderWidgetHostView();
+}
+
+std::vector<RenderWidgetHostView*> WebContentsImpl::GetPopupWidgets() {
+  std::vector<RenderWidgetHostView*> result;
+  for (const auto& [_, host] : created_widgets_) {
+    RenderWidgetHostViewBase* view = host->GetView();
+    if (view && view->GetWidgetType() == WidgetType::kPopup) {
+      result.push_back(view);
+    }
+  }
+  return result;
 }
 
 RenderWidgetHost* WebContentsImpl::FindWidgetAtPoint(const gfx::PointF& point) {
@@ -4215,9 +4227,9 @@ void WebContentsImpl::Init(const WebContents::CreateParams& params,
     AttributionHost::CreateForWebContents(this);
   }
 
+  SchedulerLoopQuarantineWebContentsObserver::MaybeCreateForWebContents(this);
   RedirectChainDetector::CreateForWebContents(this);
   BtmWebContentsObserver::MaybeCreateForWebContents(this);
-  BtmNavigationFlowDetector::CreateForWebContents(this);
   RedirectHeuristicTabHelper::CreateForWebContents(this);
   OpenerHeuristicTabHelper::CreateForWebContents(this);
 
@@ -4821,6 +4833,13 @@ void WebContentsImpl::Restore() {
   }
   GetDelegate()->RestoreFromWebAPI();
 }
+
+void WebContentsImpl::SetResizable(bool resizable) {
+  if (!GetDelegate()) {
+    return;
+  }
+  GetDelegate()->SetResizableFromWebAPI(resizable);
+}
 #endif  // !BUILDFLAG(IS_ANDROID) && !BUILDFLAG(IS_IOS)
 
 // TODO(laurila, crbug.com/1466855): Map into new `ui::DisplayState` enum
@@ -5177,8 +5196,12 @@ bool WebContentsImpl::RequestKeyboardLock(
   }
 
   // KeyboardLock is only supported when called by the top-level browsing
-  // context and is not supported in embedded content scenarios.
-  if (GetOuterWebContents()) {
+  // context and is not supported in embedded content scenarios such as
+  // GuestView guests (<webview> tags, PDF viewer). However, some embedders
+  // (e.g. WebUIBrowserWindow) attach top-level tabs as inner WebContents and
+  // opt in via AllowKeyboardLockForInnerContents().
+  if (GetOuterWebContents() &&
+      (!delegate_ || !delegate_->AllowKeyboardLockForInnerContents(this))) {
     render_widget_host->GotResponseToKeyboardLockRequest(false);
     return false;
   }
@@ -5272,7 +5295,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
   int render_process_id = opener->GetProcess()->GetDeprecatedID();
   SiteInstanceImpl* source_site_instance = opener->GetSiteInstance();
   const auto& partition_config =
-      source_site_instance->GetStoragePartitionConfig();
+      source_site_instance->GetSecurityPrincipal().GetStoragePartitionConfig();
 
   {
     StoragePartition* partition =
@@ -5295,7 +5318,8 @@ FrameTree* WebContentsImpl::CreateNewWindow(
         static_cast<WebContentsImpl*>(delegate_->CreateCustomWebContents(
             opener, source_site_instance, is_new_browsing_instance,
             opener->GetLastCommittedURL(), params.frame_name, params.target_url,
-            partition_config, session_storage_namespace));
+            params.disposition, *params.features, partition_config,
+            session_storage_namespace));
     if (!web_contents_impl) {
       return nullptr;
     }
@@ -5313,7 +5337,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
           : IsGuest();
   // While some guest types do not have a guest SiteInstance, the ones that
   // don't all override WebContents creation above.
-  CHECK_EQ(source_site_instance->IsGuest(), is_guest);
+  CHECK_EQ(source_site_instance->GetSecurityPrincipal().IsGuest(), is_guest);
 
   // We usually create the new window in the same BrowsingInstance (group of
   // script-related windows), by passing in the current SiteInstance.  However,
@@ -5381,8 +5405,10 @@ FrameTree* WebContentsImpl::CreateNewWindow(
       // should be in the same StoragePartition.
       SiteInstanceImpl* new_site_instance = new_contents->GetSiteInstance();
       DCHECK(!new_site_instance->IsRelatedSiteInstance(source_site_instance));
-      DCHECK_EQ(new_site_instance->GetStoragePartitionConfig(),
-                source_site_instance->GetStoragePartitionConfig());
+      DCHECK_EQ(
+          new_site_instance->GetSecurityPrincipal().GetStoragePartitionConfig(),
+          source_site_instance->GetSecurityPrincipal()
+              .GetStoragePartitionConfig());
     }
   }
 
@@ -5522,8 +5548,7 @@ FrameTree* WebContentsImpl::CreateNewWindow(
             ? NavigationController::UA_OVERRIDE_TRUE
             : NavigationController::UA_OVERRIDE_FALSE;
     load_params->download_policy = params.download_policy;
-    load_params->initiator_activation_and_ad_status =
-        params.initiator_activation_and_ad_status;
+    load_params->started_by_ad = params.started_by_ad;
 
     if (delegate_ && !is_guest &&
         !delegate_->ShouldResumeRequestsForCreatedWindow()) {
@@ -5595,7 +5620,7 @@ int64_t WebContentsImpl::AdjustWindowRect(gfx::Rect* bounds,
     // `blink::kMinimumBorderlessWindowSize` instead of the default
     // `blink::kMinimumWindowSize`.
     int minimum_size =
-        GetDisplayMode() == blink::mojom::DisplayMode::kBorderless &&
+        GetDisplayMode() == blink::mojom::DisplayMode::kUnframed &&
                 IsWindowManagementGranted(opener)
             ? blink::kMinimumBorderlessWindowSize
             : blink::kMinimumWindowSize;
@@ -5701,6 +5726,16 @@ void WebContentsImpl::ShowCreatedWidget(int process_id,
       static_cast<RenderWidgetHostViewBase*>(
           GetCreatedWidget(process_id, widget_route_id));
   if (!widget_host_view) {
+    return;
+  }
+
+  RenderWidgetHostImpl* rwh = GetPrimaryMainFrame()->GetRenderWidgetHost();
+  if (base::FeatureList::IsEnabled(
+          blink::features::kBlockSelectPopupUnfocusedWindow) &&
+      !rwh->is_active()) {
+    // If the OS window isn't focused, then don't open select element popups for
+    // it: https://issues.chromium.org/issues/365089001
+    widget_host_view->host()->ShutdownAndDestroyWidget(true);
     return;
   }
 
@@ -6773,9 +6808,7 @@ void WebContentsImpl::SaveFrameWithHeaders(
             "triggered by user request."
           policy_exception_justification: "Not implemented."
         })");
-  auto params = std::make_unique<download::DownloadUrlParameters>(
-      url, rfh->GetProcess()->GetDeprecatedID(), rfh->GetRoutingID(),
-      traffic_annotation);
+  auto params = rfh->CreateDownloadUrlParameters(url, traffic_annotation);
   params->set_referrer(referrer.url);
   params->set_referrer_policy(
       Referrer::ReferrerPolicyForUrlRequest(referrer.policy));
@@ -6809,6 +6842,7 @@ void WebContentsImpl::SaveFrameWithHeaders(
           .GetLastCommittedEntry()
           ->GetFrameEntry(frame_tree_node);
   if (frame_navigation_entry) {
+    // Replay the original initiator, rather than using the current frame origin
     params->set_initiator(frame_navigation_entry->initiator_origin());
   }
 
@@ -7010,8 +7044,12 @@ bool WebContentsImpl::GotResponseToKeyboardLockRequest(bool allowed) {
     return false;
   }
   // KeyboardLock is only supported when called by the top-level browsing
-  // context and is not supported in embedded content scenarios.
-  if (GetOuterWebContents()) {
+  // context and is not supported in embedded content scenarios such as
+  // GuestView guests (<webview> tags, PDF viewer). However, some embedders
+  // (e.g. WebUIBrowserWindow) attach top-level tabs as inner WebContents and
+  // opt in via AllowKeyboardLockForInnerContents().
+  if (GetOuterWebContents() &&
+      (!delegate_ || !delegate_->AllowKeyboardLockForInnerContents(this))) {
     keyboard_lock_widget_->GotResponseToKeyboardLockRequest(false);
     return false;
   }
@@ -9899,8 +9937,7 @@ void WebContentsImpl::DocumentOnLoadCompleted(
 }
 
 void WebContentsImpl::UpdateTitle(RenderFrameHostImpl* render_frame_host,
-                                  const std::u16string& title,
-                                  base::i18n::TextDirection title_direction) {
+                                  const std::u16string& title) {
   OPTIONAL_TRACE_EVENT2("content", "WebContentsImpl::UpdateTitle",
                         "render_frame_host", render_frame_host, "title", title);
   // Try to find the navigation entry, which might not be the current one.
@@ -9929,8 +9966,6 @@ void WebContentsImpl::UpdateTitle(RenderFrameHostImpl* render_frame_host,
         render_frame_host->frame_tree()->controller().GetLastCommittedEntry();
   }
 
-  // TODO(evan): make use of title_direction.
-  // http://code.google.com/p/chromium/issues/detail?id=27094
   bool title_changed = UpdateTitleForEntryImpl(entry, title);
   if (title_changed) {
     if (render_frame_host == GetPrimaryMainFrame()) {
@@ -11910,10 +11945,6 @@ void WebContentsImpl::CancelPreviewByMojoBinderPolicy(
   }
 }
 
-void WebContentsImpl::OnWebApiWindowResizableChanged() {
-  delegate_->OnWebApiWindowResizableChanged();
-}
-
 FrameTreeNodeId WebContentsImpl::GetOuterDelegateFrameTreeNodeId() {
   return node_.outer_contents_frame_tree_node_id();
 }
@@ -12112,9 +12143,9 @@ void WebContentsImpl::OnInputIgnored(const blink::WebInputEvent& event) {
 }
 
 #if BUILDFLAG(IS_ANDROID)
-float WebContentsImpl::GetCurrentTouchSequenceYOffset() {
+gfx::PointF WebContentsImpl::GetCurrentTouchSequenceOffset() {
   ui::ViewAndroid* view_android = GetNativeView();
-  return view_android->event_forwarder()->GetCurrentTouchSequenceYOffset();
+  return view_android->event_forwarder()->GetCurrentTouchSequenceOffset();
 }
 #endif
 
@@ -12276,14 +12307,9 @@ bool WebContentsImpl::CancelPrerendering(FrameTreeNode* frame_tree_node,
     return frame_tree_node->GetParentOrOuterDocumentOrEmbedder()
         ->CancelPrerendering(PrerenderCancellationReason(final_status));
   }
-  PrerenderHost* prerender_host =
-      GetPrerenderHostRegistry()->FindNonReservedHostById(
-          frame_tree_node->frame_tree_node_id());
-  if (!prerender_host) {
-    return false;
-  }
   return GetPrerenderHostRegistry()->CancelHost(
-      prerender_host->prerender_host_id(), final_status);
+            frame_tree_node->frame_tree().delegate()->GetPrerenderHostId(),
+            final_status);
 }
 
 ui::mojom::VirtualKeyboardMode WebContentsImpl::GetVirtualKeyboardMode() const {

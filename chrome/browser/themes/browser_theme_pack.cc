@@ -1144,7 +1144,7 @@ void BrowserThemePack::AddColorMixers(ui::ColorProvider* provider,
                                       const ui::ColorProviderKey& key) const {
   ui::ColorMixer& mixer = provider->AddMixer();
 
-  // TODO(http://crbug.com/878664): Enable for all cases.
+  // TODO(http://crbug.com/41410580): Enable for all cases.
   mixer[kColorToolbarBackgroundSubtleEmphasis] = ui::BlendForMinContrast(
       kColorToolbar, kColorToolbar, ChooseOmniboxBgBlendTarget(),
       kMinOmniboxToolbarContrast);
@@ -1165,7 +1165,7 @@ void BrowserThemePack::AddColorMixers(ui::ColorProvider* provider,
       {TP::COLOR_NTP_SECTION_BORDER, kColorNewTabPageSectionBorder},
       {TP::COLOR_NTP_TEXT, kColorNewTabPageText},
       {TP::COLOR_OMNIBOX_TEXT, kColorOmniboxText},
-      {TP::COLOR_OMNIBOX_BACKGROUND, kColorToolbarBackgroundSubtleEmphasis},
+      {TP::COLOR_OMNIBOX_BACKGROUND, kColorOmniboxResultsBackground},
       {TP::COLOR_TAB_BACKGROUND_INACTIVE_FRAME_ACTIVE,
        kColorTabBackgroundInactiveFrameActive},
       {TP::COLOR_TAB_BACKGROUND_INACTIVE_FRAME_INACTIVE,

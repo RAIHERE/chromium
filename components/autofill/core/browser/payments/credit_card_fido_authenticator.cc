@@ -18,7 +18,6 @@
 #include "base/containers/to_vector.h"
 #include "base/strings/string_util.h"
 #include "build/build_config.h"
-#include "components/autofill/core/browser/autofill_progress_dialog_type.h"
 #include "components/autofill/core/browser/data_manager/payments/payments_data_manager.h"
 #include "components/autofill/core/browser/data_model/payments/credit_card.h"
 #include "components/autofill/core/browser/foundations/autofill_client.h"
@@ -570,9 +569,11 @@ CreditCardFidoAuthenticator::ParseCreationOptions(
   const std::string& gaia_id_str = account_info.gaia.ToString();
   options->user.id =
       std::vector<uint8_t>(gaia_id_str.begin(), gaia_id_str.end());
-  options->user.display_name = autofill_client_->GetIdentityManager()
-                                   ->FindExtendedAccountInfo(account_info)
-                                   .given_name;
+  options->user.display_name =
+      std::string(autofill_client_->GetIdentityManager()
+                      ->FindExtendedAccountInfo(account_info)
+                      .GetGivenName()
+                      .value_or(""));
   options->user.name = std::move(account_info.email);
   options->challenge =
       Base64ToBytes(CHECK_DEREF(creation_options.FindString("challenge")));

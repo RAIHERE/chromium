@@ -281,8 +281,8 @@ void FakeBaseTabStripController::OnStartedDragging() {}
 
 void FakeBaseTabStripController::OnStoppedDragging() {}
 
-void FakeBaseTabStripController::OnKeyboardFocusedTabChanged(
-    std::optional<int> index) {}
+void FakeBaseTabStripController::TabKeyboardFocusChangedTo(
+    const tabs::TabInterface* tab) {}
 
 std::u16string FakeBaseTabStripController::GetAccessibleTabName(
     const Tab* tab) const {
@@ -303,12 +303,6 @@ BrowserWindowInterface*
 FakeBaseTabStripController::GetBrowserWindowInterface() {
   return nullptr;
 }
-
-#if BUILDFLAG(IS_CHROMEOS)
-bool FakeBaseTabStripController::IsLockedForOnTask() {
-  return on_task_locked_;
-}
-#endif
 
 void FakeBaseTabStripController::SetActiveIndex(int new_index) {
   DCHECK(IsValidIndex(new_index));

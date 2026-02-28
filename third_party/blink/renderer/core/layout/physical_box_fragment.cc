@@ -157,11 +157,12 @@ const PhysicalBoxFragment* PhysicalBoxFragment::Create(
 
   const PhysicalSize physical_size =
       ToPhysicalSize(builder->Size(), builder->GetWritingMode());
-  WritingModeConverter converter(writing_direction, physical_size);
 
   std::optional<PhysicalRect> inflow_bounds;
-  if (builder->inflow_bounds_)
+  if (builder->inflow_bounds_) {
+    WritingModeConverter converter(writing_direction, physical_size);
     inflow_bounds = converter.ToPhysical(*builder->inflow_bounds_);
+  }
 
 #if DCHECK_IS_ON()
   if (builder->needs_inflow_bounds_explicitly_set_ && builder->node_ &&
@@ -207,11 +208,8 @@ const PhysicalBoxFragment* PhysicalBoxFragment::Create(
       scrollable_overflow != PhysicalRect({}, physical_size);
 
   // Omit |FragmentItems| if there were no items; e.g., display-lock.
-  bool has_fragment_items = false;
-  if (FragmentItemsBuilder* items_builder = builder->ItemsBuilder()) {
-    if (items_builder->Size())
-      has_fragment_items = true;
-  }
+  FragmentItemsBuilder* items_builder = builder->ItemsBuilder();
+  bool has_fragment_items = items_builder && items_builder->Size();
 
   size_t byte_size = AdditionalByteSize(has_fragment_items);
 
@@ -872,7 +870,7 @@ void PhysicalBoxFragment::MutableForCloning::ReplaceChildren(
   DCHECK(!fragment_.HasItems());
 
   fragment_.children_.clear();
-  fragment_.children_.AppendVector(new_fragment.children_);
+  fragment_.children_.append_range(new_fragment.children_);
 
   // Replace propagated data.
   fragment_.propagated_data_ = new_fragment.propagated_data_;
@@ -1843,6 +1841,7 @@ void PhysicalBoxFragment::CheckIntegrity() const {
   }
 }
 
+#if EXPENSIVE_DCHECKS_ARE_ON()
 void PhysicalBoxFragment::AssertFragmentTreeSelf() const {
   DCHECK(!IsInlineBox());
   DCHECK(OwnerLayoutBox());
@@ -1877,7 +1876,8 @@ void PhysicalBoxFragment::AssertFragmentTreeChildren(
     }
   }
 }
-#endif
+#endif  // EXPENSIVE_DCHECKS_ARE_ON()
+#endif  // DCHECK_IS_ON()
 
 void PhysicalBoxFragment::TraceAfterDispatch(Visitor* visitor) const {
   visitor->Trace(children_);

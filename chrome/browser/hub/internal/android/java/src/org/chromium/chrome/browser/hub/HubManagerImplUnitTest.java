@@ -55,7 +55,7 @@ import org.chromium.components.browser_ui.widget.gesture.BackPressHandler;
 import org.chromium.components.feature_engagement.Tracker;
 import org.chromium.ui.base.TestActivity;
 
-/** Unit tests for {@link PaneManagerImpl}. */
+/** Unit tests for {@link HubManagerImpl}. */
 @RunWith(BaseRobolectricTestRunner.class)
 public class HubManagerImplUnitTest {
     private static final int TAB_ID = 8;
@@ -75,7 +75,6 @@ public class HubManagerImplUnitTest {
     @Mock private ViewGroup mIncognitoTabSwitcherPaneView;
     @Mock private MenuOrKeyboardActionHandler mIncognitoTabSwitcherMenuOrKeyboardActionHandler;
     @Mock private HubLayoutController mHubLayoutController;
-    @Mock private MonotonicObservableSupplier<Integer> mPreviousLayoutTypeSupplier;
     @Mock private MenuOrKeyboardActionController mMenuOrKeyboardActionController;
     @Mock private SnackbarManager mSnackbarManager;
     @Mock private MenuButtonCoordinator mMenuButtonCoordinator;
@@ -86,6 +85,8 @@ public class HubManagerImplUnitTest {
     @Mock private Tracker mTracker;
     @Mock private SearchActivityClient mSearchActivityClient;
 
+    private final MonotonicObservableSupplier<Integer> mPreviousLayoutTypeSupplier =
+            ObservableSuppliers.alwaysNull();
     private final SettableNullableObservableSupplier<Tab> mTabSupplier =
             ObservableSuppliers.createNullable();
     private SettableMonotonicObservableSupplier<DisplayButtonData> mReferenceButtonDataSupplier;

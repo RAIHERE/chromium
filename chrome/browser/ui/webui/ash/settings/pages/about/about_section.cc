@@ -6,6 +6,9 @@
 
 #include <array>
 
+#include "ash/constants/chrome_url_constants.h"
+#include "ash/constants/url_constants.h"
+#include "ash/constants/webui_url_constants.h"
 #include "base/command_line.h"
 #include "base/containers/span.h"
 #include "base/feature_list.h"
@@ -174,10 +177,10 @@ std::string GetSafetyInfoLink() {
   const std::vector<std::string_view> board = base::SplitStringPiece(
       release_board, "-", base::TRIM_WHITESPACE, base::SPLIT_WANT_NONEMPTY);
   if (board[0] == "nocturne") {
-    return chrome::kChromeUISafetyPixelSlateURL;
+    return ash::external_urls::kSafetyPixelSlateURL;
   }
   if (board[0] == "eve" || board[0] == "atlas") {
-    return chrome::kChromeUISafetyPixelbookURL;
+    return ash::external_urls::kSafetyPixelbookURL;
   }
 
   return std::string();
@@ -360,7 +363,7 @@ void AboutSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
   html_source->AddLocalizedStrings(kLocalizedStrings);
 
   html_source->AddString("aboutTPMFirmwareUpdateLearnMoreURL",
-                         chrome::kTPMFirmwareUpdateLearnMoreURL);
+                         ash::external_urls::kTPMFirmwareUpdateLearnMoreURL);
   html_source->AddString(
       "aboutUpgradeUpToDate",
       ui::SubstituteChromeOSDeviceType(IDS_SETTINGS_UPGRADE_UP_TO_DATE));
@@ -403,11 +406,11 @@ void AboutSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       l10n_util::GetStringUTF16(IDS_VERSION_UI_LICENSE_OTHER));
 
   std::u16string os_license = l10n_util::GetStringFUTF16(
-      IDS_ABOUT_CROS_VERSION_LICENSE, chrome::kChromeUIOSCreditsURL16);
+      IDS_ABOUT_CROS_VERSION_LICENSE, ash::kChromeUIOSCreditsURL16);
   html_source->AddString("aboutProductOsLicense", os_license);
   std::u16string os_with_linux_license = l10n_util::GetStringFUTF16(
-      IDS_ABOUT_CROS_WITH_LINUX_VERSION_LICENSE,
-      chrome::kChromeUIOSCreditsURL16, chrome::kChromeUICrostiniCreditsURL16);
+      IDS_ABOUT_CROS_WITH_LINUX_VERSION_LICENSE, ash::kChromeUIOSCreditsURL16,
+      ash::kChromeUICrostiniCreditsURL16);
   html_source->AddString("aboutProductOsWithLinuxLicense",
                          os_with_linux_license);
   html_source->AddBoolean(
@@ -423,7 +426,7 @@ void AboutSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       "endOfLifeMessage",
       l10n_util::GetStringFUTF16(IDS_SETTINGS_ABOUT_PAGE_LAST_UPDATE_MESSAGE,
                                  ui::GetChromeOSDeviceName(),
-                                 chrome::kEolNotificationURL));
+                                 ash::external_urls::kEolNotificationURL));
 
   html_source->AddString("eolIncentiveOfferTitle",
                          l10n_util::GetStringUTF16(
@@ -451,13 +454,13 @@ void AboutSection::AddLoadTimeData(content::WebUIDataSource* html_source) {
       "extendedUpdatesSecondaryMessage",
       l10n_util::GetStringFUTF16(
           IDS_SETTINGS_ABOUT_PAGE_EXTENDED_UPDATES_SECONDARY_MESSAGE,
-          chrome::kDeviceExtendedUpdatesLearnMoreURL));
+          ash::external_urls::kDeviceExtendedUpdatesLearnMoreURL));
 
   std::string safetyInfoLink = GetSafetyInfoLink();
   html_source->AddBoolean("shouldShowSafetyInfo", !safetyInfoLink.empty());
 
 #if BUILDFLAG(GOOGLE_CHROME_BRANDING)
-  html_source->AddString("aboutTermsURL", chrome::kChromeUITermsURL);
+  html_source->AddString("aboutTermsURL", ash::chrome_urls::kChromeUITermsURL);
   html_source->AddLocalizedString("aboutProductTos",
                                   IDS_ABOUT_TERMS_OF_SERVICE);
   html_source->AddString(

@@ -81,7 +81,7 @@
 #import "ios/chrome/browser/settings/ui_bundled/autofill/autofill_profile_table_view_controller.h"
 #import "ios/chrome/browser/settings/ui_bundled/bandwidth/bandwidth_management_table_view_controller.h"
 #import "ios/chrome/browser/settings/ui_bundled/button_catalog_view_controller.h"
-#import "ios/chrome/browser/settings/ui_bundled/bwg/coordinator/bwg_settings_coordinator.h"
+#import "ios/chrome/browser/settings/ui_bundled/bwg/coordinator/gemini_settings_coordinator.h"
 #import "ios/chrome/browser/settings/ui_bundled/cells/enhanced_safe_browsing_inline_promo_item.h"
 #import "ios/chrome/browser/settings/ui_bundled/cells/settings_check_item.h"
 #import "ios/chrome/browser/settings/ui_bundled/cells/settings_image_detail_text_item.h"
@@ -119,6 +119,7 @@
 #import "ios/chrome/browser/shared/model/utils/first_run_util.h"
 #import "ios/chrome/browser/shared/public/commands/command_dispatcher.h"
 #import "ios/chrome/browser/shared/public/commands/open_new_tab_command.h"
+#import "ios/chrome/browser/shared/public/commands/picture_in_picture_commands.h"
 #import "ios/chrome/browser/shared/public/commands/popup_menu_commands.h"
 #import "ios/chrome/browser/shared/public/commands/scene_commands.h"
 #import "ios/chrome/browser/shared/public/commands/settings_commands.h"
@@ -137,7 +138,7 @@
 #import "ios/chrome/browser/shared/ui/util/uikit_ui_util.h"
 #import "ios/chrome/browser/signin/model/authentication_service.h"
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
-#import "ios/chrome/browser/signin/model/avatar_provider.h"
+#import "ios/chrome/browser/signin/model/avatar/avatar_provider.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service.h"
 #import "ios/chrome/browser/signin/model/chrome_account_manager_service_factory.h"
 #import "ios/chrome/browser/signin/model/identity_manager_factory.h"
@@ -205,7 +206,7 @@ struct EnhancedSafeBrowsingActivePromoData
 @interface SettingsTableViewController () <
     AddressBarPreferenceCoordinatorDelegate,
     BooleanObserver,
-    BWGSettingsCoordinatorDelegate,
+    GeminiSettingsCoordinatorDelegate,
     ContentSettingsCoordinatorDelegate,
     DiscoverFeedVisibilityObserver,
     DownloadsSettingsCoordinatorDelegate,
@@ -253,8 +254,8 @@ struct EnhancedSafeBrowsingActivePromoData
   SettingsCheckItem* _safetyCheckItem;
   SigninCoordinator* _signinAndHistorySyncCoordinator;
 
-  // BWG settings coordinator.
-  BWGSettingsCoordinator* _BWGSettingsCoordinator;
+  // Gemini settings coordinator.
+  GeminiSettingsCoordinator* _geminiSettingsCoordinator;
 
   // Content settings coordinator.
   ContentSettingsCoordinator* _contentSettingsCoordinator;
@@ -468,6 +469,10 @@ struct EnhancedSafeBrowsingActivePromoData
 
 - (void)viewIsAppearing:(BOOL)animated {
   [super viewIsAppearing:animated];
+  if (_settingsAreDismissed) {
+    return;
+  }
+
   // Update the `_safetyCheckItem` icon when returning to this view controller.
   [self updateSafetyCheckItemTrailingIcon];
   if (IsBottomOmniboxAvailable()) {
@@ -487,6 +492,10 @@ struct EnhancedSafeBrowsingActivePromoData
 
 - (void)viewDidAppear:(BOOL)animated {
   [super viewDidAppear:animated];
+  if (_settingsAreDismissed) {
+    return;
+  }
+
   [self maybeShowSigninIPH];
 }
 
@@ -1041,10 +1050,8 @@ struct EnhancedSafeBrowsingActivePromoData
 }
 
 - (TableViewItem*)tabsSettingsDetailItem {
-  NSString* title = l10n_util::GetNSString(
-      IsAutoOpenRemoteTabGroupsSettingsFeatureEnabled()
-          ? IDS_IOS_TABS_AND_TAB_GROUPS_MANAGEMENT_SETTINGS
-          : IDS_IOS_TABS_MANAGEMENT_SETTINGS);
+  NSString* title =
+      l10n_util::GetNSString(IDS_IOS_TABS_AND_TAB_GROUPS_MANAGEMENT_SETTINGS);
   return [self detailItemWithType:SettingsItemTypeTabs
                              text:title
                        detailText:nil
@@ -1264,7 +1271,13 @@ struct EnhancedSafeBrowsingActivePromoData
         [self reloadData];
       }
 
-      controller = [[DefaultBrowserSettingsTableViewController alloc] init];
+      DefaultBrowserSettingsTableViewController* defaultBrowserController =
+          [[DefaultBrowserSettingsTableViewController alloc] init];
+      defaultBrowserController.PIPHandler = HandlerForProtocol(
+          _browser->GetCommandDispatcher(), PictureInPictureCommands);
+      defaultBrowserController.settingsHandler = HandlerForProtocol(
+          _browser->GetCommandDispatcher(), SettingsCommands);
+      controller = defaultBrowserController;
       break;
     }
     case SettingsItemTypeSearchEngine:
@@ -1381,7 +1394,7 @@ struct EnhancedSafeBrowsingActivePromoData
       break;
     case SettingsItemTypeBWGSettings:
       base::RecordAction(base::UserMetricsAction("Settings.BWGSettings"));
-      [self showBWGSettings];
+      [self showGeminiSettings];
       // Sets the "new" IPH badge shown count to max so it's not shown again.
       GetApplicationContext()->GetLocalState()->SetInteger(
           prefs::kBWGSettingsNewBadgeShownCount, INT_MAX);
@@ -1510,15 +1523,15 @@ struct EnhancedSafeBrowsingActivePromoData
   _tabsCoordinator = nil;
 }
 
-// Show BWG settings.
-- (void)showBWGSettings {
+// Show Gemini settings.
+- (void)showGeminiSettings {
   // Stop the coordinator before restarting it, if it exists.
-  [_BWGSettingsCoordinator stop];
-  _BWGSettingsCoordinator = [[BWGSettingsCoordinator alloc]
+  [_geminiSettingsCoordinator stop];
+  _geminiSettingsCoordinator = [[GeminiSettingsCoordinator alloc]
       initWithBaseNavigationController:self.navigationController
                                browser:_browser];
-  _BWGSettingsCoordinator.delegate = self;
-  [_BWGSettingsCoordinator start];
+  _geminiSettingsCoordinator.delegate = self;
+  [_geminiSettingsCoordinator start];
 }
 
 - (void)showContentSettings {
@@ -2185,13 +2198,16 @@ struct EnhancedSafeBrowsingActivePromoData
 
 - (void)settingsWillBeDismissed {
   CHECK(!_settingsAreDismissed, base::NotFatalUntil::M151);
+  if (_settingsAreDismissed) {
+    return;
+  }
 
   // Remove Enhanced Safe Browsing Promo.
   [self removeEnhancedSafeBrowsingPromoFETDataIfNeeded];
 
   // Stop children coordinators.
-  [_BWGSettingsCoordinator stop];
-  _BWGSettingsCoordinator = nil;
+  [_geminiSettingsCoordinator stop];
+  _geminiSettingsCoordinator = nil;
 
   [_contentSettingsCoordinator stop];
   _contentSettingsCoordinator = nil;
@@ -2459,13 +2475,13 @@ struct EnhancedSafeBrowsingActivePromoData
   }
 }
 
-#pragma mark - BWGSettingsCoordinatorDelegate
+#pragma mark - GeminiSettingsCoordinatorDelegate
 
-- (void)BWGSettingsCoordinatorViewControllerWasRemoved:
-    (BWGSettingsCoordinator*)coordinator {
-  CHECK_EQ(_BWGSettingsCoordinator, coordinator, base::NotFatalUntil::M151);
-  [_BWGSettingsCoordinator stop];
-  _BWGSettingsCoordinator = nil;
+- (void)geminiSettingsCoordinatorViewControllerWasRemoved:
+    (GeminiSettingsCoordinator*)coordinator {
+  CHECK_EQ(_geminiSettingsCoordinator, coordinator, base::NotFatalUntil::M151);
+  [_geminiSettingsCoordinator stop];
+  _geminiSettingsCoordinator = nil;
 }
 
 #pragma mark - ContentSettingsCoordinatorDelegate

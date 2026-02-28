@@ -8,11 +8,14 @@
 #include "base/strings/string_number_conversions.h"
 #include "base/test/bind.h"
 #include "base/test/gmock_expected_support.h"
+#include "base/test/metrics/histogram_tester.h"
 #include "base/test/run_until.h"
+#include "build/build_config.h"
 #include "content/browser/indexed_db/file_path_util.h"
 #include "content/browser/indexed_db/instance/backing_store.h"
 #include "content/browser/indexed_db/instance/backing_store_test_base.h"
 #include "content/browser/indexed_db/instance/sqlite/backing_store_database_impl.h"
+#include "content/browser/indexed_db/instance/sqlite/backing_store_impl.h"
 #include "content/browser/indexed_db/instance/sqlite/database_connection.h"
 #include "mojo/public/cpp/bindings/receiver.h"
 #include "mojo/public/cpp/system/data_pipe_drainer.h"
@@ -20,7 +23,9 @@
 #include "sql/statement.h"
 #include "sql/test/test_helpers.h"
 #include "third_party/abseil-cpp/absl/strings/str_format.h"
+#include "third_party/blink/public/common/indexeddb/indexeddb_key.h"
 #include "third_party/blink/public/mojom/blob/blob.mojom.h"
+#include "third_party/blink/public/mojom/indexeddb/indexeddb.mojom-shared.h"
 
 namespace content::indexed_db::sqlite {
 
@@ -147,12 +152,11 @@ class BackingStoreSqliteTest : public BackingStoreTestBase {
   // standalone files, as if they had been migrated from a LevelDB store.
   std::vector<base::FilePath> ConvertInlinedBlobsToLegacyFileBlobs(
       std::u16string_view name) {
+    AcquireDatabaseLocks(std::u16string(name));
     base::FilePath db_path = GetDatabasePath(name);
-    sql::Database db(sql::DatabaseOptions()
-                         .set_exclusive_locking(true)
-                         .set_wal_mode(true)
-                         .set_enable_triggers(true),
-                     sql::test::kTestTag);
+    sql::Database db(
+        sql::DatabaseOptions().set_wal_mode(true).set_enable_triggers(true),
+        sql::test::kTestTag);
 
     EXPECT_TRUE(db.Open(db_path));
 
@@ -184,6 +188,8 @@ class BackingStoreSqliteTest : public BackingStoreTestBase {
 };
 
 TEST_F(BackingStoreSqliteTest, BlobBasics) {
+  base::HistogramTester histogram_tester;
+
   ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
                        backing_store()->CreateOrOpenDatabase(u"name"));
 
@@ -193,9 +199,17 @@ TEST_F(BackingStoreSqliteTest, BlobBasics) {
   IndexedDBValue value("non_blob_payload", {CreateBlobInfo(u"type", payload)});
   PutRecord(*db, object_store_id, key, value);
   EXPECT_EQ(ReadBlobContents(*db, object_store_id, key), payload);
+
+  // Verify that the blob was served from the SQLite database (not a legacy
+  // file).
+  histogram_tester.ExpectUniqueSample(
+      "IndexedDB.SQLite.BlobServedFromLegacyFile", false, 1);
 }
 
 TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
+  base::HistogramTester histogram_tester;
+
+  const std::u16string db_name(u"name");
   const int64_t object_store_id = 1;
   const std::string payload("payload");
   const IndexedDBKey key1(u"key1");
@@ -205,7 +219,7 @@ TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
   // Setup: write two blobs into a database.
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
-                         backing_store()->CreateOrOpenDatabase(u"name"));
+                         backing_store()->CreateOrOpenDatabase(db_name));
 
     std::unique_ptr<BackingStore::Transaction> transaction =
         CreateAndBeginTransaction(
@@ -232,7 +246,7 @@ TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
   // Test hack: convert these blobs to standalone files, as if they'd been
   // migrated from a LevelDB store.
   std::vector<base::FilePath> blob_files =
-      ConvertInlinedBlobsToLegacyFileBlobs(u"name");
+      ConvertInlinedBlobsToLegacyFileBlobs(db_name);
   ASSERT_EQ(blob_files.size(), 3U);
   EXPECT_TRUE(base::PathExists(blob_files[0]));
   EXPECT_TRUE(base::PathExists(blob_files[1]));
@@ -240,9 +254,12 @@ TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
 
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
-                         backing_store()->CreateOrOpenDatabase(u"name"));
+                         backing_store()->CreateOrOpenDatabase(db_name));
     // Verify that one of these blobs can be read correctly.
     EXPECT_EQ(ReadBlobContents(*db, object_store_id, key2), payload);
+    // Verify that the blob was served from a legacy file.
+    histogram_tester.ExpectUniqueSample(
+        "IndexedDB.SQLite.BlobServedFromLegacyFile", true, 1);
 
     // Now overwrite two of the rows, such that they don't contain blobs. The
     // blobs should be removed from the backing store.
@@ -268,16 +285,20 @@ TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
     EXPECT_TRUE(base::PathExists(blob_files[2]));
   }
 
+  // Let the cleanup complete, which releases database locks.
+  AcquireDatabaseLocks(db_name);
+
   // Re-create a blob file, as if it had failed to be deleted at some point.
   // It will be cleaned up when the database is opened then closed again.
   EXPECT_TRUE(base::WriteFile(blob_files[0], "some bytes"));
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
-                         backing_store()->CreateOrOpenDatabase(u"name"));
+                         backing_store()->CreateOrOpenDatabase(db_name));
     // Currently cleanup only occurs if there happens to be a Put.
     IndexedDBValue value_without_blob("non_blob_payload", {});
     PutRecord(*db, object_store_id, key2, value_without_blob);
     db.reset();
+    AcquireDatabaseLocks(db_name);
     // The artificially resurrected blob is now gone.
     EXPECT_FALSE(base::PathExists(blob_files[0]));
     // The blob that was not resurrected is still gone.
@@ -289,6 +310,7 @@ TEST_F(BackingStoreSqliteTest, LegacyBlobBasics) {
 
 // Tests that legacy blob files are cleaned up when the database is deleted.
 TEST_F(BackingStoreSqliteTest, DeleteDatabaseCleansUpLegacyBlobs) {
+  const std::u16string db_name(u"name");
   const int64_t object_store_id = 1;
   const std::string payload("payload");
   const IndexedDBKey key(u"key");
@@ -296,7 +318,7 @@ TEST_F(BackingStoreSqliteTest, DeleteDatabaseCleansUpLegacyBlobs) {
   // Setup: write a blob into a database.
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
-                         backing_store()->CreateOrOpenDatabase(u"name"));
+                         backing_store()->CreateOrOpenDatabase(db_name));
 
     std::unique_ptr<BackingStore::Transaction> transaction =
         CreateAndBeginTransaction(
@@ -319,18 +341,19 @@ TEST_F(BackingStoreSqliteTest, DeleteDatabaseCleansUpLegacyBlobs) {
   // Convert this blob to a standalone file, as if it had been migrated from a
   // LevelDB store.
   std::vector<base::FilePath> blob_files =
-      ConvertInlinedBlobsToLegacyFileBlobs(u"name");
+      ConvertInlinedBlobsToLegacyFileBlobs(db_name);
   ASSERT_EQ(blob_files.size(), 1U);
   EXPECT_TRUE(base::PathExists(blob_files[0]));
 
   // Delete the database.
   {
     ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
-                         backing_store()->CreateOrOpenDatabase(u"name"));
-    base::RunLoop run_loop;
+                         backing_store()->CreateOrOpenDatabase(db_name));
     EXPECT_TRUE(
-        db->DeleteDatabase(CreateDummyLock(), run_loop.QuitClosure()).ok());
-    run_loop.Run();
+        db->DeleteDatabase(AcquireDatabaseLocks(db_name), base::DoNothing())
+            .ok());
+    // Wait for the delete operation to release locks.
+    AcquireDatabaseLocks(db_name);
   }
 
   // The legacy blob file should be deleted.
@@ -433,6 +456,137 @@ TEST_F(BackingStoreSqliteTest, BlobChunking) {
     PutRecord(*db, object_store_id, key, value);
     EXPECT_EQ(ReadBlobContents(*db, object_store_id, key), payload);
   }
+}
+
+TEST_F(BackingStoreSqliteTest,
+       LeftoverDatabaseCleanedAfterGetDatabaseNamesAndVersions) {
+  base::HistogramTester histogram_tester;
+
+  // Create a valid database.
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
+                         backing_store()->CreateOrOpenDatabase(u"basic_db"));
+    std::unique_ptr<BackingStore::Transaction> transaction =
+        CreateAndBeginTransaction(
+            *db, blink::mojom::IDBTransactionMode::VersionChange);
+    EXPECT_TRUE(transaction
+                    ->CreateObjectStore(1, u"object_store_name",
+                                        IndexedDBKeyPath(u"object_store_key"),
+                                        /*auto_increment=*/true)
+                    .ok());
+    EXPECT_TRUE(transaction->SetDatabaseVersion(1).ok());
+    CommitTransactionAndVerify(*transaction);
+  }
+
+  // Create a database that's left in a zygotic state. Since we don't run the
+  // cleanup task, the database is left behind despite being zygotic. This
+  // simulates a previous crash.
+  const std::u16string kDbName = u"leftover_db";
+  base::FilePath db_path = GetDatabasePath(kDbName);
+  EXPECT_FALSE(base::PathExists(db_path));
+  BackingStoreImpl* backing_store_impl =
+      reinterpret_cast<BackingStoreImpl*>(backing_store());
+  ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<DatabaseConnection> connection,
+      DatabaseConnection::Open(kDbName, db_path, *backing_store_impl));
+  EXPECT_TRUE(base::PathExists(db_path));
+  std::ignore = std::move(*connection).GetCleanupTask(/*force_closing=*/true);
+  EXPECT_TRUE(base::PathExists(db_path));
+
+  // `GetDatabaseNamesAndVersions()` won't return the zygotic database, and
+  // furthermore erases it.
+  ASSERT_OK_AND_ASSIGN(
+      std::vector<blink::mojom::IDBNameAndVersionPtr> names_and_versions,
+      backing_store()->GetDatabaseNamesAndVersions());
+  ASSERT_EQ(names_and_versions.size(), 1U);
+  EXPECT_EQ(names_and_versions[0]->name, u"basic_db");
+  EXPECT_FALSE(base::PathExists(db_path));
+
+  // Verify that the histogram was logged when opening the leftover database.
+  // Nothing is logged for "basic_db" since it reads from `cached_versions_`.
+  histogram_tester.ExpectUniqueSample(
+      "IndexedDB.SQLite.OpenToReadMetadataResult.OnDisk", 2 /*kCorruption*/, 1);
+}
+
+TEST_F(BackingStoreSqliteTest, VacuumOnClose) {
+  base::HistogramTester histograms;
+
+  const std::u16string db_name(u"vacuum_test");
+  const int64_t object_store_id = 1;
+
+  // Create an object store and write enough data to create many pages.
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
+                         backing_store()->CreateOrOpenDatabase(db_name));
+    std::unique_ptr<BackingStore::Transaction> transaction =
+        CreateAndBeginTransaction(
+            *db, blink::mojom::IDBTransactionMode::VersionChange);
+    EXPECT_TRUE(transaction
+                    ->CreateObjectStore(object_store_id, u"store",
+                                        IndexedDBKeyPath(u"key"),
+                                        /*auto_increment=*/true)
+                    .ok());
+    EXPECT_TRUE(transaction->SetDatabaseVersion(1).ok());
+    // Blobs are not compressed, so this will increase page usage.
+    std::string blob_data(1000, 'x');
+    for (int i = 0; i < 100; ++i) {
+      EXPECT_TRUE(
+          transaction
+              ->PutRecord(object_store_id,
+                          IndexedDBKey(i, blink::mojom::IDBKeyType::Number),
+                          IndexedDBValue("non_blob_payload",
+                                         {CreateBlobInfo(u"type", blob_data)}))
+              .has_value());
+    }
+    CommitTransactionAndVerify(*transaction);
+  }
+
+  // Wait for database close and measure the size of the database file.
+  AcquireDatabaseLocks(db_name);
+  base::FilePath db_path = GetDatabasePath(db_name);
+  int64_t initial_size = 0;
+  ASSERT_OK_AND_ASSIGN(initial_size, base::GetFileSize(db_path));
+
+  histograms.ExpectBucketCount("IndexedDB.SQLite.FreelistPercentageAtClose", 0,
+                               1);
+  histograms.ExpectTotalCount("IndexedDB.SQLite.VacuumEvent", 0);
+
+  // Now clear the object store to create freelist pages.
+  {
+    ASSERT_OK_AND_ASSIGN(std::unique_ptr<BackingStore::Database> db,
+                         backing_store()->CreateOrOpenDatabase(db_name));
+
+    std::unique_ptr<BackingStore::Transaction> transaction =
+        db->CreateTransaction(blink::mojom::IDBTransactionDurability::Relaxed,
+                              blink::mojom::IDBTransactionMode::ReadWrite);
+    transaction->Begin(CreateDummyLock());
+    EXPECT_TRUE(transaction->ClearObjectStore(object_store_id).ok());
+    CommitTransactionAndVerify(*transaction);
+  }
+
+  // The database size should have reduced.
+  AcquireDatabaseLocks(db_name);
+  int64_t post_vacuum_size = 0;
+  ASSERT_OK_AND_ASSIGN(post_vacuum_size, base::GetFileSize(db_path));
+  EXPECT_LT(post_vacuum_size, initial_size);
+
+  histograms.ExpectTotalCount("IndexedDB.SQLite.FreelistPercentageAtClose", 2);
+#if BUILDFLAG(IS_ANDROID)
+  // Autovacuum is enabled by default on Android.
+  histograms.ExpectBucketCount("IndexedDB.SQLite.FreelistPercentageAtClose", 0,
+                               2);
+  histograms.ExpectTotalCount("IndexedDB.SQLite.VacuumEvent", 0);
+#else
+  histograms.ExpectBucketCount("IndexedDB.SQLite.FreelistPercentageAtClose", 0,
+                               1);
+  histograms.ExpectTotalCount("IndexedDB.SQLite.VacuumEvent", 3);
+  histograms.ExpectBucketCount("IndexedDB.SQLite.VacuumEvent", 0 /*kNeeded*/,
+                               1);
+  histograms.ExpectBucketCount("IndexedDB.SQLite.VacuumEvent", 2 /*kRequested*/,
+                               1);
+  histograms.ExpectBucketCount("IndexedDB.SQLite.VacuumEvent", 3 /*kSucceeded*/,
+                               1);
+#endif
 }
 
 }  // namespace content::indexed_db::sqlite

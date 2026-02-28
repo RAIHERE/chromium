@@ -132,8 +132,7 @@ void InlineBoxFragmentPainter::PaintMask(const PaintInfo& paint_info,
   String failing_url;
   if (border_painting_type == kDontPaint ||
       (paint_info.IsPrivacyPreserving() && style_.MaskBoxImage().GetImage() &&
-       (!style_.MaskBoxImage().GetImage()->IsLoaded() ||
-        !style_.MaskBoxImage().GetImage()->IsAccessAllowed(failing_url)))) {
+       !style_.MaskBoxImage().GetImage()->IsAccessAllowed(failing_url))) {
     return;
   }
   GraphicsContextStateSaver state_saver(paint_info.context, false);
@@ -417,8 +416,13 @@ void InlineBoxFragmentPainterBase::PaintInsetBoxShadow(
     const PaintInfo& info,
     const ComputedStyle& s,
     const PhysicalRect& paint_rect) {
-  BoxPainterBase::PaintInsetBoxShadowWithBorderRect(info, paint_rect, s,
-                                                    SidesToInclude());
+  std::optional<BorderShapeReferenceRects> border_shape_rects;
+  if (inline_box_fragment_.GetLayoutObject()) {
+    border_shape_rects = ComputeBorderShapeReferenceRects(
+        paint_rect, s, *inline_box_fragment_.GetLayoutObject());
+  }
+  BoxPainterBase::PaintInsetBoxShadowWithBorderRect(
+      info, paint_rect, s, border_shape_rects, SidesToInclude());
 }
 
 void InlineBoxFragmentPainterBase::PaintBoxDecorationBackground(

@@ -70,7 +70,7 @@
 #include "third_party/blink/renderer/core/dom/create_element_flags.h"
 #include "third_party/blink/renderer/core/dom/document_encoding_data.h"
 #include "third_party/blink/renderer/core/dom/document_lifecycle.h"
-#include "third_party/blink/renderer/core/dom/document_part_root.h"
+#include "third_party/blink/renderer/core/dom/document_resize_options.h"
 #include "third_party/blink/renderer/core/dom/document_timing.h"
 #include "third_party/blink/renderer/core/dom/element.h"
 #include "third_party/blink/renderer/core/dom/events/event_path.h"
@@ -86,6 +86,7 @@
 #include "third_party/blink/renderer/core/html/forms/listed_element.h"
 #include "third_party/blink/renderer/core/html/parser/parser_synchronization_policy.h"
 #include "third_party/blink/renderer/platform/geometry/physical_offset.h"
+#include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_counted_set.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_map.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_hash_set.h"
 #include "third_party/blink/renderer/platform/heap/collection_support/heap_linked_hash_set.h"
@@ -214,7 +215,7 @@ class InvalidateNodeListCachesScope;
 class ImportNodeOptions;
 class LayoutUpgrade;
 class LayoutView;
-class LazyLoadImageObserver;
+class LazyLoadMediaObserver;
 class ListedElement;
 class LiveNodeListBase;
 class LocalDOMWindow;
@@ -1015,7 +1016,7 @@ class CORE_EXPORT Document : public ContainerNode,
   // Depending on base URL value it is possible that parent document
   // base URL will be used instead. Uses CompleteURLWithOverride internally.
   KURL CompleteURL(
-      const String&,
+      const StringView&,
       const CompleteURLPreloadStatus preload_status = kIsNotPreload) const;
   // Creates URL based on passed relative url and passed base URL override.
   KURL CompleteURLWithOverride(
@@ -1369,12 +1370,16 @@ class CORE_EXPORT Document : public ContainerNode,
 
   // The following implements the rule from HTML 4 for what valid names are.
   // To get this right for all the XML cases, we probably have to improve this
-  // or move it and make it sensitive to the type of document.
+  // or move it and make it sensitive to the type of document. This was removed
+  // from the spec in https://github.com/whatwg/dom/pull/1079 but is still
+  // used in a few places.
+  // TODO(crbug.com/481177613): Remove this method.
   static bool IsValidName(const StringView&);
 
-  // https://github.com/whatwg/dom/pull/1079
-  static bool IsValidAttributeLocalNameNewSpec(const StringView&);
-  static bool IsValidElementLocalNameNewSpec(const StringView&);
+  // https://dom.spec.whatwg.org/#valid-attribute-local-name
+  static bool IsValidAttributeLocalName(const StringView&);
+  // https://dom.spec.whatwg.org/#valid-element-local-name
+  static bool IsValidElementLocalName(const StringView&);
 
   // The following breaks a qualified name into a prefix and a local name.
   // It also does a validity check, and returns false if the qualified name
@@ -1587,9 +1592,6 @@ class CORE_EXPORT Document : public ContainerNode,
   void EnqueueResizeEvent();
   void EnqueueScrollEventForNode(Node*);
   void EnqueueScrollEndEventForNode(Node*);
-  void EnqueueOverscrollEventForNode(Node* target,
-                                     double delta_x,
-                                     double delta_y);
   void EnqueueDisplayLockActivationTask(base::OnceClosure);
   void EnqueueAnimationFrameTask(base::OnceClosure);
   void EnqueueAnimationFrameEvent(Event*);
@@ -1753,11 +1755,10 @@ class CORE_EXPORT Document : public ContainerNode,
   // https://crbug.com/1453291
   // The DOM Parts API:
   // https://github.com/WICG/webcomponents/blob/gh-pages/proposals/DOM-Parts.md.
-  DocumentPartRoot& getPartRoot();
-  DocumentPartRoot& EnsureDocumentPartRoot();
-  bool DOMPartsInUse() const { return document_part_root_ != nullptr; }
-
   RouteMap* routeMap();
+
+  void SetHasCaptureListener() { has_capture_listener_ = true; }
+  bool HasCaptureListener() const { return has_capture_listener_; }
 
   // A non-null template_document_host_ implies that |this| was created by
   // EnsureTemplateDocument().
@@ -1809,7 +1810,7 @@ class CORE_EXPORT Document : public ContainerNode,
            static_cast<unsigned>(ViewportUnitFlag::kDynamic);
   }
 
-  void LayoutViewportWasResized();
+  void LayoutViewportWasResized(DocumentResizeOptions = {});
   void MarkViewportUnitsDirty();
 
   // dv*
@@ -1944,7 +1945,7 @@ class CORE_EXPORT Document : public ContainerNode,
   bool IsVerticalScrollEnforced() const { return is_vertical_scroll_enforced_; }
   bool IsFocusAllowed(FocusTrigger trigger) const;
 
-  LazyLoadImageObserver& EnsureLazyLoadImageObserver();
+  LazyLoadMediaObserver& EnsureLazyLoadMediaObserver();
 
   void IncrementNumberOfCanvases();
   unsigned GetNumberOfCanvases() const { return num_canvases_; }
@@ -2276,6 +2277,14 @@ class CORE_EXPORT Document : public ContainerNode,
   // nullptr.
   CustomElementRegistry* EffectiveGlobalCustomElementRegistry() const;
 
+  void SetScopedCustomElementRegistryUsed() {
+    DCHECK(RuntimeEnabledFeatures::ScopedCustomElementRegistryEnabled());
+    scoped_custom_element_registry_used_ = true;
+  }
+  bool ScopedCustomElementRegistryUsed() const {
+    return scoped_custom_element_registry_used_;
+  }
+
   ViewTransitionSupplement* GetViewTransitionsIfExists() const {
     return view_transitions_;
   }
@@ -2288,11 +2297,12 @@ class CORE_EXPORT Document : public ContainerNode,
     }
   }
 
-  const HashCountedSet<AtomicString>& OverscrollCommandTargets() const {
-    return overscroll_command_targets_;
-  }
-  void AddOverscrollCommandTarget(const AtomicString& target);
-  void RemoveOverscrollCommandTarget(const AtomicString& target);
+  const HeapHashSet<Member<const Element>>& OverscrollCommandTargets();
+  void UpdateOverscrollCommandTargets();
+  bool OverscrollCommandTargetsDirty() const;
+  void MarkOverscrollCommandTargetsDirty();
+  void AddOverscrollCommandInvoker(Element& invoker);
+  void RemoveOverscrollCommandInvoker(Element& invoker);
 
  protected:
   void ClearXMLVersion() { xml_version_ = String(); }
@@ -2965,7 +2975,11 @@ class CORE_EXPORT Document : public ContainerNode,
   // `interestfor`), in the order they were opened.
   HeapLinkedHashSet<Member<Element>> elements_with_interest_;
 
-  Member<DocumentPartRoot> document_part_root_;
+  // This flag is used to indicate whether the capture phase of event
+  // dispatching can be skipped. When an event listener is added to this
+  // document with the capture flag set, then this flag is set to true. Once
+  // set to true, it is never set to false again.
+  bool has_capture_listener_ = false;
 
   int load_event_delay_count_ = 0;
 
@@ -2977,6 +2991,11 @@ class CORE_EXPORT Document : public ContainerNode,
   // resource, they would have incremented the delay count during the layout
   // tree update and further blocked the load event.
   bool delay_load_event_until_layout_tree_update_ = false;
+
+  // Flag indicating if any scoped custom element registry was created/used
+  // in the document. We're able to skip some expensive operations if
+  // scoped registry was never exercised in the given document.
+  bool scoped_custom_element_registry_used_ = false;
 
   HeapTaskRunnerTimer<Document> load_event_delay_timer_;
   HeapTaskRunnerTimer<Document> plugin_loading_timer_;
@@ -3062,7 +3081,7 @@ class CORE_EXPORT Document : public ContainerNode,
   // opposed to a PluginView.
   bool is_for_external_handler_;
 
-  Member<LazyLoadImageObserver> lazy_load_image_observer_;
+  Member<LazyLoadMediaObserver> lazy_load_media_observer_;
 
   // Tracks which document policies have already been parsed, so as not to
   // count them multiple times. The size of this vector is 0 until
@@ -3196,12 +3215,15 @@ class CORE_EXPORT Document : public ContainerNode,
   bool responsive_embedded_sizing_ = false;
   bool text_scale_meta_tag_present_ = false;
 
-  // A map of idrefs that have been identified by commandfor with an overscroll
-  // related command (e.g. toggle-overscroll). This determines a
-  // :-internal-overscroll-target pseudo class. Whenever adding or removing
-  // entries here, the element identified by the target needs to invalidate that
-  // pseudo class.
-  HashCountedSet<AtomicString> overscroll_command_targets_;
+  // `overscroll_command_targets_` is a set of elements that are currently the
+  // targets of command invokers that have `command=toggle-overscroll`. This
+  // set is updated lazily, when `overscroll_command_targets_dirty_` is true.
+  // The `overscroll_command_invokers_` set contains the associated list of
+  // command invokers themselves. Together, these determine the state of the
+  // `:-internal-overscroll-target` pseudo class.
+  HeapHashSet<Member<const Element>> overscroll_command_targets_;
+  HeapHashSet<Member<Element>> overscroll_command_invokers_;
+  bool overscroll_command_targets_dirty_ = false;
 
   // If you want to add new data members to blink::Document, please reconsider
   // if the members really should be in blink::Document.  document.h is a very

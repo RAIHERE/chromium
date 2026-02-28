@@ -59,30 +59,35 @@ source_set("internal") {
       "//chrome/browser/actor/ui",
       "//chrome/browser/actor/ui/task_list_bubble:controller",
       "//chrome/browser/autocomplete:aim_eligibility_service",
+      "//chrome/browser/collaboration",
       "//chrome/browser/contextual_tasks:ui",
       "//chrome/browser/devtools",
-      "//chrome/browser/extensions",
       "//chrome/browser/lens/region_search",
       "//chrome/browser/media/router:media_router_feature",
       "//chrome/browser/prefs",
       "//chrome/browser/skills:ui",
       "//chrome/browser/tab_group_sync:factories",
+      "//chrome/browser/ui:tab_search_feature",
       "//chrome/browser/ui:ui_features",
       "//chrome/browser/ui/bookmarks",
+      "//chrome/browser/ui/call_to_action",
       "//chrome/browser/ui/commerce",
+      "//chrome/browser/ui/context_highlight",
       "//chrome/browser/ui/contextual_search",
+      "//chrome/browser/ui/desktop_to_mobile_promos:controller",
       "//chrome/browser/ui/exclusive_access",
       "//chrome/browser/ui/extensions",
       "//chrome/browser/ui/find_bar",
       "//chrome/browser/ui/lens",
       "//chrome/browser/ui/performance_controls",
-      "//chrome/browser/ui/promos:controller",
       "//chrome/browser/ui/signin",
       "//chrome/browser/ui/sync",
+      "//chrome/browser/ui/tabs",
       "//chrome/browser/ui/tabs:glic",
       "//chrome/browser/ui/tabs:tab_list_bridge",
+      "//chrome/browser/ui/tabs:tab_strip",
       "//chrome/browser/ui/tabs/organization",
-      "//chrome/browser/ui/tabs/projects",
+      "//chrome/browser/ui/tabs/projects:impl",
       "//chrome/browser/ui/tabs/saved_tab_groups",
       "//chrome/browser/ui/tabs/tab_strip_api",
       "//chrome/browser/ui/tabs/tab_strip_api:impl_header",
@@ -93,6 +98,7 @@ source_set("internal") {
       "//chrome/browser/ui/views/interaction:impl",
       "//chrome/browser/ui/views/location_bar/cookie_controls",
       "//chrome/browser/ui/views/new_tab_footer",
+      "//chrome/browser/ui/views/send_tab_to_self",
       "//chrome/browser/ui/views/side_panel",
       "//chrome/browser/ui/views/toolbar",
       "//chrome/browser/ui/waap",
@@ -109,6 +115,7 @@ source_set("internal") {
       "//components/profile_metrics",
       "//components/saved_tab_groups/public",
       "//components/search",
+      "//components/tabs:public",
     ]
 
     if (is_win || is_mac) {
@@ -116,6 +123,10 @@ source_set("internal") {
         "//chrome/browser/ui/pdf/infobar",
         "//chrome/browser/ui/startup/default_browser_prompt/pin_infobar",
       ]
+
+      if (enable_extensions_core) {
+        deps += [ "//chrome/browser/ui/search_engines" ]
+      }
     }
 
     if (is_win || is_mac || is_linux) {
@@ -136,6 +147,10 @@ source_set("internal") {
     if (use_aura) {
       deps += [ "//chrome/browser/ui:overscroll_pref_manager" ]
     }
+  }
+
+  if (enable_extensions_core) {
+    deps += [ "//chrome/browser/extensions" ]
   }
 }
 
@@ -197,6 +212,7 @@ if (is_android) {
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/GlobalBrowserCollectionPlatformDelegate.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/IdSequencer.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/PendingActionManager.java",
+      "android/java/src/org/chromium/chrome/browser/ui/browser_window/WindowStateManager.java",
     ]
     deps = [
       "//base:base_java",
@@ -207,6 +223,7 @@ if (is_android) {
       "//build/android:build_java",
       "//chrome/browser/android/customtabs:java",
       "//chrome/browser/android/lifecycle:java",
+      "//chrome/browser/flags:java",
       "//chrome/browser/incognito:incognito_utils_java",
       "//chrome/browser/profiles/android:java",
       "//chrome/browser/tab:java",
@@ -243,6 +260,7 @@ if (is_android) {
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/ChromeAndroidTaskBoundsConstraintsUnitTest.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/ChromeAndroidTaskImplUnitTest.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/ChromeAndroidTaskTrackerImplUnitTest.java",
+      "android/java/src/org/chromium/chrome/browser/ui/browser_window/GlobalBrowserCollectionPlatformDelegateUnitTest.java",
       "android/java/src/org/chromium/chrome/browser/ui/browser_window/PendingActionManagerUnitTest.java",
     ]
     deps = [
@@ -283,6 +301,7 @@ if (is_android) {
       ":java",
       "//base:base_java_test_support",
       "//base/test:public_transit_java",
+      "//chrome/android:chrome_test_java",
       "//chrome/android/javatests:chrome_test_java_helper",
       "//chrome/browser/flags:java",
       "//chrome/browser/profiles/android:java",
@@ -315,12 +334,13 @@ if (is_android) {
       "//base",
       "//chrome/browser",
       "//chrome/browser/flags:flags_android",
+      "//chrome/browser/preloading",
       "//chrome/browser/profiles",
+      "//chrome/browser/tab_list",
       "//chrome/browser/ui:browser_navigator_params_headers",
       "//chrome/browser/ui/browser_window",
       "//chrome/browser/ui/browser_window:create_browser_window",
       "//chrome/browser/ui/browser_window/test:android_browser_test_support",
-      "//chrome/browser/ui/tabs:tab_list_interface",
       "//chrome/test:test_support_ui_android",
       "//components/feed:feature_list",
       "//net:test_support",

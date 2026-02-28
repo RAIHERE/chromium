@@ -96,6 +96,8 @@ bool IsSuggestionHandledInPasswordManager(SuggestionType type) {
     case SuggestionType::kBnplEntry:
     case SuggestionType::kManageAddress:
     case SuggestionType::kManageAutofillAi:
+    case SuggestionType::kManageAutofillAiIdentityDocs:
+    case SuggestionType::kManageAutofillAiTravel:
     case SuggestionType::kManageCreditCard:
     case SuggestionType::kManageIban:
     case SuggestionType::kManageLoyaltyCard:
@@ -114,6 +116,7 @@ bool IsSuggestionHandledInPasswordManager(SuggestionType type) {
     case SuggestionType::kInsecureContextPaymentDisabledMessage:
     case SuggestionType::kMixedFormMessage:
     case SuggestionType::kAddressEntryOnTyping:
+    case SuggestionType::kAtMemorySearchResult:
     case SuggestionType::kIdentityCredential:
     case SuggestionType::kLoyaltyCardEntry:
     case SuggestionType::kOneTimePasswordEntry:
@@ -134,6 +137,8 @@ bool IsSuggestionHandledInPasswordManager(SuggestionType type) {
     case SuggestionType::kFillPassword:
     case SuggestionType::kViewPasswordDetails:
     case SuggestionType::kPendingStateSignin:
+    case SuggestionType::kLoadingThrobber:
+    case SuggestionType::kBnplFootnote:
       return false;
   }
 }
@@ -701,7 +706,8 @@ void PasswordAutofillManager::UpdatePopup(std::vector<Suggestion> suggestions) {
   }
   autofill_client_->UpdateAutofillSuggestions(
       suggestions, autofill::FillingProduct::kPassword,
-      autofill::AutofillSuggestionTriggerSource::kPasswordManager);
+      autofill::AutofillSuggestionTriggerSource::kPasswordManager,
+      autofill::AutofillSuggestionsIgnoreFocusLoss(false));
   last_popup_open_args_.suggestions = std::move(suggestions);
 }
 

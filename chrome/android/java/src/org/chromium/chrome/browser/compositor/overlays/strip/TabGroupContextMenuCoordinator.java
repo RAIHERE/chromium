@@ -7,7 +7,9 @@ package org.chromium.chrome.browser.compositor.overlays.strip;
 import static android.view.View.GONE;
 import static android.view.View.VISIBLE;
 
+import static org.chromium.build.NullUtil.assertNonNull;
 import static org.chromium.build.NullUtil.assumeNonNull;
+import static org.chromium.chrome.browser.tabmodel.TabGroupTitleUtils.isTitleUnset;
 import static org.chromium.ui.listmenu.BasicListMenu.buildMenuDivider;
 import static org.chromium.ui.listmenu.ListItemType.SUBMENU_HEADER;
 
@@ -16,7 +18,6 @@ import android.content.Context;
 import android.content.res.Resources;
 import android.database.DataSetObserver;
 import android.text.Editable;
-import android.text.TextUtils;
 import android.view.KeyEvent;
 import android.view.View;
 import android.view.View.MeasureSpec;
@@ -60,12 +61,12 @@ import org.chromium.chrome.browser.tabmodel.TabGroupTitleUtils;
 import org.chromium.chrome.browser.tabmodel.TabGroupUtils;
 import org.chromium.chrome.browser.tabmodel.TabList;
 import org.chromium.chrome.browser.tabmodel.TabModel;
-import org.chromium.chrome.browser.tasks.tab_management.ColorPickerCoordinator;
-import org.chromium.chrome.browser.tasks.tab_management.ColorPickerCoordinator.ColorPickerLayoutType;
-import org.chromium.chrome.browser.tasks.tab_management.ColorPickerType;
 import org.chromium.chrome.browser.tasks.tab_management.TabShareUtils;
 import org.chromium.chrome.browser.tasks.tab_management.TabStripReorderingHelper;
 import org.chromium.chrome.browser.tasks.tab_management.TabUiUtils;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerCoordinator;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerCoordinator.ColorPickerLayoutType;
+import org.chromium.chrome.browser.tasks.tab_management.color_picker.ColorPickerType;
 import org.chromium.chrome.browser.url_constants.UrlConstantResolver;
 import org.chromium.chrome.browser.url_constants.UrlConstantResolverFactory;
 import org.chromium.chrome.tab_ui.R;
@@ -118,7 +119,7 @@ public class TabGroupContextMenuCoordinator extends TabStripReorderingHelper<Tok
     private final TabGroupModelFilterObserver mTabGroupModelFilterObserver =
             new TabGroupModelFilterObserver() {
                 @Override
-                public void didChangeTabGroupTitle(Token tabGroupId, @Nullable String newTitle) {
+                public void didChangeTabGroupTitle(Token tabGroupId, String newTitle) {
                     if (isMenuShowing() && mTabGroupId.equals(tabGroupId)) {
                         setExistingOrDefaultTitle(newTitle);
                     }
@@ -543,8 +544,8 @@ public class TabGroupContextMenuCoordinator extends TabStripReorderingHelper<Tok
         @Nullable TabGroupMetadata tabGroupMetadata = getTabGroupMetadata(groupId);
         if (tabGroupMetadata == null) return;
         RecordUserAction.record("MobileToolbarTabGroupMenu.MoveGroupToAnotherWindow");
-        mMultiInstanceManager.moveTabGroupToWindow(
-                instanceInfo, tabGroupMetadata, TabList.INVALID_TAB_INDEX, NewWindowAppSource.MENU);
+        mMultiInstanceManager.moveTabGroupToWindowByIdChecked(
+                instanceInfo.instanceId, tabGroupMetadata, TabList.INVALID_TAB_INDEX);
     }
 
     @Override
@@ -581,7 +582,8 @@ public class TabGroupContextMenuCoordinator extends TabStripReorderingHelper<Tok
 
     private void updateTabGroupColor() {
         if (mColorPickerCoordinator == null) return;
-        @TabGroupColorId int newColor = mColorPickerCoordinator.getSelectedColorSupplier().get();
+        @TabGroupColorId
+        int newColor = assertNonNull(mColorPickerCoordinator.getSelectedColorSupplier().get());
         if (TabUiUtils.updateTabGroupColor(mTabGroupModelFilter, mTabGroupId, newColor)) {
             RecordUserAction.record("MobileToolbarTabGroupMenu.ColorChanged");
         }
@@ -597,7 +599,7 @@ public class TabGroupContextMenuCoordinator extends TabStripReorderingHelper<Tok
         String newTitle = mCurrentModifiedTitle;
         if (newTitle == null) {
             return;
-        } else if (TextUtils.isEmpty(newTitle) || newTitle.equals(getDefaultTitle())) {
+        } else if (isTitleUnset(newTitle) || newTitle.equals(getDefaultTitle())) {
             mTabGroupModelFilter.deleteTabGroupTitle(mTabGroupId);
             RecordUserAction.record("MobileToolbarTabGroupMenu.TitleReset");
             setExistingOrDefaultTitle(getDefaultTitle());
@@ -607,7 +609,7 @@ public class TabGroupContextMenuCoordinator extends TabStripReorderingHelper<Tok
         mCurrentModifiedTitle = null;
     }
 
-    private void setExistingOrDefaultTitle(@Nullable String s) {
+    private void setExistingOrDefaultTitle(String s) {
         // Flip `IsPresetTitleUsed`to prevent `TextWatcher` from treating `#setText` as a title
         // update.
         mIsPresetTitleUsed = true;

@@ -29,6 +29,7 @@
 #include "extensions/browser/extension_util.h"
 #include "extensions/browser/pref_names.h"
 #include "extensions/browser/test_extension_registry_observer.h"
+#include "extensions/browser/ui_util.h"
 #include "extensions/buildflags/buildflags.h"
 #include "extensions/common/extension_builder.h"
 #include "extensions/common/mojom/manifest.mojom-shared.h"
@@ -52,7 +53,10 @@ constexpr char kExtensionUpdateUrl[] =
 
 class ExtensionUtilUnittest : public ExtensionServiceTestBase {
  public:
-  void SetUp() override { InitializeEmptyExtensionService(); }
+  void SetUp() override {
+    ExtensionServiceTestBase::SetUp();
+    InitializeEmptyExtensionService();
+  }
 };
 
 TEST_F(ExtensionUtilUnittest, SetAllowFileAccess) {
@@ -202,7 +206,7 @@ TEST_F(ExtensionUtilUnittest, FixupLongExtensionName) {
       u"long\u2026";
 
   std::u16string fixup_extension_name =
-      util::GetFixupExtensionNameForUIDisplay(long_extension_name);
+      ui_util::GetFixupExtensionNameForUIDisplay(long_extension_name);
   EXPECT_EQ(fixup_extension_name, expected_fixup_extension_name);
 }
 

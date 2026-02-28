@@ -18,6 +18,7 @@ import androidx.annotation.VisibleForTesting;
 import org.chromium.base.ApiCompatibilityUtils;
 import org.chromium.base.CallbackUtils;
 import org.chromium.base.metrics.RecordHistogram;
+import org.chromium.base.supplier.SupplierUtils;
 import org.chromium.blink.mojom.DisplayMode;
 import org.chromium.blink.mojom.DisplayMode.EnumType;
 import org.chromium.build.annotations.NullMarked;
@@ -152,8 +153,7 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
             // logic to achieve this is defined in the Android app layer and an intent must be
             // generated even if the same activity could handle the navigation.
             WebContents webContents = getWebContents();
-            if (ChromeFeatureList.sAndroidWebAppLaunchHandler.isEnabled()
-                    && webContents != null
+            if (webContents != null
                     && !webContents.hasOpener()
                     && params.isTabInPWA()
                     && params.isInitialNavigationInFrame()
@@ -204,6 +204,11 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
                     CustomTabAuthUrlHeuristics.AuthScheme.COUNT);
         }
 
+        @Override
+        public boolean allowExternalNavigationForHttpProtocols(GURL url) {
+            return false;
+        }
+
         public void resumeDelayedVerificationForTesting() {
             mAuthTabVerifier.onFinishNativeInitialization();
         }
@@ -239,7 +244,7 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
                 TabCreatorManager tabCreatorManager,
                 Supplier<TabModelSelector> tabModelSelectorSupplier,
                 Supplier<@Nullable CompositorViewHolder> compositorViewHolderSupplier,
-                Supplier<ModalDialogManager> modalDialogManagerSupplier,
+                Supplier<@Nullable ModalDialogManager> modalDialogManagerSupplier,
                 Supplier<Boolean> headerControlsVisibilitySupplier,
                 Supplier<Boolean> headerAsOverlaySupplier,
                 @Nullable ExclusiveAccessManager exclusiveAccessManager,
@@ -374,10 +379,10 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
     private final BrowserControlsManager mBrowserControlsManager;
     private final Supplier<TabModelSelector> mTabModelSelectorSupplier;
     private final Supplier<@Nullable CompositorViewHolder> mCompositorViewHolderSupplier;
-    private final Supplier<ModalDialogManager> mModalDialogManagerSupplier;
+    private final Supplier<@Nullable ModalDialogManager> mModalDialogManagerSupplier;
     // Should only be used after inflation.
     private final Supplier<SnackbarManager> mSnackbarManager;
-    private final Supplier<ShareDelegate> mShareDelegateSupplier;
+    private final Supplier<@Nullable ShareDelegate> mShareDelegateSupplier;
     // Should only be used after inflation.
     private final Supplier<BottomSheetController> mBottomSheetController;
     private final AuthTabVerifier mAuthTabVerifier;
@@ -430,9 +435,9 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
             TabCreatorManager tabCreatorManager,
             Supplier<TabModelSelector> tabModelSelectorSupplier,
             Supplier<@Nullable CompositorViewHolder> compositorViewHolderSupplier,
-            Supplier<ModalDialogManager> modalDialogManagerSupplier,
+            Supplier<@Nullable ModalDialogManager> modalDialogManagerSupplier,
             Supplier<SnackbarManager> snackbarManager,
-            Supplier<ShareDelegate> shareDelegateSupplier,
+            Supplier<@Nullable ShareDelegate> shareDelegateSupplier,
             @ActivityType int activityType,
             Supplier<BottomSheetController> bottomSheetController,
             AuthTabVerifier authTabVerifier,
@@ -497,17 +502,17 @@ public class CustomTabDelegateFactory implements TabDelegateFactory {
                 null,
                 null,
                 null,
-                () -> null,
-                () -> null,
-                () -> null,
+                SupplierUtils.ofNull(),
+                SupplierUtils.ofNull(),
+                SupplierUtils.ofNull(),
                 null,
-                null,
+                SupplierUtils.ofNull(),
                 ActivityType.CUSTOM_TAB,
                 null,
                 null,
                 null,
-                () -> false,
-                () -> false,
+                SupplierUtils.of(false),
+                SupplierUtils.of(false),
                 null,
                 null);
     }

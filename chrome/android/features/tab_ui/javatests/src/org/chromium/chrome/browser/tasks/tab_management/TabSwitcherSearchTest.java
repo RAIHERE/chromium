@@ -28,6 +28,8 @@ import org.chromium.base.test.util.Batch;
 import org.chromium.base.test.util.CallbackHelper;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
+import org.chromium.base.test.util.DisableIf;
+import org.chromium.base.test.util.DisabledTest;
 import org.chromium.base.test.util.Features.DisableFeatures;
 import org.chromium.base.test.util.Features.EnableFeatures;
 import org.chromium.base.test.util.RequiresRestart;
@@ -139,6 +141,7 @@ public class TabSwitcherSearchTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "crbug.com/399128533")
     public void testZeroPrefixSuggestions_OpenSuggestion() {
         List<String> urlsToOpen =
                 List.of(
@@ -162,6 +165,7 @@ public class TabSwitcherSearchTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "crbug.com/399128533")
     public void testZeroPrefixSuggestions_OpenSameTab() {
         List<String> urlsToOpen = List.of("/chrome/test/data/android/navigate/one.html");
         mPage = Journeys.prepareRegularTabsWithWebPages(mPage, mTestServer.getURLs(urlsToOpen));
@@ -250,6 +254,7 @@ public class TabSwitcherSearchTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "crbug.com/399128533")
     public void testTypedSuggestions_OpenSuggestion() {
         List<String> urlsToOpen =
                 List.of(
@@ -269,6 +274,7 @@ public class TabSwitcherSearchTest {
 
     @Test
     @MediumTest
+    @DisabledTest(message = "crbug.com/399128533")
     public void testTypedSuggestions_OpenSameTab() {
         List<String> urlsToOpen = List.of("/chrome/test/data/android/navigate/one.html");
         mPage = Journeys.prepareRegularTabsWithWebPages(mPage, mTestServer.getURLs(urlsToOpen));
@@ -325,6 +331,8 @@ public class TabSwitcherSearchTest {
 
     @Test
     @MediumTest
+    @DisableIf.Device(
+            DeviceFormFactor.DESKTOP) // TODO(crbug.com/479863847): Test failing on Desktop bot
     public void testSearchActivityBackButton_Incognito() {
         ChromeTabbedActivity cta = mCtaTestRule.getActivity();
         mPage.openNewIncognitoTabOrWindowFast()

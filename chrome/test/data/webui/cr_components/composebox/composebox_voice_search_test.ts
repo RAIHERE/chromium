@@ -6,7 +6,8 @@ import 'chrome://new-tab-page/strings.m.js';
 import 'chrome://resources/cr_components/composebox/composebox.js';
 
 import type {ComposeboxElement} from 'chrome://resources/cr_components/composebox/composebox.js';
-import {VoiceSearchAction} from 'chrome://resources/cr_components/composebox/composebox.js';
+// import {VoiceSearchAction} from
+// 'chrome://resources/cr_components/composebox/composebox.js';
 import {PageCallbackRouter, PageHandlerRemote} from 'chrome://resources/cr_components/composebox/composebox.mojom-webui.js';
 import {ComposeboxProxyImpl} from 'chrome://resources/cr_components/composebox/composebox_proxy.js';
 import {WindowProxy} from 'chrome://resources/cr_components/composebox/window_proxy.js';
@@ -109,6 +110,18 @@ suite('Composebox voice search', () => {
         SearchboxPageHandlerRemote,
         mock => ComposeboxProxyImpl.getInstance().searchboxHandler = mock);
     searchboxHandler.setResultFor('getRecentTabs', Promise.resolve({tabs: []}));
+    searchboxHandler.setResultFor('getInputState', Promise.resolve({
+      state: {
+        allowedModels: [],
+        allowedTools: [],
+        allowedInputTypes: [],
+        activeModel: 0,
+        activeTool: 0,
+        disabledModels: [],
+        disabledTools: [],
+        disabledInputTypes: [],
+      },
+    }));
 
     windowProxy = installMock(WindowProxy);
     windowProxy.setResultFor('setTimeout', 0);
@@ -121,8 +134,7 @@ suite('Composebox voice search', () => {
 
   function getVoiceSearchButton(composeboxElement: ComposeboxElement):
       HTMLElement|null {
-    const contextElement = composeboxElement.$.context;
-    return contextElement.shadowRoot.querySelector<HTMLElement>(
+    return composeboxElement.shadowRoot.querySelector<HTMLElement>(
         '#voiceSearchButton');
   }
 
@@ -191,6 +203,8 @@ suite('Composebox voice search', () => {
     const result2 = createResults(2);
     Object.assign(result2.results[0]![0]!, {transcript: 'hello'});
     Object.assign(result2.results[1]![0]!, {transcript: 'goodbye'});
+    const [callback] = await windowProxy.whenCalled('setTimeout');
+    callback();
 
     // Act.
     mockSpeechRecognition.onresult!(result2);
@@ -198,37 +212,6 @@ suite('Composebox voice search', () => {
 
     // Speech recognition overrides existing composebox input.
     assertEquals('hellogoodbye', voiceSearchInput.value);
-  });
-
-  test('on result submits a query if marked as final', async () => {
-    const result = createResults(2);
-    Object.assign(result.results[0]!, {isFinal: true});
-    Object.assign(result.results[0]![0]!, {transcript: 'hello world'});
-
-    const finalResultEventPromise = new Promise((resolve) => {
-      composeboxElement.addEventListener('voice-search-action', (e: Event) => {
-        const customEvent = e as CustomEvent<{value: VoiceSearchAction}>;
-        if (customEvent.detail.value === VoiceSearchAction.QUERY_SUBMITTED) {
-          resolve(customEvent.detail.value);
-        }
-      }, {once: true});
-    });
-    const showPromise =
-        getTransitionEndPromise(composeboxElement.$.composebox, 'opacity');
-
-    // Act.
-    mockSpeechRecognition.onresult!(result);
-    await microtasksFinished();
-    const finalResult = await finalResultEventPromise;
-    assertEquals(VoiceSearchAction.QUERY_SUBMITTED, finalResult);
-    await showPromise;
-
-    // The composebox should navigate with the text after `onEnd` is called.
-    assertEquals(searchboxHandler.getCallCount('openAutocompleteMatch'), 0);
-    assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
-
-    assertStyle(composeboxElement.$.composebox, 'display', 'flex');
-    assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
   });
 
   test('idle timer exits voice search if no final result', async () => {
@@ -244,6 +227,8 @@ suite('Composebox voice search', () => {
     callback();
     await microtasksFinished();
     await showPromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
 
     // Assert.
     assertFalse(mockSpeechRecognition.voiceSearchInProgress);
@@ -261,26 +246,71 @@ suite('Composebox voice search', () => {
     assertTrue(mockSpeechRecognition.voiceSearchInProgress);
 
     const result = createResults(2);
-    Object.assign(result.results[0]![0]!, {transcript: 'hello'});
-    Object.assign(result.results[1]![0]!, {transcript: 'world'});
+    Object.assign(result.results[0]![0]!, {confidence: 1, transcript: 'hello'});
+    Object.assign(result.results[1]![0]!, {confidence: 1, transcript: 'world'});
+    Object.assign(result.results[0]!, {isFinal: false});
+    Object.assign(result.results[1]!, {isFinal: true});
+    (result as any).resultIndex = 1;
     const showPromise =
         getTransitionEndPromise(composeboxElement.$.composebox, 'opacity');
     // Act.
     mockSpeechRecognition.onresult!(result);
 
-    const [callback] = await windowProxy.whenCalled('setTimeout');
-    callback();
     await microtasksFinished();
+    await showPromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
 
     // Assert.
     assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
 
-    await showPromise;
     assertStyle(composeboxElement.$.composebox, 'display', 'flex');
     assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
   });
 
-  test('idle timeout with no final result does not submit query', async () => {
+  test(
+      'idle timeout with interim result and some final result submits query',
+      async () => {
+        const voiceSearchButton = getVoiceSearchButton(composeboxElement);
+        voiceSearchButton!.click();
+        await microtasksFinished();
+
+        assertTrue(mockSpeechRecognition.voiceSearchInProgress);
+
+        const result = createResults(2);
+        // Confidence 0 produces interim result.
+        Object.assign(
+            result.results[0]![0]!, {confidence: 0, transcript: 'hello'});
+        Object.assign(
+            result.results[1]![0]!, {confidence: 1, transcript: 'world'});
+
+        const showPromise =
+            getTransitionEndPromise(composeboxElement.$.composebox, 'opacity');
+
+        // Act.
+        mockSpeechRecognition.onresult!(result);
+        assertEquals(
+            (composeboxElement.$.voiceSearch as any).interimResult_, 'hello');
+        assertEquals(
+            (composeboxElement.$.voiceSearch as any).finalResult_, 'world');
+        assertEquals(
+            (composeboxElement.$.voiceSearch as any).transcript_, 'helloworld');
+
+        const [callback] = await windowProxy.whenCalled('setTimeout');
+        callback();
+        await microtasksFinished();
+        await showPromise;
+        await composeboxElement.updateComplete;
+        await composeboxElement.$.voiceSearch.updateComplete;
+
+        // Assert.
+        assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
+
+        assertStyle(composeboxElement.$.composebox, 'display', 'flex');
+        assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
+      });
+
+  test('idle timeout with final result submits query', async () => {
     const voiceSearchButton = getVoiceSearchButton(composeboxElement);
     voiceSearchButton!.click();
     await microtasksFinished();
@@ -288,30 +318,38 @@ suite('Composebox voice search', () => {
     assertTrue(mockSpeechRecognition.voiceSearchInProgress);
 
     const result = createResults(2);
-    Object.assign(result.results[0]![0]!, {confidence: 0, transcript: 'hello'});
-    Object.assign(result.results[1]![0]!, {confidence: 0, transcript: 'world'});
-
+    Object.assign(result.results[0]![0]!, {confidence: 1, transcript: 'hello'});
+    Object.assign(result.results[1]![0]!, {confidence: 1, transcript: 'world'});
+    Object.assign(result.results[0]!, {isFinal: false});
+    Object.assign(result.results[1]!, {isFinal: true});
     const showPromise =
         getTransitionEndPromise(composeboxElement.$.composebox, 'opacity');
 
     // Act.
     mockSpeechRecognition.onresult!(result);
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).finalResult_, 'helloworld');
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).transcript_, 'helloworld');
 
     const [callback] = await windowProxy.whenCalled('setTimeout');
     callback();
     await microtasksFinished();
-
-    // Assert.
-    assertEquals(searchboxHandler.getCallCount('submitQuery'), 0);
-
     await showPromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
+    // Assert.
+    assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
+
     assertStyle(composeboxElement.$.composebox, 'display', 'flex');
     assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
   });
 
-
   test(
-      'on end exits voice search if no final result is available', async () => {
+      'on end submits and exits voice search if no final result is available',
+      async () => {
+        (composeboxElement as any).autoSubmitVoiceSearch = true;
+
         const voiceSearchButton = getVoiceSearchButton(composeboxElement);
         voiceSearchButton!.click();
         await microtasksFinished();
@@ -332,13 +370,78 @@ suite('Composebox voice search', () => {
         mockSpeechRecognition.onend!();
         await microtasksFinished();
         await showPromise;
+        await composeboxElement.updateComplete;
+        await composeboxElement.$.voiceSearch.updateComplete;
+        assertEquals((composeboxElement.$.voiceSearch as any).finalResult_, '');
+        assertEquals(
+            (composeboxElement.$.voiceSearch as any).transcript_, 'helloworld',
+            'transcript should be set after result is' +
+                'processed but not finalized');
+
+        const [callback] = await windowProxy.whenCalled('setTimeout');
+        callback();
+        await microtasksFinished();
+
+        assertEquals((composeboxElement.$.voiceSearch as any).finalResult_, '');
+        assertEquals(
+            (composeboxElement.$.voiceSearch as any).transcript_, '',
+            'transcript should be cleared after onend with no final result');
 
         // Assert.
-        assertEquals(searchboxHandler.getCallCount('submitQuery'), 0);
+        assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
         assertStyle(composeboxElement.$.composebox, 'display', 'flex');
         assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
-        assertEquals(composeboxElement.animationState, GlowAnimationState.NONE);
+        assertEquals(
+            composeboxElement.animationState, GlowAnimationState.SUBMITTING);
       });
+
+  test('transcript is cleared to avoid leftover past queries', async () => {
+    (composeboxElement as any).autoSubmitVoiceSearch = true;
+
+    const voiceSearchButton = getVoiceSearchButton(composeboxElement);
+    voiceSearchButton!.click();
+    await microtasksFinished();
+
+    assertTrue(mockSpeechRecognition.voiceSearchInProgress);
+
+    const result = createResults(2);
+    Object.assign(result.results[0]![0]!, {confidence: 0, transcript: 'hello'});
+    Object.assign(result.results[1]![0]!, {confidence: 0, transcript: 'world'});
+    mockSpeechRecognition.onresult!(result);
+    mockSpeechRecognition.onend!();
+
+    const showPromise =
+        getTransitionEndPromise(composeboxElement.$.composebox, 'opacity');
+
+    assertEquals((composeboxElement.$.voiceSearch as any).finalResult_, '');
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).transcript_, 'helloworld',
+        'transcript should be set after result is processed');
+    await showPromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
+    const [callback] = await windowProxy.whenCalled('setTimeout');
+    callback();
+    await microtasksFinished();
+
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).finalResult_, '',
+        'finalResult should be empty as no final result was received');
+
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).interimResult_, '',
+        'interimResult should be cleared after idle timeout');
+
+    assertEquals(
+        (composeboxElement.$.voiceSearch as any).transcript_, '',
+        'transcript should be cleared after idle timeout');
+
+    assertEquals(searchboxHandler.getCallCount('submitQuery'), 1);
+    assertStyle(composeboxElement.$.composebox, 'display', 'flex');
+    assertStyle(composeboxElement.$.voiceSearch, 'display', 'none');
+    assertEquals(
+        composeboxElement.animationState, GlowAnimationState.SUBMITTING);
+  });
 
   test('on error shows error container for NOT_ALLOWED', async () => {
     const voiceSearchButton = getVoiceSearchButton(composeboxElement);
@@ -353,6 +456,8 @@ suite('Composebox voice search', () => {
         ({error: 'not-allowed'} as SpeechRecognitionErrorEvent);
     await microtasksFinished();
     await hidePromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
 
     const voiceSearchElement = composeboxElement.$.voiceSearch;
     const errorContainer =
@@ -385,6 +490,8 @@ suite('Composebox voice search', () => {
     mockSpeechRecognition.onend!();
     await microtasksFinished();
     await showPromise;
+    await composeboxElement.updateComplete;
+    await composeboxElement.$.voiceSearch.updateComplete;
 
     const [callback] = await windowProxy.whenCalled('setTimeout');
     callback();

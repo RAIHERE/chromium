@@ -977,10 +977,10 @@ void WebContentsAccessibilityAndroid::HandleAtomicLiveRegionChanged(
            ->GetString16Attribute(ax::mojom::StringAttribute::kName)
            .empty();
 
-  // TODO(accessibility): this condition isn't technically part of accessible
-  // name computation. It should only be valid to do this for roles that support
-  // `ui::SupportsNamingFromChildcontents`. This condition makes it so that we
-  // rarely if ever traverse into descendants.
+  // TODO(crbug.com/478972594): this condition isn't technically part of
+  // accessible name computation. It should only be valid to do this for roles
+  // that support `ui::SupportsNamingFromChildContents`. This condition makes it
+  // so that we rarely if ever traverse into descendants.
   bool root_has_nonempty_text =
       !android_root_node->GetTextContentUTF16().empty();
 
@@ -1002,8 +1002,8 @@ void WebContentsAccessibilityAndroid::HandleAtomicLiveRegionChanged(
     // changed event.
     if (!current_node->GetString16Attribute(ax::mojom::StringAttribute::kName)
              .empty() ||
-        // TODO(accessibility), similarly to the root, this shouldn't be part of
-        // name computation generally.
+        // TODO(crbug.com/478972594), similarly to the root, this shouldn't be
+        // part of name computation generally.
         !current_node->GetTextContentUTF16().empty()) {
       HandleLiveRegionNodeChanged(current_node->GetUniqueId());
     }
@@ -1582,7 +1582,7 @@ void WebContentsAccessibilityAndroid::
   recorder.StartTimer(TextFormattingMetric::kSetAniTextDuration);
   Java_AccessibilityNodeInfoBuilder_setAccessibilityNodeInfoText(
       env, obj, info, base::android::ConvertUTF16ToJavaString(env, text),
-      is_link, node->IsTextField(),
+      is_link,
       base::android::ConvertUTF16ToJavaString(env, node->GetStateDescription()),
       base::android::ConvertUTF16ToJavaString(env, node->GetContainerTitle()),
       base::android::ConvertUTF16ToJavaString(env,
@@ -1651,7 +1651,7 @@ void WebContentsAccessibilityAndroid::
       is_link
           ? base::android::ConvertUTF16ToJavaString(env, node->GetTargetUrl())
           : base::android::ConvertUTF16ToJavaString(env, std::u16string()),
-      is_link, node->IsTextField(),
+      is_link,
       GetCanonicalJNIString(env, node->GetInheritedString16Attribute(
                                      ax::mojom::StringAttribute::kLanguage)),
       java_suggestion_starts, java_suggestion_ends, java_suggestion_text,
@@ -2050,7 +2050,14 @@ void WebContentsAccessibilityAndroid::ClearExtendedSelection(JNIEnv* env,
     return;
   }
 
-  node->manager()->SetSelection(ui::BrowserAccessibility::AXRange());
+  ui::BrowserAccessibility::AXPosition start_position =
+      node->CreatePositionForSelectionAt(ax::mojom::kNoSelectionOffset);
+  ui::BrowserAccessibility::AXPosition end_position =
+      node->CreatePositionForSelectionAt(ax::mojom::kNoSelectionOffset);
+
+  // TODO(crbug.com/443078007): Add test.
+  node->manager()->SetSelection(ui::BrowserAccessibility::AXRange(
+      std::move(start_position), std::move(end_position)));
 }
 
 bool WebContentsAccessibilityAndroid::AdjustSlider(JNIEnv* env,
@@ -2429,10 +2436,12 @@ void WebContentsAccessibilityAndroid::OnAutofillPopupDisplayed(JNIEnv* env) {
 
   DeleteAutofillPopupProxy();
 
-  // The node is isolated (tree is nullptr) and its id is not important,
-  // it should only be not equal to kInvalidAXNodeID to be considered valid.
+  // The node has no parent in the tree, and its id is not important as long as
+  // it is valid.
   ui::AXNodeID id = ~ui::kInvalidAXNodeID;
-  g_autofill_popup_proxy_node_ax_node = new ui::AXNode(nullptr, nullptr, id, 0);
+  g_autofill_popup_proxy_node_ax_node =
+      new ui::AXNode(root_manager->ax_tree(), /*parent=*/nullptr, id,
+                     /*index_in_parent=*/0);
   ui::AXNodeData ax_node_data;
   ax_node_data.id = id;
   ax_node_data.role = ax::mojom::Role::kMenu;
@@ -2788,7 +2797,7 @@ void WebContentsAccessibilityAndroid::ProcessCompletedAccessibilityTreeSnapshot(
   // We have fulfilled the request for an accessibility tree snapshot, so we can
   // now call the provided Java-side callback to inform original client that the
   // async construction is complete.
-  base::android::RunRunnableAndroid(on_done_callback_);
+  jni_zero::RunRunnable(on_done_callback_);
 }
 
 void WebContentsAccessibilityAndroid::RecursivelyPopulateViewStructureTree(
@@ -2903,6 +2912,22 @@ WebContentsAccessibilityAndroid::GetChildIdsForTesting(JNIEnv* env,
     child_ids.push_back(android_node.GetUniqueId());
   }
   return base::android::ToJavaIntArray(env, child_ids);
+}
+
+jint WebContentsAccessibilityAndroid::GetParentIdForTesting(  // IN-TEST
+    JNIEnv* env,
+    int32_t unique_id) {
+  BrowserAccessibilityAndroid* node = GetAXFromUniqueID(unique_id);
+  if (!node) {
+    return ui::kAXAndroidInvalidViewId;
+  }
+
+  ui::BrowserAccessibility* parent = node->PlatformGetParent();
+  if (!parent) {
+    return ui::kAXAndroidInvalidViewId;
+  }
+
+  return static_cast<BrowserAccessibilityAndroid*>(parent)->GetUniqueId();
 }
 
 ScopedJavaLocalRef<jintArray>

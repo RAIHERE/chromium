@@ -293,6 +293,16 @@ found in the LICENSE file.
     <!-- 18dp padding is added to each side of the remove button to limit the image width to 20dp (56dp - 2 * 18dp). -->
     <dimen name="history_item_remove_button_lateral_padding">18dp</dimen>
     <dimen name="history_item_leading_padding">2dp</dimen>
+    <dimen name="history_item_spark_size">18dp</dimen>
+    <!--
+        Calculated to align the spark center with the favicon bottom-right corner.
+        Favicon right edge = list_item_default_margin(16dp) + list_item_start_icon_width(36dp) = 52dp.
+        Spark margin start = 52dp - (history_item_spark_size(18dp) / 2) = 43dp.
+    -->
+    <dimen name="history_item_spark_margin_start">43dp</dimen>
+    <!-- Calculated using list_item_min_height(64dp) / 2. -->
+    <dimen name="history_item_spark_margin_top">32dp</dimen>
+    <dimen name="history_item_spark_padding">4dp</dimen>
 
     <!-- Context Menu Dimensions -->
     <!-- Prevent the chip from reaching the edges of the screen for long translations. -->
@@ -355,7 +365,8 @@ found in the LICENSE file.
     <dimen name="settings_search_ui_height">48dp</dimen>
     <dimen name="settings_search_ui_top_margin">4dp</dimen>
     <dimen name="settings_search_ui_bottom_margin">12dp</dimen>
-    <dimen name="settings_search_icon_padding">16dp</dimen>
+    <dimen name="settings_search_icon_padding">8dp</dimen>
+    <dimen name="settings_search_icon_margin">8dp</dimen>
     <dimen name="settings_detailed_title_padding">10dp</dimen>
     <dimen name="settings_detailed_title_height">48dp</dimen>
     <dimen name="settings_multi_column_divider_size">24dp</dimen>
@@ -455,8 +466,11 @@ found in the LICENSE file.
     <dimen name="tips_notifications_bottom_sheet_horizontal_margin">24dp</dimen>
     <dimen name="tips_notifications_bottom_sheet_step_content_margin_start">16dp</dimen>
     <dimen name="tips_notifications_bottom_sheet_step_number_width">25dp</dimen>
-    <dimen name="tips_notifications_bottom_sheet_step_vertical_padding">12dp</dimen>
     <dimen name="tips_notifications_bottom_sheet_title_padding">24dp</dimen>
+
+    <!-- View list background dimensions -->
+    <dimen name="view_list_item_large_radius">24dp</dimen>
+    <dimen name="view_list_item_small_radius">3dp</dimen>
 
     <!-- Caret browsing dimensions -->
     <dimen name="caret_top_padding">18dp</dimen>
@@ -467,5 +481,10 @@ found in the LICENSE file.
     <dimen name="auto_pip_permission_dialog_padding">24dp</dimen>
 
     <!-- Document PiP dimensions -->
-    <dimen name="document_picture_in_picture_header_icon_size">48dp</dimen>
+    <dimen name="document_picture_in_picture_header_component_size">48dp</dimen>
+    <dimen name="document_picture_in_picture_url_bar_padding">6dp</dimen>
+    <dimen name="document_picture_in_picture_header_min_height">48dp</dimen>
+
+    <!-- Chrome Finds dimensions -->
+    <dimen name="chrome_finds_opt_in_bottom_sheet_horizontal_margin">24dp</dimen>
 </resources>

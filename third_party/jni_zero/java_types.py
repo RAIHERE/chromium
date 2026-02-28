@@ -106,6 +106,10 @@ class JavaClass:
     return self.package_with_slashes.replace('/', '.')
 
   @property
+  def package_with_colons(self):
+    return self.package_with_slashes.replace('/', '::')
+
+  @property
   def full_name_with_slashes(self):
     return self._fqn
 
@@ -272,6 +276,11 @@ class JavaType:
   def to_proxy(self):
     """Converts to types used over JNI boundary."""
     return self if self.is_primitive() else OBJECT
+
+  def enable_mirror(self, java_class):
+    """Whether to use a jobject subclass e.g. JMyClass."""
+    return (not self.converted_type and self.array_dimensions == 0
+            and self.java_class == java_class)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -467,6 +476,9 @@ OBJECT = JavaType(java_class=OBJECT_CLASS)
 CLASS = JavaType(java_class=CLASS_CLASS)
 LIST = JavaType(java_class=_LIST_CLASS)
 INT = JavaType(primitive_name='int', nullable=False)
+DOUBLE = JavaType(primitive_name='double', nullable=False)
+FLOAT = JavaType(primitive_name='float', nullable=False)
+LONG = JavaType(primitive_name='long', nullable=False)
 VOID = JavaType(primitive_name='void', nullable=False)
 
 _EMPTY_TYPE_RESOLVER = TypeResolver(OBJECT_CLASS)

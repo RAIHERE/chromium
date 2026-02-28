@@ -90,7 +90,37 @@ chromium-metrics-reviews@google.com.
   </summary>
 </histogram>
 
-<histogram name="PDF.HasAttachment" enum="Boolean" expires_after="2026-06-07">
+<histogram name="PDF.GlicEnabled" enum="Boolean" expires_after="2027-01-01">
+  <owner>erikchen@chromium.org</owner>
+  <owner>thestig@chromium.org</owner>
+  <summary>
+    Emitted once each time a pdf (not print preview) is loaded. The boolean
+    indicates whether glic was enabled for the profile.
+  </summary>
+</histogram>
+
+<histogram name="PDF.GlicSummarizeButtonClicked" enum="Boolean"
+    expires_after="2027-01-01">
+  <owner>erikchen@chromium.org</owner>
+  <owner>thestig@chromium.org</owner>
+  <summary>
+    Emitted once each time the glic summarize button is clicked. Records true on
+    success and false on any failure.
+  </summary>
+</histogram>
+
+<histogram name="PDF.GlicSummarizeButtonEnabled" enum="Boolean"
+    expires_after="2027-01-01">
+  <owner>erikchen@chromium.org</owner>
+  <owner>thestig@chromium.org</owner>
+  <summary>
+    Emitted once each time a pdf (not print preview) is loaded. The boolean
+    indicates whether the summarize button was enabled for the profile. Note
+    that embedded pdfs if too small may still not show the summarize button.
+  </summary>
+</histogram>
+
+<histogram name="PDF.HasAttachment" enum="Boolean" expires_after="2026-08-09">
   <owner>nigi@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -127,7 +157,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2StrokeBrushType" enum="PDFInk2StrokeBrushType"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -141,7 +171,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2StrokeHighlighterColor"
-    enum="PDFInk2StrokeHighlighterColor" expires_after="2026-06-07">
+    enum="PDFInk2StrokeHighlighterColor" expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -153,7 +183,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2StrokeInputDeviceType"
-    enum="PDFInk2StrokeInputDeviceType" expires_after="2026-06-07">
+    enum="PDFInk2StrokeInputDeviceType" expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -168,7 +198,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2StrokePenColor" enum="PDFInk2StrokePenColor"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -179,7 +209,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2Stroke{Brush}Size" enum="PDFInk2StrokeBrushSize"
-    expires_after="2026-06-07">
+    expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -196,7 +226,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2TextHighlighterColor"
-    enum="PDFInk2StrokeHighlighterColor" expires_after="2026-06-07">
+    enum="PDFInk2StrokeHighlighterColor" expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -210,7 +240,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.Ink2TextHighlightInputDeviceType"
-    enum="PDFInk2StrokeInputDeviceType" expires_after="2026-06-07">
+    enum="PDFInk2StrokeInputDeviceType" expires_after="2026-08-09">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>
@@ -263,7 +293,7 @@ chromium-metrics-reviews@google.com.
 </histogram>
 
 <histogram name="PDF.PostMessageDataType" enum="PDFPostMessageDataType"
-    expires_after="2026-06-21">
+    expires_after="2026-08-23">
   <owner>andyphan@chromium.org</owner>
   <owner>thestig@chromium.org</owner>
   <summary>

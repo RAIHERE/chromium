@@ -29,6 +29,8 @@ BASE_FEATURE(kUseFeedEligibilityService, base::FEATURE_DISABLED_BY_DEFAULT);
 BASE_FEATURE(kMostVisitedTilesCustomizationIOS,
              base::FEATURE_DISABLED_BY_DEFAULT);
 
+BASE_FEATURE(kEnableNTPBackgroundImageCache, base::FEATURE_DISABLED_BY_DEFAULT);
+
 BASE_FEATURE(kConsistentLogoDoodleHeight, base::FEATURE_DISABLED_BY_DEFAULT);
 
 #pragma mark - Feature parameters
@@ -46,6 +48,12 @@ const char kFeedSettingDiscoverReferrerParameter[] =
     "DiscoverReferrerParameter";
 
 const char kFeedSwipeInProductHelpArmParam[] = "feed-swipe-in-product-help-arm";
+
+BASE_FEATURE_PARAM(int,
+                   kFeedSwipeInProductHelpArmParamFeature,
+                   &kFeedSwipeInProductHelp,
+                   kFeedSwipeInProductHelpArmParam,
+                   static_cast<int>(FeedSwipeIPHVariation::kStaticAfterFRE));
 
 #pragma mark - Helpers
 
@@ -70,10 +78,7 @@ bool IsContentSuggestionsForSupervisedUserEnabled(PrefService* pref_service) {
 FeedSwipeIPHVariation GetFeedSwipeIPHVariation() {
   if (base::FeatureList::IsEnabled(kFeedSwipeInProductHelp)) {
     return static_cast<FeedSwipeIPHVariation>(
-        base::GetFieldTrialParamByFeatureAsInt(
-            kFeedSwipeInProductHelp,
-            kFeedSwipeInProductHelpArmParam, /*default_value=*/
-            static_cast<int>(FeedSwipeIPHVariation::kStaticAfterFRE)));
+        kFeedSwipeInProductHelpArmParamFeature.Get());
   }
   return FeedSwipeIPHVariation::kDisabled;
 }
@@ -133,6 +138,10 @@ bool ShouldEnlargeNTPFakeboxForMIA() {
 
 bool IsContentSuggestionsCustomizable() {
   return base::FeatureList::IsEnabled(kMostVisitedTilesCustomizationIOS);
+}
+
+bool IsNTPBackgroundImageCacheEnabled() {
+  return base::FeatureList::IsEnabled(kEnableNTPBackgroundImageCache);
 }
 
 bool IsConsistentLogoDoodleHeightEnabled() {

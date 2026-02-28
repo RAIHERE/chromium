@@ -105,7 +105,7 @@ MimeHandlerViewGuest::~MimeHandlerViewGuest() {
     // If we are awaiting attaching to outer WebContents
     if (GetEmbedderFrame() && GetEmbedderFrame()->GetParent()) {
       // TODO(ekaramad): This should only be needed if the embedder frame is in
-      // a plugin element (https://crbug.com/957373).
+      // a plugin element (https://crbug.com/40624996).
       mojo::AssociatedRemote<mojom::MimeHandlerViewContainerManager>
           container_manager;
       GetEmbedderFrame()
@@ -437,6 +437,8 @@ content::WebContents* MimeHandlerViewGuest::CreateCustomWebContents(
     const GURL& opener_url,
     const std::string& frame_name,
     const GURL& target_url,
+    WindowOpenDisposition disposition,
+    const blink::mojom::WindowFeatures& window_features,
     const content::StoragePartitionConfig& partition_config,
     content::SessionStorageNamespace* session_storage_namespace) {
   CHECK(!base::FeatureList::IsEnabled(features::kGuestViewMPArch));

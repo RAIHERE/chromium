@@ -31,7 +31,7 @@ class PrefetchService;
 // purpose.
 //
 // This is a value per (prefetch matching, `PrefetchContainer`) representing the
-// result of `PrefetchScheduler::CollectMatchCandidate()`. This is typically
+// result of `PrefetchService::CollectMatchCandidate()`. This is typically
 // used as follows:
 //
 // - To record trace events for `CollectPotentialMatchPrefetchContainers()`
@@ -174,12 +174,12 @@ class CONTENT_EXPORT PrefetchMatchResolver final
   PrefetchMatchResolver& operator=(const PrefetchMatchResolver&) = delete;
 
   // PrefetchContainer::Observer implementation
-  void OnWillBeDestroyed(PrefetchContainer& prefetch_container) override;
-  void OnGotInitialEligibility(PrefetchContainer& prefetch_container,
+  void OnWillBeDestroyed(const PrefetchContainer& prefetch_container) override;
+  void OnGotInitialEligibility(const PrefetchContainer& prefetch_container,
                                PreloadingEligibility eligibility) override;
-  void OnDeterminedHead(PrefetchContainer& prefetch_container) override;
+  void OnDeterminedHead(const PrefetchContainer& prefetch_container) override;
   void OnPrefetchCompletedOrFailed(
-      PrefetchContainer& prefetch_container,
+      const PrefetchContainer& prefetch_container,
       const network::URLLoaderCompletionStatus& completion_status,
       const std::optional<int>& response_code) override;
 
@@ -365,7 +365,7 @@ concept MatchCandidate =
       t.key();
       t.request();
       t.GetURL();
-      t.GetServableState(cacheable_duration);
+      t.GetMatchResolverAction();
       t.GetNoVarySearchHint();
       t.IsNoVarySearchHeaderMatch(url);
       t.ShouldWaitForNoVarySearchHeader(url);
@@ -529,7 +529,7 @@ CollectMatchCandidatesGeneric(
         PrefetchPotentialCandidateCollectResult::kUninitialized;
 
     PrefetchServableState servable_state =
-        candidate->GetServableState(PrefetchCacheableDuration());
+        candidate->GetMatchResolverAction().ToServableState();
     const bool is_available = IsCandidateAvailable(
         *candidate, servable_state, is_nav_prerender, &collect_result);
     DVLOG(1) << "Serving " << *candidate

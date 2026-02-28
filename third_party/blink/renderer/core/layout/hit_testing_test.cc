@@ -20,8 +20,7 @@
 namespace blink {
 
 using HitNodeCb =
-    base::MockRepeatingCallback<ListBasedHitTestBehavior(const Node& node,
-                                                         DOMNodeId node_id)>;
+    base::MockRepeatingCallback<ListBasedHitTestBehavior(const Node& node)>;
 using testing::_;
 using testing::Return;
 
@@ -57,7 +56,7 @@ class HitNodeCallbackStopper : public GarbageCollected<HitNodeCallbackStopper> {
   HitNodeCallbackStopper& operator=(const HitNodeCallbackStopper&) = delete;
   ~HitNodeCallbackStopper() = default;
 
-  ListBasedHitTestBehavior StopAtNode(const Node& node, DOMNodeId node_id) {
+  ListBasedHitTestBehavior StopAtNode(const Node& node) {
     did_stop_hit_testing_ = false;
     if (node == stop_node_) {
       did_stop_hit_testing_ = true;
@@ -144,7 +143,7 @@ TEST_F(HitTestingTest, HitTestWithCallback) {
 
   // Perform hit test without stopping, and verify that the result innernode is
   // set to the target.
-  EXPECT_CALL(hit_node_cb, Run(_, _))
+  EXPECT_CALL(hit_node_cb, Run(_))
       .WillRepeatedly(Return(ListBasedHitTestBehavior::kContinueHitTesting));
 
   LocalFrame* frame = GetDocument().GetFrame();
@@ -168,8 +167,8 @@ TEST_F(HitTestingTest, HitTestWithCallback) {
   Element* occluder_3 = GetElementById("occluder_3");
 
   // Ensure that occluders intersect with the target.
-  const int div_height =
-      GetLayoutObjectByElementId("target")->StyleRef().Height().IntValue();
+  const int div_height = static_cast<int>(
+      GetLayoutObjectByElementId("target")->StyleRef().Height().Pixels());
   occluder_1->SetInlineStyleProperty(CSSPropertyID::kMarginTop, "-10px");
   occluder_2->SetInlineStyleProperty(
       CSSPropertyID::kMarginTop,
@@ -183,7 +182,7 @@ TEST_F(HitTestingTest, HitTestWithCallback) {
   Node* stop_node = GetElementById("occluder_2");
   HitNodeCallbackStopper* hit_node_callback_stopper =
       MakeGarbageCollected<HitNodeCallbackStopper>(stop_node);
-  EXPECT_CALL(hit_node_cb, Run(_, _))
+  EXPECT_CALL(hit_node_cb, Run(_))
       .WillRepeatedly(testing::Invoke(hit_node_callback_stopper,
                                       &HitNodeCallbackStopper::StopAtNode));
   EXPECT_FALSE(hit_node_callback_stopper->DidStopHitTesting());
@@ -273,6 +272,42 @@ line9</div>
   // Expect to hit test position 12 (beginning of line3).
   EXPECT_EQ(PositionWithAffinity(Position(text, 12)),
             HitTest(PhysicalOffset(5, 5)));
+}
+
+TEST_F(HitTestingTest, ReferenceFilter) {
+  SetBodyInnerHTML(R"HTML(
+<style>
+  #target {
+    position:absolute;
+    top:100px;
+    left:100px;
+    width:100px;
+    height:100px;
+    background-color:blue;
+    filter:url(#displace);
+  }
+</style>
+<div id="target"></div>
+<svg width="100" height="100" viewBox="0 0 100 100">
+  <filter id="displace">
+      <feFlood />
+      <feDisplacementMap
+        scale="250"
+        xChannelSelector="R"
+        yChannelSelector="G" />
+  </filter>
+</svg>
+  )HTML");
+
+  Element* target = GetElementById("target");
+  LayoutBox* box = To<LayoutBox>(target->GetLayoutObject());
+  EXPECT_EQ(box->VisualOverflowRectIncludingFilters(),
+            PhysicalRect(-10, -10, 120, 120));
+
+  target->SetInlineStyleProperty(CSSPropertyID::kOpacity, "1");
+  UpdateAllLifecyclePhasesForTest();
+  EXPECT_EQ(box->VisualOverflowRectIncludingFilters(),
+            PhysicalRect(-10, -10, 120, 120));
 }
 
 }  // namespace blink

@@ -63,10 +63,10 @@
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/content_browser_client.h"
 #include "content/public/browser/gpu_utils.h"
+#include "content/public/browser/sandboxed_process_launcher_delegate.h"
 #include "content/public/common/content_client.h"
 #include "content/public/common/content_switches.h"
 #include "content/public/common/result_codes.h"
-#include "content/public/common/sandboxed_process_launcher_delegate.h"
 #include "content/public/common/zygote/zygote_buildflags.h"
 #include "gpu/command_buffer/service/gpu_switches.h"
 #include "gpu/config/gpu_driver_bug_list.h"
@@ -287,7 +287,7 @@ static const char* const kSwitchNames[] = {
     switches::kProfilingFlush,
     switches::kRunAllCompositorStagesBeforeDraw,
     switches::kSkiaFontCacheLimitMb,
-    switches::kSkiaGraphiteBackend,
+    switches::kSkiaGraphiteDawnBackend,
     switches::kSkiaResourceCacheLimitMb,
     switches::kTestGLLib,
     switches::kUseAdapterLuid,
@@ -316,7 +316,7 @@ static const char* const kSwitchNames[] = {
     switches::kGpuWatchdogTimeoutSeconds,
     switches::kUseCmdDecoder,
     switches::kForceVideoOverlays,
-    switches::kSkiaGraphiteBackend,
+    switches::kSkiaGraphiteDawnBackend,
 #if BUILDFLAG(IS_ANDROID)
     switches::kDisableAdpf,
 #endif
@@ -327,6 +327,9 @@ static const char* const kSwitchNames[] = {
 #endif
 #if BUILDFLAG(USE_V4L2_CODEC)
     switches::kHardwareVideoDecodeFrameRate,
+#endif
+#if BUILDFLAG(USE_VAAPI)
+    switches::kHardwareVideoDevicePath,
 #endif
 };
 

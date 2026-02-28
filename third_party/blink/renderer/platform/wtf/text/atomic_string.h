@@ -53,6 +53,11 @@ namespace blink {
 // instances can share their string storage if the strings are
 // identical. Comparing two AtomicString instances is much faster than comparing
 // two String instances because we just check string storage identity.
+//
+// When a method of this class is compatible with an equivalent method in
+// `std::string`, we use the same method name as `std::string` (i.e.,
+// `snake_case()`) rather than following the Google/Blink C++ style guide's
+// naming rules. This improves consistency in string manipulation.
 class WTF_EXPORT AtomicString {
   USING_FAST_MALLOC(AtomicString);
 
@@ -112,11 +117,10 @@ class WTF_EXPORT AtomicString {
   }
 
   // Find substrings.
-  wtf_size_t Find(
-      const StringView& value,
-      wtf_size_t start = 0,
-      TextCaseSensitivity case_sensitivity = kTextCaseSensitive) const {
-    return string_.Find(value, start, case_sensitivity);
+
+  // Find a substring. Returns the index of the match, or `kNotFound`.
+  size_type find(const StringView& value, size_type start = 0) const {
+    return string_.find(value, start);
   }
 
   // Unicode aware case insensitive string matching. Non-ASCII characters might
@@ -128,45 +132,71 @@ class WTF_EXPORT AtomicString {
   }
 
   // ASCII case insensitive string matching.
-  wtf_size_t FindIgnoringASCIICase(const StringView& value,
+  wtf_size_t FindIgnoringAsciiCase(const StringView& value,
                                    wtf_size_t start = 0) const {
-    return string_.FindIgnoringASCIICase(value, start);
+    return string_.FindIgnoringAsciiCase(value, start);
   }
 
-  bool Contains(char c) const { return find(c) != kNotFound; }
-  bool Contains(
-      const StringView& value,
-      TextCaseSensitivity case_sensitivity = kTextCaseSensitive) const {
-    return Find(value, 0, case_sensitivity) != kNotFound;
-  }
+  // Returns `true` if this string contains the specified `c`.
+  bool contains(UChar c) const { return find(c) != kNotFound; }
+  bool contains(LChar c) const { return find(c) != kNotFound; }
+  bool contains(char c) const { return find(c) != kNotFound; }
+  // Returns `true` if this string contains the specified `value`.
+  // If `value` is empty, this returns `true`.
+  bool contains(const StringView& value) const;
+  // Returns `true` if this string contains the specified `value`, using ASCII
+  // case-insensitive matching.
+  // If `value` is empty, this returns `true`.
+  bool ContainsIgnoringAsciiCase(const StringView& value) const;
 
-  // Find the last instance of a single character or string.
-  wtf_size_t ReverseFind(UChar c, wtf_size_t start = UINT_MAX) const {
-    return string_.ReverseFind(c, start);
+  // Find the last instance of a single character.
+  // Returns `npos` if it's not found in this string.
+  size_type rfind(UChar c, size_type start = npos) const {
+    return string_.rfind(c, start);
   }
+  // Find the last instance of a substring.
+  // If `this` string is null, this function returns kNotFound even if
+  // `value` is empty.
   wtf_size_t ReverseFind(const StringView& value,
                          wtf_size_t start = UINT_MAX) const {
     return string_.ReverseFind(value, start);
   }
+  // Searches for the last occurrence of a substring within this string.
+  //
+  // This method performs a backward search starting from the 'start' index.
+  // If 'start' is npos, the search begins from the end of the string.
+  //
+  // Returns the index of the start of the found substring, or npos if
+  // no match is found.
+  //
+  // Special Cases:
+  // - If 'value' is empty, the search always succeeds and returns
+  //   the minimum of 'start' and length().
+  // - Null strings and zero-length strings are treated as equivalent
+  //   for both `this` string and the 'value' parameter.
+  size_type rfind(const StringView& value, size_type start = npos) const {
+    return string_.rfind(value, start);
+  }
 
-  bool StartsWith(
-      const StringView& prefix,
-      TextCaseSensitivity case_sensitivity = kTextCaseSensitive) const {
-    return string_.StartsWith(prefix, case_sensitivity);
+  bool starts_with(const StringView& prefix) const {
+    return string_.starts_with(prefix);
   }
-  bool StartsWithIgnoringASCIICase(const StringView& prefix) const {
-    return string_.StartsWithIgnoringASCIICase(prefix);
+  bool StartsWithIgnoringAsciiCase(const StringView& prefix) const {
+    return string_.StartsWithIgnoringAsciiCase(prefix);
   }
-  bool StartsWith(UChar character) const {
-    return string_.StartsWith(character);
+  bool starts_with(UChar character) const {
+    return string_.starts_with(character);
   }
 
-  bool EndsWith(
-      const StringView& suffix,
-      TextCaseSensitivity case_sensitivity = kTextCaseSensitive) const {
-    return string_.EndsWith(suffix, case_sensitivity);
+  bool ends_with(const StringView& suffix) const {
+    return string_.ends_with(suffix);
   }
-  bool EndsWith(UChar character) const { return string_.EndsWith(character); }
+  bool ends_with(UChar character) const { return string_.ends_with(character); }
+  // Returns true if this string ends with the specified `suffix`, using ASCII
+  // case-insensitive matching. If `suffix` is empty, this returns `true`.
+  bool EndsWithIgnoringAsciiCase(const StringView& suffix) const {
+    return string_.EndsWithIgnoringAsciiCase(suffix);
+  }
 
   // Returns a lowercase/uppercase version of the string.
   // These functions convert ASCII characters only.
@@ -175,11 +205,6 @@ class WTF_EXPORT AtomicString {
   AtomicString UpperASCII() const;
 
   bool IsLowerASCII() const { return string_.IsLowerASCII(); }
-
-  // See comments in WTFString.h.
-  int ToInt(bool* ok = nullptr) const { return string_.ToInt(ok); }
-  double ToDouble(bool* ok = nullptr) const { return string_.ToDouble(ok); }
-  float ToFloat(bool* ok = nullptr) const { return string_.ToFloat(ok); }
 
   template <typename IntegerType>
   static AtomicString Number(IntegerType number) {

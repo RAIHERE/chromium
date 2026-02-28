@@ -37,9 +37,12 @@
 
 AccountConsistencyBrowserAgent::AccountConsistencyBrowserAgent(
     Browser* browser,
-    UIViewController* base_view_controller)
-    : BrowserUserData(browser), base_view_controller_(base_view_controller) {
-  StartObserving(browser, Policy::kOnlyRealized);
+    UIViewController* base_view_controller,
+    signin::SigninEnabledDataSource* signin_enabled_data_source)
+    : BrowserUserData(browser),
+      base_view_controller_(base_view_controller),
+      signin_enabled_data_source_(signin_enabled_data_source) {
+  StartObserving(browser);
   application_handler_ =
       HandlerForProtocol(browser_->GetCommandDispatcher(), SceneCommands);
   settings_handler_ =
@@ -60,9 +63,9 @@ void AccountConsistencyBrowserAgent::StopSigninCoordinator(
 
 void AccountConsistencyBrowserAgent::OnWebStateInserted(
     web::WebState* web_state) {
+  ProfileIOS* profile = browser_->GetProfile();
   if (AccountConsistencyService* accountConsistencyService =
-          ios::AccountConsistencyServiceFactory::GetForProfile(
-              browser_->GetProfile())) {
+          ios::AccountConsistencyServiceFactory::GetForProfile(profile)) {
     accountConsistencyService->SetWebStateHandler(web_state, this);
   }
 }
@@ -229,10 +232,11 @@ void AccountConsistencyBrowserAgent::OnGoIncognito(const GURL& url) {
   [application_handler_ openURLInNewTab:command];
 }
 
+bool AccountConsistencyBrowserAgent::SigninEnabled() const {
+  return signin_enabled_data_source_->SigninEnabled();
+}
+
 bool AccountConsistencyBrowserAgent::CanShowAccountMenu() const {
-  if (!AreSeparateProfilesForManagedAccountsEnabled()) {
-    return false;
-  }
   ProfileIOS* profile = browser_->GetProfile()->GetOriginalProfile();
   signin::IdentityManager* identity_manager =
       IdentityManagerFactory::GetForProfile(profile);
@@ -241,6 +245,5 @@ bool AccountConsistencyBrowserAgent::CanShowAccountMenu() const {
 }
 
 void AccountConsistencyBrowserAgent::ShowAccountMenu(const GURL& url) {
-  CHECK(AreSeparateProfilesForManagedAccountsEnabled());
   [application_handler_ showAccountMenuFromWebWithURL:url];
 }

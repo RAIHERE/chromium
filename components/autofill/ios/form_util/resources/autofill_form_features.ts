@@ -42,8 +42,8 @@ let autofillIgnoreCheckableElements: boolean = true;
 
 // LINT.IfChange(autofill_correct_user_edited_bit_in_parsed_field)
 /**
-Enables correctly setting the is_user_edited bit in the parsed form fields
-instead of using true by default.
+Enables correctly setting the is_user_edited_deprecated bit in the parsed form
+fields instead of using true by default.
  */
 let autofillCorrectUserEditedBitInParsedField: boolean = false;
 // LINT.ThenChange(//components/autofill/ios/common/features.mm:autofill_correct_user_edited_bit_in_parsed_field)
@@ -207,7 +207,7 @@ function isAutofillCountFormSubmissionInRendererEnabled(): boolean {
 
 // Expose globally via `gCrWeb` instead of `export` to ensure state (feature
 // on/off) is maintained across imports.
-const autofillFormFeatures = new CrWebApi();
+const autofillFormFeatures = new CrWebApi('autofill_form_features');
 
 autofillFormFeatures.addFunction(
     'setAutofillAcrossIframes', setAutofillAcrossIframes);
@@ -259,4 +259,4 @@ autofillFormFeatures.addFunction(
     'isAutofillCountFormSubmissionInRendererEnabled',
     isAutofillCountFormSubmissionInRendererEnabled);
 
-gCrWeb.registerApi('autofill_form_features', autofillFormFeatures);
+gCrWeb.registerApi(autofillFormFeatures);

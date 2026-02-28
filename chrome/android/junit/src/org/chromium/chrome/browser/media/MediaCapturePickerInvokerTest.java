@@ -13,6 +13,7 @@ import android.content.Context;
 import android.content.Intent;
 
 import androidx.activity.result.ActivityResult;
+import androidx.fragment.app.FragmentActivity;
 import androidx.test.ext.junit.rules.ActivityScenarioRule;
 import androidx.test.filters.SmallTest;
 
@@ -59,13 +60,8 @@ public class MediaCapturePickerInvokerTest {
         private boolean mShouldShareAudio;
 
         @Override
-        public Intent createScreenCaptureIntent(Context context, Params params) {
+        public Intent createScreenCaptureIntent(Context context, Params params, Delegate delegate) {
             return mIntent;
-        }
-
-        @Override
-        public WebContents getPickedWebContents() {
-            return null;
         }
 
         @Override
@@ -124,7 +120,7 @@ public class MediaCapturePickerInvokerTest {
         mPickerDelegate.setIntent(new Intent());
         MediaCapturePickerInvoker.show(mActivity, mediaCaptureParams(), mDelegate);
         MediaCapturePickerHeadlessFragment fragment =
-                MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
+                MediaCapturePickerHeadlessFragment.getInstance((FragmentActivity) mActivity);
         fragment.mNextDelegate.onPicked(
                 CaptureAction.CAPTURE_CANCELLED,
                 new ActivityResult(Activity.RESULT_CANCELED, null));
@@ -142,7 +138,7 @@ public class MediaCapturePickerInvokerTest {
         mPickerDelegate.setShouldShareAudio(true);
         MediaCapturePickerInvoker.show(mActivity, mediaCaptureParams(), mDelegate);
         MediaCapturePickerHeadlessFragment fragment =
-                MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
+                MediaCapturePickerHeadlessFragment.getInstance((FragmentActivity) mActivity);
         fragment.mNextDelegate.onPicked(
                 CaptureAction.CAPTURE_WINDOW, new ActivityResult(Activity.RESULT_OK, new Intent()));
         verify(tab).loadIfNeeded(TabLoadIfNeededCaller.MEDIA_CAPTURE_PICKER);
@@ -160,7 +156,7 @@ public class MediaCapturePickerInvokerTest {
         mPickerDelegate.setShouldShareAudio(false);
         MediaCapturePickerInvoker.show(mActivity, mediaCaptureParams(), mDelegate);
         MediaCapturePickerHeadlessFragment fragment =
-                MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
+                MediaCapturePickerHeadlessFragment.getInstance((FragmentActivity) mActivity);
         fragment.mNextDelegate.onPicked(
                 CaptureAction.CAPTURE_WINDOW, new ActivityResult(Activity.RESULT_OK, new Intent()));
         verify(tab).loadIfNeeded(TabLoadIfNeededCaller.MEDIA_CAPTURE_PICKER);
@@ -173,7 +169,7 @@ public class MediaCapturePickerInvokerTest {
         mPickerDelegate.setIntent(new Intent());
         MediaCapturePickerInvoker.show(mActivity, mediaCaptureParams(), mDelegate);
         MediaCapturePickerHeadlessFragment fragment =
-                MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
+                MediaCapturePickerHeadlessFragment.getInstance((FragmentActivity) mActivity);
         fragment.mNextDelegate.onPicked(
                 CaptureAction.CAPTURE_WINDOW, new ActivityResult(Activity.RESULT_OK, new Intent()));
         verify(mDelegate).onPickWindow();
@@ -185,7 +181,7 @@ public class MediaCapturePickerInvokerTest {
         mPickerDelegate.setIntent(new Intent());
         MediaCapturePickerInvoker.show(mActivity, mediaCaptureParams(), mDelegate);
         MediaCapturePickerHeadlessFragment fragment =
-                MediaCapturePickerHeadlessFragment.getInstanceForCurrentActivity();
+                MediaCapturePickerHeadlessFragment.getInstance((FragmentActivity) mActivity);
         fragment.mNextDelegate.onPicked(
                 CaptureAction.CAPTURE_SCREEN, new ActivityResult(Activity.RESULT_OK, new Intent()));
         verify(mDelegate).onPickScreen();

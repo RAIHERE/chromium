@@ -36,7 +36,6 @@
 #import "ios/chrome/browser/fullscreen/ui_bundled/fullscreen_controller.h"
 #import "ios/chrome/browser/history/model/history_service_factory.h"
 #import "ios/chrome/browser/incognito_reauth/ui_bundled/incognito_reauth_commands.h"
-#import "ios/chrome/browser/lens/model/lens_browser_agent.h"
 #import "ios/chrome/browser/metrics/model/tab_usage_recorder_browser_agent.h"
 #import "ios/chrome/browser/ntp/model/new_tab_page_tab_helper.h"
 #import "ios/chrome/browser/ntp/ui_bundled/logo_animation_controller.h"
@@ -76,7 +75,6 @@
 #import "ios/chrome/browser/signin/model/authentication_service_factory.h"
 #import "ios/chrome/browser/signin/model/fake_authentication_service_delegate.h"
 #import "ios/chrome/browser/start_surface/ui_bundled/start_surface_recent_tab_browser_agent.h"
-#import "ios/chrome/browser/tab_switcher/tab_strip/coordinator/tab_strip_coordinator.h"
 #import "ios/chrome/browser/tabs/model/tab_helper_util.h"
 #import "ios/chrome/browser/tabs/ui_bundled/foreground_tab_animation_view.h"
 #import "ios/chrome/browser/tips_manager/model/tips_manager_ios_factory.h"
@@ -176,7 +174,6 @@ class BrowserViewControllerTest : public BlockCleanupTest {
     browser_ = std::make_unique<TestBrowser>(GetProfile(), scene_state_);
     WebUsageEnablerBrowserAgent::CreateForBrowser(browser_.get());
     UrlLoadingNotifierBrowserAgent::CreateForBrowser(browser_.get());
-    LensBrowserAgent::CreateForBrowser(browser_.get());
     WebNavigationBrowserAgent::CreateForBrowser(browser_.get());
     TabUsageRecorderBrowserAgent::CreateForBrowser(browser_.get());
     StartSurfaceRecentTabBrowserAgent::CreateForBrowser(browser_.get());
@@ -297,9 +294,6 @@ class BrowserViewControllerTest : public BlockCleanupTest {
         [[ToolbarCoordinator alloc] initWithBrowser:browser_.get()];
     [toolbar_coordinator_ start];
 
-    tab_strip_coordinator_ =
-        [[TabStripCoordinator alloc] initWithBrowser:browser_.get()];
-
     fullscreen_controller_ = FullscreenController::FromBrowser(browser_.get());
     side_swipe_coordinator_ = [[SideSwipeCoordinator alloc]
         initWithBaseViewController:nil
@@ -319,7 +313,6 @@ class BrowserViewControllerTest : public BlockCleanupTest {
     BrowserViewControllerDependencies dependencies;
     dependencies.popupMenuCoordinator = popup_menu_coordinator_;
     dependencies.toolbarCoordinator = toolbar_coordinator_;
-    dependencies.tabStripCoordinator = tab_strip_coordinator_;
     dependencies.sideSwipeCoordinator = side_swipe_coordinator_;
     dependencies.bookmarksCoordinator = bookmarks_coordinator_;
     dependencies.fullscreenController = fullscreen_controller_;
@@ -370,7 +363,6 @@ class BrowserViewControllerTest : public BlockCleanupTest {
     [[bvc_ view] removeFromSuperview];
     [bvc_ shutdown];
     [bookmarks_coordinator_ stop];
-    [tab_strip_coordinator_ stop];
     [toolbar_coordinator_ stop];
     [popup_menu_coordinator_ stop];
     [NTPCoordinator_ stop];
@@ -462,7 +454,6 @@ class BrowserViewControllerTest : public BlockCleanupTest {
   raw_ptr<commerce::MockShoppingService> shopping_service_;
   PopupMenuCoordinator* popup_menu_coordinator_;
   ToolbarCoordinator* toolbar_coordinator_;
-  TabStripCoordinator* tab_strip_coordinator_;
   SideSwipeCoordinator* side_swipe_coordinator_;
   BookmarksCoordinator* bookmarks_coordinator_;
   raw_ptr<FullscreenController> fullscreen_controller_;

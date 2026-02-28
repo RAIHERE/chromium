@@ -321,10 +321,7 @@ void ReportingEventRouter::OnUrlFilteringInterstitial(
 
   std::optional<ReportingSettings> settings =
       reporting_client_->GetReportingSettings();
-  std::string active_user;
-  if (base::FeatureList::IsEnabled(kEnterpriseActiveUserDetection)) {
-    active_user = reporting_client_->GetContentAreaAccountEmail(url);
-  }
+  std::string active_user = reporting_client_->GetContentAreaAccountEmail(url);
 
   if (base::FeatureList::IsEnabled(
           policy::kUploadRealtimeReportingEventsUsingProto)) {
@@ -722,14 +719,14 @@ void ReportingEventRouter::OnAnalysisConnectorResult(
     const ReferrerChain& referrer_chain,
     const FrameUrlChain& frame_url_chain,
     EventResult event_result) {
-  if (result.tag() == "malware") {
+  if (result.tag() == kMalwareTag) {
     DCHECK_EQ(1, result.triggered_rules().size());
     OnDangerousDownloadEvent(
         url, tab_url, source, destination, file_name, download_digest_sha256,
         MalwareRuleToThreatType(result.triggered_rules(0).rule_name()),
         mime_type, trigger, scan_id, content_transfer_method, content_size,
         referrer_chain, frame_url_chain, event_result);
-  } else if (result.tag() == "dlp") {
+  } else if (result.tag() == kDlpTag) {
     OnSensitiveDataEvent(
         url, tab_url, source, destination, file_name, download_digest_sha256,
         mime_type, trigger, scan_id, content_transfer_method, source_email,

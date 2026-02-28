@@ -21,24 +21,41 @@ export function getHtml(this: ContextualTasksAppElement) {
       </top-toolbar>
     </div>
   `}
-  <webview id="threadFrame"></webview>
+  <webview id="threadFrame" allowtransparency="on"
+      partition="persist:contextual-tasks"
+      style="${this.getThreadFrameStyles()}">
+  </webview>
   <ghost-loader id="ghostLoader"></ghost-loader>
-  <div class="flex-center">
+  ${this.isErrorDialogVisible_ ?
+    html`<contextual-tasks-error-dialog></contextual-tasks-error-dialog>` : ''}
+  <div id="flexCenterContainer">
     <div id="composeboxHeaderWrapper"
-        ?hidden="${this.isInBasicMode_}">
+        ?hidden="${this.enableBasicMode_ && this.isInBasicMode_ && !this.enableBasicModeZOrder_}">
       <h1 class="thread-header" id="composeboxHeader">
-          ${this.friendlyZeroStateTitle}
+          ${this.friendlyZeroStateGaiaName_
+            ? html`<span>${this.friendlyZeroStateTitleBeforeName_}</span><span
+              id="nameShimmer" class="name-shimmer">
+              ${this.friendlyZeroStateGaiaName_}</span><span>${this.friendlyZeroStateTitleAfterName_}</span>`
+            : html`<span>${this.friendlyZeroStateTitle}</span>`
+          }
           ${this.friendlyZeroStateSubtitle.length > 0 ?
               html`<br>
               ${this.friendlyZeroStateSubtitle}` : ''}
       </h1>
     </div>
+<if expr="not is_android">
     <contextual-tasks-composebox id="composebox"
-          ?hidden="${this.isInBasicMode_}"
+          style="${this.getComposeboxBoundsStyles()}"
+          ?hidden="${this.enableBasicMode_ && this.isInBasicMode_ && !this.enableBasicModeZOrder_}"
           .isZeroState="${this.isZeroState_}"
           .isSidePanel="${!this.isShownInTab_}"
-          .isLensOverlayShowing="${this.isLensOverlayShowing_}">
+          .isLensOverlayShowing="${this.isLensOverlayShowing_}"
+          .maybeShowOverlayHintText="${this.maybeShowOverlayHintText_}"
+          .enableNativeZeroStateSuggestions=
+              "${this.enableNativeZeroStateSuggestions_}"
+          .inputEnabled="${!this.isInputLocked_}">
     </contextual-tasks-composebox>
+</if>
   </div>
   <error-page id="errorPage"></error-page>
   <!--_html_template_end_-->`;

@@ -135,10 +135,8 @@ class PermissionRequestManagerBrowserTestBase : public InProcessBrowserTest {
 class PermissionRequestManagerBrowserTest
     : public PermissionRequestManagerBrowserTestBase {
  public:
-  PermissionRequestManagerBrowserTest() {
-    scoped_feature_list_.InitWithFeatures(
-        {}, {permissions::features::kBackForwardCacheUnblockPermissionRequest});
-  }
+  PermissionRequestManagerBrowserTest()
+      : PermissionRequestManagerBrowserTest({}, {}) {}
 
   PermissionRequestManagerBrowserTest(
       const PermissionRequestManagerBrowserTest&) = delete;
@@ -147,6 +145,19 @@ class PermissionRequestManagerBrowserTest
 
   ~PermissionRequestManagerBrowserTest() override = default;
 
+ protected:
+  PermissionRequestManagerBrowserTest(
+      const std::vector<base::test::FeatureRef>& enabled_features,
+      const std::vector<base::test::FeatureRef>& disabled_features) {
+    std::vector<base::test::FeatureRef> all_disabled_features =
+        disabled_features;
+    all_disabled_features.push_back(
+        permissions::features::kBackForwardCacheUnblockPermissionRequest);
+    scoped_feature_list_.InitWithFeatures(enabled_features,
+                                          all_disabled_features);
+  }
+
+ public:
   void SetUpOnMainThread() override {
     PermissionRequestManagerBrowserTestBase::SetUpOnMainThread();
     permissions::PermissionRequestManager* manager =
@@ -308,7 +319,7 @@ class PermissionRequestManagerWithBackForwardCacheUnblockBrowserTest
 };
 
 // Requests before the load event should be bundled into one bubble.
-// http://crbug.com/512849 flaky
+// http://crbug.com/41190115 flaky
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        DISABLED_RequestsBeforeLoad) {
   ASSERT_TRUE(embedded_test_server()->Start());
@@ -341,7 +352,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
 }
 
 // Navigating twice to the same URL should be equivalent to refresh. This
-// means showing the bubbles twice. http://crbug.com/512849 flaky
+// means showing the bubbles twice. http://crbug.com/41190115 flaky
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest, DISABLED_NavTwice) {
   ASSERT_TRUE(embedded_test_server()->Start());
 
@@ -362,7 +373,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest, DISABLED_NavTwice) {
 }
 
 // Navigating twice to the same URL with a hash should be navigation within
-// the page. This means the bubble is only shown once. http://crbug.com/512849
+// the page. This means the bubble is only shown once. http://crbug.com/41190115
 // flaky
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        DISABLED_NavTwiceWithHash) {
@@ -685,7 +696,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
   EXPECT_EQ(1, bubble_factory()->TotalRequestCount());
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        CrossOriginPromptCooldown) {
   ASSERT_TRUE(embedded_test_server()->Start());
@@ -727,7 +738,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
   EXPECT_EQ(0, bubble_factory()->TotalRequestCount());
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        CooldownEndsOnUserInitiatedReload) {
   TriggerAndExpectPromptCooldownToBeStillActiveAfterNavigationAction(
@@ -740,7 +751,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
       false /* expect_cooldown */);
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        CooldownEndsOnBrowserInitiateNavigation) {
   TriggerAndExpectPromptCooldownToBeStillActiveAfterNavigationAction(
@@ -750,7 +761,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
       false /* expect_cooldown */);
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        CooldownEndsOnRendererInitiateNavigationWithGesture) {
   TriggerAndExpectPromptCooldownToBeStillActiveAfterNavigationAction(
@@ -763,7 +774,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
       false /* expect_cooldown */);
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
                        CooldownOutlastsRendererInitiatedReload) {
   TriggerAndExpectPromptCooldownToBeStillActiveAfterNavigationAction(
@@ -776,7 +787,7 @@ IN_PROC_BROWSER_TEST_F(PermissionRequestManagerBrowserTest,
       true /* expect_cooldown */);
 }
 
-// Regression test for crbug.com/900997.
+// Regression test for crbug.com/40600616.
 IN_PROC_BROWSER_TEST_F(
     PermissionRequestManagerBrowserTest,
     CooldownOutlastsRendererInitiateNavigationWithoutGesture) {
@@ -897,10 +908,11 @@ class PermissionRequestManagerPostPromptBrowserTest
 class PermissionRequestManagerQuietUiBrowserTest
     : public PermissionRequestManagerBrowserTest {
  public:
-  PermissionRequestManagerQuietUiBrowserTest() {
-    scoped_feature_list_.InitAndEnableFeature(
-        features::kQuietNotificationPrompts);
-  }
+  PermissionRequestManagerQuietUiBrowserTest()
+      : PermissionRequestManagerBrowserTest(
+            /*enabled_features=*/{},
+            /*disabled_features=*/
+            {permissions::features::kPermissionsGestureGatedPrompts}) {}
 
  protected:
   using UiDecision = permissions::PermissionUiSelector::Decision;
@@ -915,9 +927,6 @@ class PermissionRequestManagerQuietUiBrowserTest
         std::move(selector));
     return selector_ptr;
   }
-
- private:
-  base::test::ScopedFeatureList scoped_feature_list_;
 };
 
 // Re-enable when 1016233 is fixed.

@@ -19,6 +19,7 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
+import static org.chromium.base.test.transit.ViewFinder.waitForView;
 import static org.chromium.chrome.browser.collaboration.CollaborationTestUtils.accountInfoToGroupMember;
 import static org.chromium.chrome.browser.tasks.tab_management.TabUiTestHelper.addBlankTabs;
 import static org.chromium.chrome.browser.tasks.tab_management.TabUiTestHelper.clickFirstCardFromTabSwitcher;
@@ -48,7 +49,6 @@ import org.mockito.junit.MockitoRule;
 
 import org.chromium.base.Callback;
 import org.chromium.base.ThreadUtils;
-import org.chromium.base.test.transit.ViewElement;
 import org.chromium.base.test.util.CommandLineFlags;
 import org.chromium.base.test.util.CriteriaHelper;
 import org.chromium.base.test.util.DisabledTest;
@@ -164,7 +164,6 @@ public class CollaborationIntegrationTest {
     private DataSharingSDKDelegateTestImpl mDataSharingSDKDelegate;
     private CountingShareObserver mCountingShareObserver;
     private CountingSyncObserver mCountingSyncObserver;
-
     private Profile mProfile;
     private String mUrl;
     private CollaborationTestUtils mCollaborationTestUtils;
@@ -186,6 +185,8 @@ public class CollaborationIntegrationTest {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     mProfile = mActivityTestRule.getProfile(/* incognito= */ false);
+                    mCollaborationTestUtils =
+                            new CollaborationTestUtils(mActivityTestRule, mProfile);
                     FirstRunStatus.setFirstRunFlowComplete(true);
                     DataSharingServiceFactory.getForProfile(mProfile)
                             .addObserver(mCountingShareObserver);
@@ -196,8 +197,6 @@ public class CollaborationIntegrationTest {
                 DataSharingServiceImpl.getDataSharingUrlForTesting(
                                 new GroupToken(TEST_COLLABORATION_ID, "access_token"))
                         .getSpec();
-
-        mCollaborationTestUtils = new CollaborationTestUtils(mActivityTestRule, mProfile);
     }
 
     /* Sets up preview data for the group ID. */
@@ -285,8 +284,7 @@ public class CollaborationIntegrationTest {
         mActivityTestRule.loadUrlInNewTab(mUrl);
 
         // Verify that the fullscreen sign-in promo is shown and cancel.
-        onViewWaiting(withText(R.string.collaboration_signin_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_signin_description));
         onView(withText(R.string.collaboration_cancel)).perform(scrollTo(), click());
 
         // The new data sharing url was intercepted and the tab closed.
@@ -300,8 +298,7 @@ public class CollaborationIntegrationTest {
                 mUrl, /* incognito= */ false, TabLaunchType.FROM_EXTERNAL_APP);
 
         // Verify that the fullscreen sign-in promo is shown and cancel.
-        onViewWaiting(withText(R.string.collaboration_signin_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_signin_description));
         onView(withText(R.string.collaboration_cancel)).perform(scrollTo(), click());
 
         // The new data sharing url was intercepted and the tab closed.
@@ -314,8 +311,7 @@ public class CollaborationIntegrationTest {
         mActivityTestRule.loadUrlInNewTab(mUrl);
 
         // Verify that the fullscreen sign-in promo is shown and accept.
-        onViewWaiting(withText(R.string.collaboration_signin_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_signin_description));
         final String continueAsText =
                 mActivityTestRule
                         .getActivity()
@@ -323,8 +319,7 @@ public class CollaborationIntegrationTest {
         onView(withText(continueAsText)).perform(click());
 
         // Verify that the history opt-in dialog is shown and refuse.
-        onViewWaiting(withText(R.string.collaboration_sync_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_sync_description));
         onViewWaiting(withId(R.id.button_secondary)).perform(click());
 
         // The user is signed out.
@@ -342,8 +337,7 @@ public class CollaborationIntegrationTest {
         setFakePreviewData();
 
         // Verify that the fullscreen sign-in promo is shown and accept.
-        onViewWaiting(withText(R.string.collaboration_signin_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_signin_description));
         final String continueAsText =
                 mActivityTestRule
                         .getActivity()
@@ -351,8 +345,7 @@ public class CollaborationIntegrationTest {
         onView(withText(continueAsText)).perform(click());
 
         // Verify that the history opt-in dialog is shown and accept.
-        onViewWaiting(withText(R.string.collaboration_sync_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_sync_description));
         onViewWaiting(withId(R.id.button_primary)).perform(click());
 
         CriteriaHelper.pollInstrumentationThread(
@@ -387,11 +380,7 @@ public class CollaborationIntegrationTest {
         onView(withText(continueAsText)).perform(click());
 
         // Verify that the history opt-in dialog is shown and accept.
-        onViewWaiting(
-                        withText(R.string.collaboration_sync_description),
-                        // checkRootDialog=true ensures dialog is in focus, avoid flakiness.
-                        true)
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_sync_description));
         onViewWaiting(withId(R.id.button_primary)).perform(click());
 
         CriteriaHelper.pollInstrumentationThread(
@@ -406,8 +395,7 @@ public class CollaborationIntegrationTest {
         mActivityTestRule.loadUrlInNewTab(
                 mUrl, /* incognito= */ false, TabLaunchType.FROM_EXTERNAL_APP);
         // Verify that the history opt-in dialog is shown and refuse.
-        onViewWaiting(withText(R.string.collaboration_sync_description))
-                .check(matches(isDisplayed()));
+        waitForView(withText(R.string.collaboration_sync_description));
     }
 
     @Test
@@ -591,7 +579,7 @@ public class CollaborationIntegrationTest {
                 .check(matches(isDisplayed()));
 
         // Click "Close group" from the menu.
-        onViewWaiting(withId(R.id.toolbar_menu_button), ViewElement.displayingAtLeastOption(51))
+        onViewWaiting(withId(R.id.toolbar_menu_button))
                 .perform(CollaborationTestUtils.relaxedClick());
         onViewWaiting(withText(R.string.tab_grid_dialog_toolbar_close_group)).perform(click());
 

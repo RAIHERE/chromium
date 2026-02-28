@@ -47,11 +47,12 @@ namespace blink {
 
 class CodePointIterator;
 
-#define DISPATCH_CASE_OP(case_sensitivity, op, args)  \
-  ((case_sensitivity == kTextCaseSensitive) ? op args \
-                                            : op##IgnoringASCIICase args)
-
 // You can find documentation about this class in README.md in this directory.
+//
+// When a method of this class is compatible with an equivalent method in
+// `std::string`, we use the same method name as `std::string` (i.e.,
+// `snake_case()`) rather than following the Google/Blink C++ style guide's
+// naming rules. This improves consistency in string manipulation.
 class WTF_EXPORT String {
   USING_FAST_MALLOC(String);
 
@@ -195,6 +196,8 @@ class WTF_EXPORT String {
     return base::as_string_view(Span16());
   }
 
+  // Returns a code unit at the specified index.
+  // This operator returns 0 if the specified index is out of range.
   UChar operator[](wtf_size_t index) const {
     if (!impl_ || index >= impl_->length())
       return 0;
@@ -241,16 +244,7 @@ class WTF_EXPORT String {
                   wtf_size_t index = 0) const;
 
   // Find substrings.
-  wtf_size_t Find(const StringView& value, wtf_size_t start = 0) const {
-    return impl_ ? impl_->Find(value, start) : kNotFound;
-  }
-  wtf_size_t Find(const StringView& value,
-                  wtf_size_t start,
-                  TextCaseSensitivity case_sensitivity) const {
-    return impl_
-               ? DISPATCH_CASE_OP(case_sensitivity, impl_->Find, (value, start))
-               : kNotFound;
-  }
+  size_type find(const StringView& value, size_type start = 0) const;
 
   // Unicode aware case insensitive string matching. Non-ASCII characters might
   // match to ASCII characters. This function is rarely used to implement web
@@ -261,40 +255,50 @@ class WTF_EXPORT String {
   }
 
   // ASCII case insensitive string matching.
-  wtf_size_t FindIgnoringASCIICase(const StringView& value,
+  wtf_size_t FindIgnoringAsciiCase(const StringView& value,
                                    unsigned start = 0) const {
-    return impl_ ? impl_->FindIgnoringASCIICase(value, start) : kNotFound;
+    return impl_ ? impl_->FindIgnoringAsciiCase(value, start) : kNotFound;
   }
 
-  bool Contains(char c) const { return find(c) != kNotFound; }
-  bool Contains(
-      const StringView& value,
-      TextCaseSensitivity case_sensitivity = kTextCaseSensitive) const {
-    return Find(value, 0, case_sensitivity) != kNotFound;
-  }
+  bool contains(UChar c) const { return find(c) != kNotFound; }
+  bool contains(LChar c) const { return find(c) != kNotFound; }
+  bool contains(char c) const { return find(c) != kNotFound; }
+  bool contains(const StringView& value) const { return find(value) != npos; }
 
-  // Find the last instance of a single character or string.
-  wtf_size_t ReverseFind(UChar c, unsigned start = UINT_MAX) const {
-    return impl_ ? impl_->ReverseFind(c, start) : kNotFound;
+  // Find the last instance of a single character.
+  // Returns `npos` if it's not found in this string.
+  size_type rfind(UChar c, size_type start = npos) const {
+    return impl_ ? impl_->ReverseFind(c, start) : npos;
   }
+  // Find the last instance of a substring.
+  // If `this` string is null, this function returns kNotFound even if
+  // `value` is empty.
   wtf_size_t ReverseFind(const StringView& value,
                          unsigned start = UINT_MAX) const {
     return impl_ ? impl_->ReverseFind(value, start) : kNotFound;
   }
+  // Searches for the last occurrence of a substring within this string.
+  //
+  // This method performs a backward search starting from the 'start' index.
+  // If 'start' is npos, the search begins from the end of the string.
+  //
+  // Returns the index of the start of the found substring, or npos if
+  // no match is found.
+  //
+  // Special Cases:
+  // - If 'value' is empty, the search always succeeds and returns
+  //   the minimum of 'start' and length().
+  // - Null strings and zero-length strings are treated as equivalent
+  //   for both `this` string and the 'value' parameter.
+  size_type rfind(const StringView& value, size_type start = npos) const;
 
   // Returns the Unicode code point starting at the specified offset of this
   // string. If the offset points an unpaired surrogate, this function returns
   // 0.
   UChar32 CharacterStartingAt(unsigned) const;
 
-  bool StartsWith(const StringView& prefix) const {
+  bool starts_with(const StringView& prefix) const {
     return impl_ ? impl_->StartsWith(prefix) : prefix.empty();
-  }
-  bool StartsWith(const StringView& prefix,
-                  TextCaseSensitivity case_sensitivity) const {
-    return impl_
-               ? DISPATCH_CASE_OP(case_sensitivity, impl_->StartsWith, (prefix))
-               : prefix.empty();
   }
   // Unicode aware case insensitive string matching. Non-ASCII characters might
   // match to ASCII characters. This function is rarely used to implement web
@@ -307,20 +311,15 @@ class WTF_EXPORT String {
     return impl_ ? impl_->StartsWithIgnoringCaseAndAccents(prefix)
                  : prefix.empty();
   }
-  bool StartsWithIgnoringASCIICase(const StringView& prefix) const {
-    return impl_ ? impl_->StartsWithIgnoringASCIICase(prefix) : prefix.empty();
+  bool StartsWithIgnoringAsciiCase(const StringView& prefix) const {
+    return impl_ ? impl_->StartsWithIgnoringAsciiCase(prefix) : prefix.empty();
   }
-  bool StartsWith(UChar character) const {
+  bool starts_with(UChar character) const {
     return impl_ ? impl_->StartsWith(character) : false;
   }
 
-  bool EndsWith(const StringView& suffix) const {
+  bool ends_with(const StringView& suffix) const {
     return impl_ ? impl_->EndsWith(suffix) : suffix.empty();
-  }
-  bool EndsWith(const StringView& suffix,
-                TextCaseSensitivity case_sensitivity) const {
-    return impl_ ? DISPATCH_CASE_OP(case_sensitivity, impl_->EndsWith, (suffix))
-                 : suffix.empty();
   }
   // Unicode aware case insensitive string matching. Non-ASCII characters might
   // match to ASCII characters. This function is rarely used to implement web
@@ -329,10 +328,12 @@ class WTF_EXPORT String {
     return impl_ ? impl_->DeprecatedEndsWithIgnoringCase(prefix)
                  : prefix.empty();
   }
-  bool EndsWithIgnoringASCIICase(const StringView& prefix) const {
-    return impl_ ? impl_->EndsWithIgnoringASCIICase(prefix) : prefix.empty();
+  // Returns true if this string ends with the specified `suffix`, using ASCII
+  // case-insensitive matching. If `suffix` is empty, this returns `true`.
+  bool EndsWithIgnoringAsciiCase(const StringView& suffix) const {
+    return impl_ ? impl_->EndsWithIgnoringAsciiCase(suffix) : suffix.empty();
   }
-  bool EndsWith(UChar character) const {
+  bool ends_with(UChar character) const {
     return impl_ ? impl_->EndsWith(character) : false;
   }
 
@@ -432,15 +433,28 @@ class WTF_EXPORT String {
     return StringImpl::CreateUninitialized(length, data);
   }
 
-  void Split(const StringView& separator,
-             bool allow_empty_entries,
-             Vector<String>& result) const;
-  void Split(UChar separator,
-             bool allow_empty_entries,
-             Vector<String>& result) const;
-  void Split(UChar separator, Vector<String>& result) const {
-    Split(separator, false, result);
-  }
+  // Returns a list of substrings of `this`, separated by `separator`.
+  // This function copies the content of the string. Please consider if
+  // StringView::Split() is applicable.
+  //
+  // `StringView("a, , b").Split(", ")` produces ["a", "", "b"], and
+  // `StringView("").Split(",")` produces [""].
+  Vector<String> Split(const StringView& separator) const;
+  // Returns a list of substrings of `this`, separated by `separator`.
+  // This function copies the content of the string. Please consider if
+  // StringView::Split() is applicable.
+  //
+  // `StringView("a,,b").Split(',')` produces ["a", "", "b"], and
+  // `StringView("").Split(',')` produces [""].
+  Vector<String> Split(UChar separator) const;
+  // Returns a list of substrings of `this`, separated by `separator`.
+  // This doesn't produce empty substrings.
+  // This function copies the content of the string. Please consider if
+  // StringView::SplitSkippingEmpty() is applicable.
+  //
+  // `String(" a  b").SplitSkippingEmpty(' ')` produces ["a", "b"], and
+  // `String("").SplitSkippingEmpty(',')` produces an empty list.
+  Vector<String> SplitSkippingEmpty(UChar separator) const;
 
   // Copy characters out of the string. See StringImpl.h for detailed docs.
   size_t CopyTo(base::span<UChar> buffer, wtf_size_t start) const {
@@ -450,74 +464,6 @@ class WTF_EXPORT String {
   void AppendTo(BufferType&,
                 unsigned start = 0,
                 unsigned length = UINT_MAX) const;
-
-  // Convert the string into a number.
-
-  // The following ToFooStrict functions accept:
-  //  - leading '+'
-  //  - leading Unicode whitespace
-  //  - trailing Unicode whitespace
-  //  - no "-0" (ToUIntStrict and ToUInt64Strict)
-  //  - no out-of-range numbers which the resultant type can't represent
-  //
-  // If the input string is not acceptable, 0 is returned and |*ok| becomes
-  // |false|.
-  //
-  // We can use these functions to implement a Web Platform feature only if the
-  // input string is already valid according to the specification of the
-  // feature.
-  int ToIntStrict(bool* ok = nullptr) const;
-  unsigned ToUIntStrict(bool* ok = nullptr) const;
-  unsigned HexToUIntStrict(bool* ok) const;
-  uint64_t HexToUInt64Strict(bool* ok) const;
-  int64_t ToInt64Strict(bool* ok = nullptr) const;
-  uint64_t ToUInt64Strict(bool* ok = nullptr) const;
-
-  // The following ToFoo functions accept:
-  //  - leading '+'
-  //  - leading Unicode whitespace
-  //  - trailing garbage
-  //  - no "-0" (ToUInt and ToUInt64)
-  //  - no out-of-range numbers which the resultant type can't represent
-  //
-  // If the input string is not acceptable, 0 is returned and |*ok| becomes
-  // |false|.
-  //
-  // We can use these functions to implement a Web Platform feature only if the
-  // input string is already valid according to the specification of the
-  // feature.
-  int ToInt(bool* ok = nullptr) const;
-  unsigned ToUInt(bool* ok = nullptr) const;
-
-  // These functions accepts:
-  //  - leading '+'
-  //  - numbers without leading zeros such as ".5"
-  //  - numbers ending with "." such as "3."
-  //  - scientific notation
-  //  - leading whitespace (IsASCIISpace, not IsHTMLSpace)
-  //  - no trailing whitespace
-  //  - no trailing garbage
-  //  - no numbers such as "NaN" "Infinity"
-  //
-  // A huge absolute number which a double/float can't represent is accepted,
-  // and +Infinity or -Infinity is returned.
-  //
-  // A small absolute numbers which a double/float can't represent is accepted,
-  // and 0 is returned
-  //
-  // If the input string is not acceptable, 0.0 is returned and |*ok| becomes
-  // |false|.
-  //
-  // We can use these functions to implement a Web Platform feature only if the
-  // input string is already valid according to the specification of the
-  // feature.
-  //
-  // FIXME: Like the strict functions above, these give false for "ok" when
-  // there is trailing garbage.  Like the non-strict functions above, these
-  // return the value when there is trailing garbage.  It would be better if
-  // these were more consistent with the above functions instead.
-  double ToDouble(bool* ok = nullptr) const;
-  float ToFloat(bool* ok = nullptr) const;
 
 #ifdef __OBJC__
   String(NSString*);

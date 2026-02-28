@@ -7,12 +7,16 @@
 
 #import <UIKit/UIKit.h>
 
+namespace tab_groups {
+enum class TabGroupColorId;
+}  // namespace tab_groups
+
 // Defines a color palette for tab groups derived from a seed color.
 @interface TabGroupColorPalette : NSObject
 
-// Initializes from a group color to generate a color palette for the grid cell
-// and group views.
-- (instancetype)initWithSeedColor:(UIColor*)groupColor
+// Initializes from a tabGroupColorId to generate a color palette for the grid
+// cell and group views.
+- (instancetype)initWithColorId:(tab_groups::TabGroupColorId)tabGroupColorId
     NS_DESIGNATED_INITIALIZER;
 - (instancetype)init NS_UNAVAILABLE;
 
@@ -31,6 +35,8 @@
 // A variant of the seed color for the dot, the borders, and the NTP button
 // which is the same in light and dark theme.
 @property(nonatomic, readonly) UIColor* commonColor;
+
++ (UIColor*)commonColor:(tab_groups::TabGroupColorId)tab_group_color_id;
 
 @end
 

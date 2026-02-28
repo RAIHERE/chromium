@@ -13,6 +13,7 @@
 #include "chrome/browser/signin/account_consistency_mode_manager.h"
 #include "chrome/browser/signin/chrome_signin_helper.h"
 #include "chrome/browser/signin/identity_manager_factory.h"
+#include "chrome/browser/signin/signin_util.h"
 #include "chrome/browser/sync/sync_service_factory.h"
 #include "components/policy/core/common/policy_pref_names.h"
 #include "components/prefs/pref_service.h"
@@ -26,6 +27,7 @@
 #include "components/sync/service/sync_service.h"
 #include "content/public/browser/browser_thread.h"
 #include "content/public/browser/render_process_host.h"
+#include "content/public/browser/security_principal.h"
 #include "content/public/browser/storage_partition.h"
 #include "google_apis/gaia/gaia_auth_util.h"
 #include "net/base/schemeful_site.h"
@@ -80,9 +82,8 @@ void ProcessBoundSessionResponseHeaders(
   bound_session_cookie_refresh_service->MaybeTerminateSession(
       response_adapter->GetUrl(), headers);
 
-  std::vector<net::SchemefulSite> restricted_sites{
-      net::SchemefulSite(GURL("https://google.com")),
-      net::SchemefulSite(GURL("https://youtube.com"))};
+  std::vector<net::SchemefulSite> restricted_sites =
+      signin_util::GetDeviceBoundSessionRestrictedSites();
 
   // If an equivalent standard DBSC session is going to be triggered by the same
   // response, ignore the session registration.
@@ -272,7 +273,7 @@ bool HeaderModificationDelegateImpl::ShouldIgnoreGuestWebViewRequest(
 
   if (extensions::WebViewRendererState::GetInstance()->IsGuest(
           contents->GetPrimaryMainFrame()->GetProcess()->GetDeprecatedID())) {
-    CHECK(contents->GetSiteInstance()->IsGuest());
+    CHECK(contents->GetSiteInstance()->GetSecurityPrincipal().IsGuest());
     return true;
   }
   return false;

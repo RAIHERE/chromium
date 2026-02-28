@@ -6,6 +6,7 @@
 
 #include <algorithm>
 
+#include "base/numerics/safe_conversions.h"
 #include "third_party/blink/public/mojom/use_counter/metrics/web_feature.mojom-shared.h"
 #include "third_party/blink/renderer/core/animation/animation_trigger.h"
 #include "third_party/blink/renderer/core/display_lock/display_lock_utilities.h"
@@ -14,6 +15,7 @@
 #include "third_party/blink/renderer/core/layout/fragmentation_utils.h"
 #include "third_party/blink/renderer/core/layout/physical_box_fragment.h"
 #include "third_party/blink/renderer/core/layout/physical_fragment.h"
+#include "third_party/blink/renderer/core/layout/split_axis_item.h"
 #include "third_party/blink/renderer/core/layout/transform_utils.h"
 #include "third_party/blink/renderer/core/style/computed_style_base_constants.h"
 #include "third_party/blink/renderer/platform/runtime_enabled_features.h"
@@ -29,6 +31,16 @@ bool IsInlineContainerForNode(const BlockNode& node,
              node.Style().GetPosition());
 }
 
+PhysicalAxes StickyConstrainedAxes(const ComputedStyle& style) {
+  PhysicalAxes axes = kPhysicalAxesNone;
+  if (!style.Top().IsAuto() || !style.Bottom().IsAuto()) {
+    axes |= kPhysicalAxesVertical;
+  }
+  if (!style.Left().IsAuto() || !style.Right().IsAuto()) {
+    axes |= kPhysicalAxesHorizontal;
+  }
+  return axes;
+}
 }  // namespace
 
 AnchorMap::SetOptions FragmentBuilder::AnchorOptionsForChild(
@@ -117,25 +129,36 @@ void FragmentBuilder::ReplaceChild(wtf_size_t index,
   children_[index] = LogicalFragmentLink(new_child, offset);
 }
 
-GCedHeapVector<Member<LayoutBoxModelObject>>&
+GCedHeapVector<SplitAxisItem<LayoutBoxModelObject>>&
 FragmentBuilder::EnsureStickyDescendants() {
   if (!sticky_descendants_) {
-    sticky_descendants_ =
-        MakeGarbageCollected<GCedHeapVector<Member<LayoutBoxModelObject>>>();
+    sticky_descendants_ = MakeGarbageCollected<
+        GCedHeapVector<SplitAxisItem<LayoutBoxModelObject>>>();
   }
   return *sticky_descendants_;
 }
 
 void FragmentBuilder::PropagateStickyDescendants(
     const PhysicalFragment& child) {
+  const PhysicalAxes scrollable_axes = GetOverflowScrollAxes();
+
   if (child.HasStickyConstrainedPosition()) {
-    EnsureStickyDescendants().push_front(
-        To<LayoutBoxModelObject>(child.GetMutableLayoutObject()));
+    const PhysicalAxes axes = StickyConstrainedAxes(child.Style());
+    const PhysicalAxes consumed = scrollable_axes & axes;
+    const PhysicalAxes pending = axes ^ consumed;
+
+    EnsureStickyDescendants().emplace_back(
+        To<LayoutBoxModelObject>(child.GetMutableLayoutObject()), consumed,
+        pending);
   }
 
-  if (const auto* child_sticky_descendants =
-          child.PropagatedStickyDescendants()) {
-    EnsureStickyDescendants().AppendVector(*child_sticky_descendants);
+  for (const auto& item : child.StickyDescendants()) {
+    if (auto* pending_obj = item.GetIfPending()) {
+      const PhysicalAxes consumed = scrollable_axes & item.PendingAxes();
+      const PhysicalAxes pending = item.PendingAxes() ^ consumed;
+
+      EnsureStickyDescendants().emplace_back(pending_obj, consumed, pending);
+    }
   }
 }
 
@@ -322,6 +345,22 @@ void FragmentBuilder::PropagateScrollInitialTarget(
   }
 }
 
+PhysicalAxes FragmentBuilder::GetOverflowScrollAxes() const {
+  // Don't allow anonymous fragments (line-boxes, columns, etc) to resolve their
+  // scrollable-axes.
+  if (!node_ || node_.IsInline() || IsFragmentainerBoxType()) {
+    return kPhysicalAxesNone;
+  }
+
+  if (const auto* box = DynamicTo<LayoutBox>(GetLayoutObject());
+      box && box->IsScrollContainer()) {
+    if (const auto* scrollable_area = box->GetScrollableArea()) {
+      return scrollable_area->ScrollableAxes();
+    }
+  }
+  return kPhysicalAxesNone;
+}
+
 // Propagate data in |child| to this fragment. The |child| will then be added as
 // a child fragment or a child fragment item.
 void FragmentBuilder::PropagateFromFragment(
@@ -425,16 +464,17 @@ void FragmentBuilder::PropagateFromFragment(
   // Collect any (block) break tokens, but skip break tokens for fragmentainers,
   // as they should only escape a fragmentation context at the discretion of the
   // fragmentation context. Also skip this if there's a pre-set break token.
-  if (has_block_fragmentation_ && !child.IsFragmentainerBox() &&
-      !break_token_) {
+  if (GetConstraintSpace().HasBlockFragmentation() &&
+      !child.IsFragmentainerBox() && !break_token_) {
     const BreakToken* child_break_token = child.GetBreakToken();
     switch (child.Type()) {
       case PhysicalFragment::kFragmentBox:
         if (child_break_token)
           child_break_tokens_.push_back(child_break_token);
         break;
-      case PhysicalFragment::kFragmentLineBox:
-        if (child.IsLineForParallelFlow()) {
+      case PhysicalFragment::kFragmentLineBox: {
+        const auto& line_box = To<PhysicalLineBoxFragment>(child);
+        if (line_box.IsLineForParallelFlow()) {
           // This is a line that only contains a resumed float / block after a
           // fragmentation break. It should not affect orphans / widows
           // calculation.
@@ -452,8 +492,15 @@ void FragmentBuilder::PropagateFromFragment(
         // child_break_token is nullptr if this is the last line to be generated
         // from the node.
         last_inline_break_token_ = inline_break_token;
-        line_count_++;
+
+        // Count the line unless it's an empty one. Floats may trigger creation
+        // of empty lines, and they should not affect the line count, because
+        // that would incorrectly affect orphans / widows calculation.
+        if (!line_box.IsEmptyLineBox()) {
+          line_count_++;
+        }
         break;
+      }
     }
   }
 }
@@ -1107,7 +1154,7 @@ void FragmentBuilder::PropagateSpaceShortage(
   // in the initial column balancing pass, because then we have no
   // fragmentainer block-size at all, so who's to tell what's too short or
   // not?
-  DCHECK(!IsInitialColumnBalancingPass());
+  DCHECK(!GetConstraintSpace().IsInitialColumnBalancingPass());
   UpdateMinimalSpaceShortage(space_shortage, &minimal_space_shortage_);
 }
 

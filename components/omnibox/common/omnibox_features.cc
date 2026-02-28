@@ -69,6 +69,11 @@ BASE_FEATURE(kFocusTriggersWebAndSRPZeroSuggest,
 // Enables on-clobber suggestions on iOS.
 BASE_FEATURE(kOnClobberSuggestIOS, ENABLED);
 
+// If enabled, contextual suggestion group headers in the Omnibox popup will
+// be hidden (e.g. in order to minimize visual clutter in the zero-prefix
+// state).
+BASE_FEATURE(kHideContextualGroupHeaders, DISABLED);
+
 // If enabled, suggestion group headers in the Omnibox popup will be hidden
 // (e.g. in order to minimize visual clutter in the zero-prefix state).
 BASE_FEATURE(kHideSuggestionGroupHeaders,
@@ -265,9 +270,6 @@ BASE_FEATURE(kOmniboxAsyncViewInflation, DISABLED);
 // Use FusedLocationProvider on Android to fetch device location.
 BASE_FEATURE(kUseFusedLocationProvider, ENABLED);
 
-// Enables storing successful query/match in the shortcut database On Android.
-BASE_FEATURE(kOmniboxShortcutsAndroid, ENABLED);
-
 // Updates various NTP/Omnibox assets and descriptions for visual alignment on
 // iOS.
 BASE_FEATURE(kOmniboxMobileParityUpdate, ENABLED);
@@ -275,6 +277,9 @@ BASE_FEATURE(kOmniboxMobileParityUpdate, ENABLED);
 // Updates various NTP/Omnibox assets and descriptions for visual alignment on
 // Android and iOS, V2.
 BASE_FEATURE(kOmniboxMobileParityUpdateV2, ENABLED);
+
+// If enabled, the X-Geo header will include permission granularity.
+BASE_FEATURE(kOmniboxXGeoPermissionGranularity, ENABLED);
 
 // The features below allow tuning number of suggestions offered to users in
 // specific contexts. These features are default enabled and are used to control
@@ -331,6 +336,10 @@ BASE_FEATURE(kComposeboxAttachmentsTypedState, DISABLED);
 // Enables passthrough params to be sent to the AIM eligibility service.
 BASE_FEATURE(kAimUrlInterceptPassthrough, DISABLED);
 
+BASE_FEATURE(kOmniboxDebugLogs, base::FEATURE_DISABLED_BY_DEFAULT);
+
+BASE_FEATURE(kThinkingModelIconUpdate, base::FEATURE_DISABLED_BY_DEFAULT);
+
 #if BUILDFLAG(IS_ANDROID)
 // Accelerates time from cold start to focused Omnibox on low-end devices,
 // prioritizing Omnibox focus and background initialization.
@@ -343,7 +352,7 @@ BASE_FEATURE(kJumpStartOmnibox, DISABLED);
 BASE_FEATURE(kSuppressIntermediateACUpdatesOnLowEndDevices, DISABLED);
 
 // (Android only) Show tab groups via the search feature in the hub.
-BASE_FEATURE(kAndroidHubSearchTabGroups, DISABLED);
+BASE_FEATURE(kAndroidHubSearchTabGroups, ENABLED);
 
 // When enabled, delay focusTab to prioritize navigation
 // (https://crbug.com/374852568).
@@ -359,6 +368,10 @@ BASE_FEATURE(kOmniboxImprovementForLFF, DISABLED);
 // If enabled, disables ligatures in the URL bar on Android.
 BASE_FEATURE(kUrlBarWithoutLigatures, ENABLED);
 
+// If enabled, Java-cached ZPS will be served.
+// The cached ZPS made sense on sub-4GB Android Go devices
+BASE_FEATURE(kServeJavaCachedZeroSuggest, ENABLED);
+
 namespace android {
 static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
   static const base::Feature* const kFeaturesExposedToJava[] = {
@@ -373,10 +386,12 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
       &kAndroidHubSearchTabGroups,
       &kPostDelayedTaskFocusTab,
       &kOmniboxMobileParityUpdateV2,
+      &kOmniboxXGeoPermissionGranularity,
       &kOmniboxSiteSearch,
       &kOmniboxMultimodalInput,
       &kMultilineEditField,
       &kOmniboxImprovementForLFF,
+      &kServeJavaCachedZeroSuggest,
       &kRemoveSearchReadyOmnibox};
   static base::NoDestructor<base::android::FeatureMap> kFeatureMap(
       kFeaturesExposedToJava);
@@ -385,6 +400,13 @@ static int64_t JNI_OmniboxFeatureMap_GetNativeMap(JNIEnv* env) {
 }  // namespace android
 #endif  // BUILDFLAG(IS_ANDROID)
 // Note: no new flags beyond this point.
+
+namespace flag_descriptions {
+const char kOmniboxDebugLogsName[] = "Omnibox debug logs";
+const char kOmniboxDebugLogsDescription[] =
+    "Enables logging that can be read from an internals page.";
+}  // namespace flag_descriptions
+
 }  // namespace omnibox
 
 #if BUILDFLAG(IS_ANDROID)

@@ -37,12 +37,12 @@ export class SimpleActionMenuElement extends SimpleActionMenuElementBase {
     return 'simple-action-menu';
   }
 
-  override render() {
-    return getHtml.bind(this)();
-  }
-
   static override get styles() {
     return getCss();
+  }
+
+  override render() {
+    return getHtml.bind(this)();
   }
 
   static override get properties() {
@@ -87,7 +87,8 @@ export class SimpleActionMenuElement extends SimpleActionMenuElementBase {
   }
 
   protected isItemSelected_(index: number, item: MenuStateItem<any>): boolean {
-    return item.selected || index === this.currentSelectedIndex;
+    // Only use currentSelectedIndex if item.selected is undefined.
+    return item.selected ?? (index === this.currentSelectedIndex);
   }
 
   protected doesItemHaveIcon_(item: MenuStateItem<any>): boolean {

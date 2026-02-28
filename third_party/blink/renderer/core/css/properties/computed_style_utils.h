@@ -105,7 +105,8 @@ class CORE_EXPORT ComputedStyleUtils {
       const ComputedStyle&,
       const FillLayer*);
   static cssvalue::CSSBorderImageSliceValue* ValueForNinePieceImageSlice(
-      const NinePieceImage&);
+      const NinePieceImage&,
+      float zoom);
   static CSSQuadValue* ValueForNinePieceImageQuad(const BorderImageLengthBox&,
                                                   const ComputedStyle&);
   static CSSValue* ValueForNinePieceImageRepeat(const NinePieceImage&);
@@ -235,10 +236,10 @@ class CORE_EXPORT ComputedStyleUtils {
       const EAnimationTriggerBehavior);
   static CSSValue* ValueForAnimationTriggerBehaviorList(
       const Vector<EAnimationTriggerBehavior>& behavior_list);
-  static CSSValue* ValueForTimelineTriggerEntryRangeStartList(
+  static CSSValue* ValueForTimelineTriggerActivationRangeStartList(
       const CSSAnimationData* animation_data,
       const ComputedStyle& style);
-  static CSSValue* ValueForTimelineTriggerEntryRangeEndList(
+  static CSSValue* ValueForTimelineTriggerActivationRangeEndList(
       const CSSAnimationData* animation_data,
       const ComputedStyle& style);
   static CSSValue* ValueForTimelineTriggerActiveRangeStartList(
@@ -360,6 +361,12 @@ class CORE_EXPORT ComputedStyleUtils {
       bool is_edge,
       CSSValuePhase value_phase,
       CSSGapDecorationPropertyDirection direction);
+  static const CSSValue* ValuesForGapDecorationRuleInsetStartEndShorthand(
+      const StylePropertyShorthand&,
+      const ComputedStyle&,
+      const LayoutObject*,
+      bool allow_visited_style,
+      CSSValuePhase value_phase);
   static CSSValueList* ValuesForGapDecorationRuleInsetShorthand(
       const StylePropertyShorthand&,
       const ComputedStyle&,
@@ -403,6 +410,13 @@ class CORE_EXPORT ComputedStyleUtils {
 
   static const CSSValue*
   ValuesForBidirectionalGapRuleEdgeInteriorInsetShorthand(
+      const StylePropertyShorthand&,
+      const ComputedStyle&,
+      const LayoutObject*,
+      bool allow_visited_style,
+      CSSValuePhase value_phase);
+
+  static const CSSValue* ValuesForBidirectionalGapRuleInsetStartEndShorthand(
       const StylePropertyShorthand&,
       const ComputedStyle&,
       const LayoutObject*,

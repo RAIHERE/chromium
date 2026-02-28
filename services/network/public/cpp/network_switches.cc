@@ -35,11 +35,6 @@ const char kHostRules[] = "host-rules";
 const char kIgnoreCertificateErrorsSPKIList[] =
     "ignore-certificate-errors-spki-list";
 
-// Enables saving net log events to a file. If a value is given, it used as the
-// path the the file, otherwise the file is named netlog.json and placed in the
-// user data directory.
-const char kLogNetLog[] = "log-net-log";
-
 // Specifies the duration (in seconds) for network logging. When this flag is
 // provided with a positive integer value X, Chrome will automatically stop
 // collecting NetLog events after X seconds and flush the log to disk.
@@ -138,6 +133,11 @@ const char kUseRelatedWebsiteSet[] = "use-related-website-set";
 // have changed slightly due to Local Network Access (LNA) replacing Private
 // Network Access (PNA).
 const char kIpAddressSpaceOverrides[] = "ip-address-space-overrides";
+
+// If set, Local Network Access (LNA) permissions policy features will be
+// default enabled in all frames, rather than requiring explicit delegation.
+const char kLocalNetworkAccessPermissionsPolicyDefaultEnabled[] =
+    "local-network-access-permissions-policy-default-enabled";
 
 // The switch to disable the shared dictionary storage clean up task. Only for
 // testing.

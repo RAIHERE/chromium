@@ -34,7 +34,6 @@ import org.chromium.base.ObserverList;
 import org.chromium.base.TraceEvent;
 import org.chromium.base.library_loader.LibraryLoader;
 import org.chromium.base.metrics.RecordHistogram;
-import org.chromium.base.supplier.MonotonicObservableSupplier;
 import org.chromium.base.supplier.NonNullObservableSupplier;
 import org.chromium.base.supplier.NullableObservableSupplier;
 import org.chromium.base.supplier.OneshotSupplier;
@@ -109,7 +108,7 @@ public class ToolbarControlContainer extends OptimizedFrameLayout
     private final ObserverList<TouchEventObserver> mTouchEventObservers = new ObserverList<>();
     private final Callback<Boolean> mOnXrSpaceModeChanged = this::onXrSpaceModeChanged;
     private final Callback<Resource> mOnResourceCaptureCallback = this::onToolbarCaptureUpdated;
-    private @Nullable MonotonicObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
+    private @Nullable NonNullObservableSupplier<Boolean> mXrSpaceModeObservableSupplier;
     private @Nullable SettableNonNullObservableSupplier<Integer> mHeightChangedSupplier;
     private ToolbarDataProvider mToolbarDataProvider;
 
@@ -706,7 +705,8 @@ public class ToolbarControlContainer extends OptimizedFrameLayout
                     new ConstraintsChecker(this, constraintsSupplier, Looper.getMainLooper());
             mTabSupplier = tabSupplier;
             mCompositorInMotionSupplier = compositorInMotionSupplier;
-            mCompositorInMotionSupplier.addObserver(mOnCompositorInMotionChange);
+            mCompositorInMotionSupplier.addSyncObserverAndPostIfNonNull(
+                    mOnCompositorInMotionChange);
             mBrowserStateBrowserControlsVisibilityDelegate =
                     browserStateBrowserControlsVisibilityDelegate;
             mControlContainerIsVisibleSupplier = controlContainerIsVisibleSupplier;
@@ -1038,8 +1038,8 @@ public class ToolbarControlContainer extends OptimizedFrameLayout
     }
 
     public void setXrSpaceModeObservableSupplierMaybe(
-            @Nullable MonotonicObservableSupplier<Boolean> xrSpaceModeObservableSupplier) {
-        if (mXrSpaceModeObservableSupplier == null && xrSpaceModeObservableSupplier != null) {
+            NonNullObservableSupplier<Boolean> xrSpaceModeObservableSupplier) {
+        if (mXrSpaceModeObservableSupplier == null) {
             mXrSpaceModeObservableSupplier = xrSpaceModeObservableSupplier;
             mXrSpaceModeObservableSupplier.addSyncObserver(mOnXrSpaceModeChanged);
         }
@@ -1052,5 +1052,18 @@ public class ToolbarControlContainer extends OptimizedFrameLayout
     static Runnable forceStaleCaptureHistogramForTesting() {
         sForceStaleCaptureHistogram = true;
         return () -> sForceStaleCaptureHistogram = false;
+    }
+
+    @Override
+    public void doSynchronousLayoutAndCapture() {
+        int widthSpec = View.MeasureSpec.makeMeasureSpec(getWidth(), View.MeasureSpec.EXACTLY);
+        int heightSpec = View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED);
+
+        measure(widthSpec, heightSpec);
+        layout(getLeft(), getTop(), getLeft() + getMeasuredWidth(), getTop() + getMeasuredHeight());
+
+        ViewResourceAdapter resourceAdapter = getToolbarResourceAdapter();
+        resourceAdapter.invalidate(null);
+        resourceAdapter.triggerBitmapCapture();
     }
 }

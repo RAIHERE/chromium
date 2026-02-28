@@ -25,7 +25,6 @@
 #include "base/strings/string_split.h"
 #include "build/chromeos_buildflags.h"
 #include "chrome/browser/extensions/corrupted_extension_reinstaller.h"
-#include "chrome/browser/extensions/crx_installer.h"
 #include "chrome/browser/extensions/extension_management.h"
 #include "chrome/browser/extensions/external_install_manager.h"
 #include "chrome/browser/extensions/forced_extensions/install_stage_tracker_factory.h"
@@ -40,6 +39,7 @@
 #include "content/public/browser/browser_task_traits.h"
 #include "content/public/browser/browser_thread.h"
 #include "extensions/browser/blocklist_extension_prefs.h"
+#include "extensions/browser/crx_installer.h"
 #include "extensions/browser/delayed_install_manager.h"
 #include "extensions/browser/disable_reason.h"
 #include "extensions/browser/extension_file_task_runner.h"
@@ -408,7 +408,8 @@ void ExtensionUpdater::AddToDownloader(
 bool ExtensionUpdater::AddExtensionToDownloader(
     const Extension& extension,
     int request_id,
-    DownloadFetchPriority fetch_priority) {
+    DownloadFetchPriority fetch_priority,
+    bool is_corrupt_reinstall) {
   GURL update_url = GetEffectiveUpdateURL(extension);
   // Skip extensions with empty update URLs converted from user
   // scripts.
@@ -427,9 +428,9 @@ bool ExtensionUpdater::AddExtensionToDownloader(
   }
 
   return downloader_->AddPendingExtension(ExtensionDownloaderTask(
-      extension.id(), update_url, extension.location(),
-      false /*is_corrupt_reinstall*/, request_id, fetch_priority,
-      extension.version(), extension.GetType(), update_url_data));
+      extension.id(), update_url, extension.location(), is_corrupt_reinstall,
+      request_id, fetch_priority, extension.version(), extension.GetType(),
+      update_url_data));
 }
 
 void ExtensionUpdater::CheckNow(CheckParams params) {
@@ -512,12 +513,20 @@ void ExtensionUpdater::CheckNow(CheckParams params) {
         }
         // Policy installed extensions are not necessarily from the webstore,
         // but should have an `info` and never hit this path.
-        DCHECK(extension->from_webstore()) << "Extension with id " << pending_id
-                                           << " is not from the webstore";
         DCHECK(is_corrupt_reinstall) << "Extension with id " << pending_id
                                      << " is not a corrupt reinstall";
-        update_check_params.update_info[pending_id] =
-            GetExtensionUpdateData(pending_id);
+
+        if (extension->from_webstore()) {
+          update_check_params.update_info[pending_id] =
+              GetExtensionUpdateData(pending_id);
+        } else if (AddExtensionToDownloader(*extension, request_id,
+                                            params.fetch_priority,
+                                            is_corrupt_reinstall)) {
+          request.in_progress_ids.insert(extension->id());
+          LOG(WARNING) << "Corrupt non-webstore extension with id "
+                       << pending_id
+                       << " will be reinstalled with ExtensionDownloader.";
+        }
       } else if (!Manifest::IsAutoUpdateableLocation(info->install_source())) {
         VLOG(2) << "Extension " << pending_id << " is not auto updateable";
         continue;
@@ -783,7 +792,6 @@ ExtensionUpdateData ExtensionUpdater::GetExtensionUpdateData(
 
   if (update) {
     result.pending_version = update->VersionString();
-    result.pending_fingerprint = update->DifferentialFingerprint();
   }
 
   return result;
@@ -898,8 +906,9 @@ void ExtensionUpdater::InstallCRXFile(FetchedCRXFile crx_file) {
                        crx_file.request_ids.end());
   }
 
-  for (const int request_id : request_ids)
+  for (const int request_id : request_ids) {
     NotifyIfFinished(request_id);
+  }
 }
 
 scoped_refptr<CrxInstaller> ExtensionUpdater::CreateUpdateInstaller(
@@ -948,7 +957,7 @@ scoped_refptr<CrxInstaller> ExtensionUpdater::CreateUpdateInstaller(
     installer->set_install_source(pending_extension_info->install_source());
     installer->set_allow_silent_install(true);
     // If the extension came in disabled due to a permission increase, then
-    // don't grant it all the permissions. crbug.com/484214
+    // don't grant it all the permissions. crbug.com/40416721
     bool has_permissions_increase =
         ExtensionPrefs::Get(profile_)->HasDisableReason(
             id, disable_reason::DISABLE_PERMISSIONS_INCREASE);

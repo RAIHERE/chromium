@@ -583,6 +583,12 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_CONTENT_CONTEXT_INSPECTELEMENT" desc="The name of the Inspect Element command in the content area context menu">
           I&amp;nspect
         </message>
+        <message name="IDS_CONTENT_CONTEXT_INSPECTELEMENT_WITH_GEMINI" desc="Context menu item for inspecting the element with Gemini.">
+          With Gemini
+        </message>
+        <message name="IDS_CONTENT_CONTEXT_INSPECTELEMENT_WITH_DEVTOOLS" desc="Context menu item for inspecting the element with DevTools.">
+          With DevTools
+        </message>
         <message name="IDS_CONTENT_CONTEXT_ACCESSIBILITY_LABELS_DIALOG_TITLE" desc="The title of a dialog that asks whether to integrate the accessibility image labeling service of Google to Chrome.">
           Get image descriptions from Google?
         </message>
@@ -1637,6 +1643,9 @@ are declared in tools/grit/grit_args.gni.
         <message name="IDS_TAKE_SCREENSHOT" desc="The text label of the Take Screenshot menu item">
           T&amp;ake screenshot
         </message>
+        <message name="IDS_REPORT_UNSAFE_SITE" desc="Text label of the Report Unsafe Site menu item">
+          Report an &amp;unsafe site...
+        </message>
         <message name="IDS_RESTORE_ALL_TABS" desc="The text label of the Restore All Tabs menu item.">
           R&amp;estore all tabs
         </message>
@@ -1698,6 +1707,9 @@ are declared in tools/grit/grit_args.gni.
         </message>
         <message name="IDS_REOPEN_GROUP" desc="In Title Case: The text label of the Reopen Closed Group menu item">
           Reopen Closed Group
+        </message>
+        <message name="IDS_REPORT_UNSAFE_SITE" desc="In Title Case: Text label of the Report Unsafe Site menu item">
+          Report an &amp;Unsafe Site...
         </message>
         <message name="IDS_RESTORE_WINDOW" desc="In Title Case: The text label of the Restore Window menu item">
           &amp;Restore Window
@@ -2372,6 +2384,10 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_DOWNLOADS_TOAST_COPY_DOWNLOAD_LINK_FAILED"
                desc="On the chrome://downloads page, the text for the toast shown when the user tried to copy a download's url but the operation failed.">
         Failed to copy link
+      </message>
+      <message name="IDS_DOWNLOADS_TOAST_COPIED_LINK"
+               desc="On the chrome://downloads page, the text for the toast shown when the user copies a download's url.">
+        Link copied to clipboard
       </message>
 
       <message name="IDS_EMAIL_VERIFIED" desc="Toast message to notify the user when their email is automatically verified by the browser.">
@@ -4184,8 +4200,23 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_JS_OPTIMIZATION_BUBBLE_BODY_NON_POLICY_BODY" desc="Body text for the V8 optimization bubble when disabled for other reasons.">
         JavaScript optimization is off for this site. Enable for better performance.
       </message>
+     <if expr="not use_titlecase">
       <message name="IDS_JS_OPTIMIZATION_BUBBLE_ENABLE_BUTTON" desc="Button text to enable V8 optimization for the current site.">
         Allow for this site
+      </message>
+    </if>
+    <if expr="use_titlecase">
+      <message name="IDS_JS_OPTIMIZATION_BUBBLE_ENABLE_BUTTON" desc="In Title Case: Button text to enable V8 optimization for the current site.">
+        Allow for This Site
+      </message>
+    </if>
+
+      <!-- JS optimizations reload infobar -->
+      <message name="IDS_JS_OPTIMIZATION_SITE_RELOAD_TEXT" desc="Label displayed in an infobar when user has chosen to re-enable JS Optimizations. Tells user that in order to apply the new setting, they need to reload the page.">
+        Reload this page to apply your updated settings on this site
+      </message>
+      <message name="IDS_JS_OPTIMIZATION_SITE_RELOAD_BUTTON" desc="The text of the button to proceed with the page reload for enabling JS Optimizations">
+        Reload
       </message>
 
       <!-- Win certificate selector dialog strings.  -->
@@ -5251,16 +5282,13 @@ are declared in tools/grit/grit_args.gni.
       </message>
 
       <!-- Critical Notification bubble -->
-      <message name="IDS_CRITICAL_NOTIFICATION_RESTART" desc="Button label a button on the bubble that appears when there is a critical update and Chrome/Chromium must restart to install it. Pressing the buton will cause Chrome/Chromium to restart.">
+      <message name="IDS_CRITICAL_NOTIFICATION_RESTART" desc="Button label a button on the bubble that appears when there is a critical update and Chrome/Chromium must restart to install it. Pressing the button will cause Chrome/Chromium to restart.">
         Restart now
       </message>
 
       <!-- Extension/App disabled notification -->
       <message name="IDS_EXTENSION_DISABLED_ERROR_LABEL" desc="Text displayed when an extension was disabled due to a new upgrade requiring an explicit permission check from the user.">
         To re-enable it, accept the new permissions:
-      </message>
-      <message name="IDS_EXTENSION_IS_BLOCKLISTED" desc="Text displayed in an infobar when an extension is blocklisted and prevented from being installed.">
-        Google has flagged "<ph name="EXTENSION_NAME">$1<ex>Google Talk</ex></ph>" as malicious and installation has been prevented
       </message>
       <message name="IDS_EXTENSION_DISABLED_REMOTE_INSTALL_ERROR_TITLE" desc="Title of the notification that an extension or app was disabled due to it being installed server side, requiring an explicit permission check from the user.">
         <ph name="EXTENSION_NAME">$1<ex>Adblock</ex></ph> was added remotely
@@ -5321,6 +5349,18 @@ are declared in tools/grit/grit_args.gni.
       </message>
       <message name="IDS_EXTENSION_REPAIR_PROMPT_TITLE" desc="Titlebar of the extension or app installation prompt. Asks the user if they want to update the extension/app.">
         Repair "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>"?
+      </message>
+      <message name="IDS_EXTENSION_ASK_PARENT_PROMPT_TITLE" desc="Titlebar of the extension ask parent prompt. Tells the user they need to ask their parent for approval to install this extension.">
+        Ask parent for approval
+      </message>
+      <message name="IDS_EXTENSION_ASK_PARENT_PROMPT_BODY" desc="Body of the extension ask parent prompt. Tells the user they need to ask their parent for approval to install this extension.">
+        Show your parent or guardian this screen so they can say whether it's OK for you to add this extension
+      </message>
+      <message name="IDS_EXTENSION_ASK_PARENT_PROMPT_ASK_IN_PERSON_BUTTON" desc="Text for the ask-in-person button on the extension ask parent for approval install prompt.">
+        Ask in person
+      </message>
+      <message name="IDS_EXTENSION_PARENT_APPROVAL_PROMPT_TITLE" desc="Titlebar of the extension or app permissions prompt. Asks the user if they want to grant the permissions to the particular extension or app.">
+        Install "<ph name="EXTENSION_NAME">$1<ex>Gmail Checker</ex></ph>"
       </message>
       <if expr="use_titlecase">
         <message name="IDS_EXTENSION_EXTERNAL_INSTALL_PROMPT_ACCEPT_BUTTON_EXTENSION" desc="In Title Case: Button on the external install prompt to enable an extension installed by a third party.">
@@ -5398,6 +5438,9 @@ are declared in tools/grit/grit_args.gni.
       </message>
       <message name="IDS_EXTENSION_PROMPT_CAN_ACCESS" desc="Second line in the content area of the extension or app permissions view dialog. Note that the exact wording is important. This should mean that the extension _can now_ access the listed privileges, because it has already been installed. This message appeared because the user must approve new permissions of the extension or app.">
         It can:
+      </message>
+      <message name="IDS_EXTENSION_PROMPT_REQUESTS_PERMISSIONS" desc="Second line in the content area of the extension or app installation prompt. Note that the exact wording is important. This should mean that the extension or app _can_ access the listed privileges, but not necessarily that it will or needs to.">
+        This extension requests the following permissions:
       </message>
       <message name="IDS_EXTENSION_PROMPT_GRANT_PERMISSIONS_CHECKBOX" desc="Label next to the checkbox in the extension or app installation prompt, which indicates if a user wants to grant access to all requested sites.">
         Grant access to all requested sites.
@@ -5812,12 +5855,6 @@ are declared in tools/grit/grit_args.gni.
       </if>
 
       <!-- Extension/App error messages -->
-      <message name="IDS_EXTENSION_CANT_DOWNGRADE_VERSION" desc="Error message when a user tries to install an extension with a lower version than a version that it already installed.">
-        Attempted to downgrade extension.
-      </message>
-      <message name="IDS_APP_CANT_DOWNGRADE_VERSION" desc="Error message when a user tries to install an app with a lower version than a version that it already installed.">
-        Attempted to downgrade app.
-      </message>
       <if expr="is_chromeos">
         <message name="IDS_EXTENSION_CANT_INSTALL_IN_DEVICE_LOCAL_ACCOUNT" desc="Error message when a user tries to install or the administrator tries to force-install through policy an extension that is not allowed in a device-local account.">
           <ph name="EXTENSION_NAME">$1<ex>Google Talk</ex></ph> (extension ID "<ph name="EXTENSION_ID">$2<ex>nckgahadagoaajjgafhacjanaoiihapd</ex></ph>") is not allowed in this type of session.
@@ -5826,52 +5863,6 @@ are declared in tools/grit/grit_args.gni.
           <ph name="EXTENSION_NAME">$1<ex>Google Talk</ex></ph> (extension ID "<ph name="EXTENSION_ID">$2<ex>abacabadabacabaeabacabadabacabaf</ex></ph>") is not allowed on a login screen.
         </message>
       </if>
-      <message name="IDS_EXTENSION_MOVE_DIRECTORY_TO_PROFILE_FAILED" desc="">
-        Could not move extension directory into profile.
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_NOT_ENABLED" desc="Error displayed during installation of apps or extensions when installation is not enabled.">
-        Installation is not enabled
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_INCORRECT_APP_CONTENT_TYPE" desc="Error displayed during installation of apps when the app is not served with the correct content-type.">
-        Apps must be served with content-type "<ph name="CONTENT_TYPE">$1<ex>application/x-chrome-extension</ex></ph>"
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_INCORRECT_INSTALL_HOST" desc="Error displayed during installation of apps when the app is served from a different host than it affects.">
-        Apps must be served from the host they affect
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_UNEXPECTED_ID" desc="Error displayed during installation of a side-loaded app, extension, or theme when the ID of the referenced extension does not match the ID the developer declared during registration.">
-        Expected ID "<ph name="EXPECTED_ID">$1<ex>bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb</ex></ph>", but ID was "<ph name="NEW_ID">$2<ex>aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa</ex></ph>"
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_DISALLOWED_ON_SITE" desc="Error displayed during installation of an extension when installation is not allowed from the current site.">
-        Apps, extensions, and user scripts cannot be added from this website
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_UNEXPECTED_VERSION" desc="Error displayed during installation of a side-loaded app, extension, or theme when the version of the referenced extension does not match the version the developer declared during registration.">
-        Expected version "<ph name="EXPECTED_VERSION">$1<ex>2.0</ex></ph>", but version was "<ph name="NEW_ID">$2<ex>1.0</ex></ph>"
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_DEPENDENCY_OLD_VERSION" desc="Error displayed during installation of an extension when an import dependency is older than the minimum version required.">
-        Extension requires "<ph name="IMPORT_NAME">$1<ex>Google Cast API</ex></ph>" with a minimum version "<ph name="IMPORT_VERSION">$2<ex>1.0</ex></ph>", but only version "<ph name="INSTALLED_VERSION">$3<ex>0.9</ex></ph>" is installed
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_DEPENDENCY_NOT_SHARED_MODULE" desc="Error displayed during installation of an extension which tries to imports resources from an extension which is not a shared module.">
-        Unable to import extension "<ph name="IMPORT_NAME">$1<ex>Gmail</ex></ph>" because it is not a shared module
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_DEPENDENCY_NOT_ALLOWLISTED" desc="Error displayed during installation of an extension which tries to imports resources from an extension, but it is not allowlisted to do so.">
-        Unable to install "<ph name="APP_NAME">$1<ex>Google Play Movies &amp; TV</ex></ph>" because it is not allowed by "<ph name="IMPORT_NAME">$2<ex>Google Cast API</ex></ph>"
-      </message>
-      <message name="IDS_EXTENSION_INSTALL_GALLERY_ONLY" desc="Error displayed when an app or extension that has an update URL used by the gallery is installed when not directly downloaded from the gallery.">
-        This can only be added from the <ph name="CHROME_WEB_STORE">$1<ex>Web Store</ex></ph>
-      </message>
-      <if expr="reven">
-        <message name="IDS_EXTENSION_INSTALL_KIOSK_MODE_ONLY" desc="Error displayed during installation of an app with 'kiosk_only' attribute but user is not in ChromeOS Flex kiosk mode.">
-          App with 'kiosk_only' manifest attribute must be installed in ChromeOS Flex kiosk mode
-        </message>
-      </if>
-      <if expr="not reven">
-        <message name="IDS_EXTENSION_INSTALL_KIOSK_MODE_ONLY" desc="Error displayed during installation of an app with 'kiosk_only' attribute but user is not in ChromeOS kiosk mode.">
-          App with 'kiosk_only' manifest attribute must be installed in ChromeOS kiosk mode
-        </message>
-      </if>
-      <message name="IDS_EXTENSION_OVERLAPPING_WEB_EXTENT" desc="Error message when a user tries to install an app with a web extent that overlaps another installed app.">
-        Could not add application "<ph name="TO_INSTALL_APP_NAME">$1<ex>Google Mail</ex></ph>" because it conflicts with "<ph name="INSTALLED_APP_NAME">$2<ex>Google Calendar</ex></ph>".
-      </message>
       <message name="IDS_EXTENSION_INVALID_IMAGE_PATH" desc="">
         Could not load '<ph name="IMAGE_PATH">$1<ex>/path/to/file</ex></ph>' for theme.
       </message>
@@ -6232,6 +6223,9 @@ are declared in tools/grit/grit_args.gni.
       <message name="IDS_EXTENSIONS_SUPERVISED_USER_PARENTAL_PERMISSION_FAILURE" desc="The error information displayed in extra details if the parent permission request flow fails unexpectedly when a supervised user attempts to install or enable an extension. Note that this does not include the case where a parent fails to enter their password.">
         Parent permission request failed.
       </message>
+      <message name="IDS_EXTENSIONS_SUPERVISED_USER_BLOCKED_BY_PARENT" desc="The information displayed in extra details if the parent blocks or cancels the installation flow for an extension.">
+        Your parent didn't approve this extension
+      </message>
 
       <message name="IDS_EXTENSION_PACK_DIALOG_HEADING" desc="The heading of the pack extension dialog.">
         Select the root directory of the extension to pack. To update an extension, also select the private key file to reuse.
@@ -6383,9 +6377,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_EXTENSION_PROMPT_REPAIR_BUTTON_APP" desc="Text for the install button on the app reinstall prompt.">
         Repair app
-      </message>
-      <message name="IDS_EXTENSION_WEB_STORE_TITLE" desc="Text for the Chrome Web Store">
-        Chrome Web Store
       </message>
       <message name="IDS_EXTENSION_WEB_STORE_TITLE_SHORT" desc="Shortened version of text for the Chrome Web Store">
         Web Store
@@ -6620,6 +6611,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
         </message>
         <message name="IDS_EXTENSIONS_MENU_CONTEXT_MENU_TOOLTIP" desc="Title of the context menu for individual extensions in the Extensions Menu" formatter_data="android_java">
           More options
+        </message>
+        <message name="IDS_EXTENSIONS_MENU_ZERO_STATE_HEADER" desc="Header in the Extensions Menu when there are no extensions installed." formatter_data="android_java">
+          Get started with extensions
         </message>
       </if>
       <message name="IDS_EXTENSIONS_MENU_CONTEXT_MENU_TOOLTIP_ACCESSIBLE_NAME" desc="Title of the context menu for individual extensions in the Extensions Menu">
@@ -6917,6 +6911,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_WEB_APP_MENU_BUTTON_UPDATE" desc="Short label next to three-dot menu in a web app window when an update for the web app is available">
         App update available
+      </message>
+      <message name="IDS_WEB_APP_BLOCKED_MIGRATION_MESSAGE" desc="Message shown in an info bar when a web app update is blocked by enterprise policy.">
+        An update for this app has been blocked by your admin and the app may not work correctly
       </message>
       <message name="IDS_WEB_APP_ENABLE_WINDOW_CONTROLS_OVERLAY_TOOLTIP" formatter_data="android_java">
         Hide title bar
@@ -7611,9 +7608,6 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_OMNIBOX_KEYWORD_TEXT" desc="Text shown in the search button at the front of the omnibox when the user has selected a keyword">
         Search <ph name="SITE_NAME">$1<ex>google.com</ex></ph>:
       </message>
-      <message name="IDS_OMNIBOX_KEYWORD_TEXT_MD" desc="Text shown in the search button at the front of the omnibox when the user has selected a keyword, in MD (no final colon)">
-        Search <ph name="SITE_NAME">$1<ex>google.com</ex></ph>
-      </message>
       <message name="IDS_OMNIBOX_CLEAR_ALL" desc="Accessibility text for the button that deletes all text input from the omnibox on touch devices.">
         Clear input
       </message>
@@ -7659,6 +7653,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
             Show search shortcuts
           </message>
         </else>
+      </if>
+
+      <!-- Launch On Startup -->
+      <if expr="is_win">
+        <message name="IDS_STARTUP_LAUNCH_INFOBAR_ALLOW_BUTTON" desc="Label for the button on the infobar offering to allow Chrome to launch when windows starts.">
+          Allow
+        </message>
+        <message name="IDS_STARTUP_LAUNCH_INFOBAR_SETTINGS_BUTTON" desc="Label for the button on the infobar that opens settings.">
+          Settings
+        </message>
       </if>
 
       <!-- WebUI Omnibox -->
@@ -8719,8 +8723,17 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_NTP_COMPOSE_MAX_FILES_REACHED_ERROR" desc="Error text for the maximum number of files that can be uploaded. [ICU Syntax]">
         {FILE_LIMIT, plural, =1 {Upload 1 file to use with your question} other {Upload up to # files to use with your question}}
       </message>
+      <message name="IDS_NTP_COMPOSE_MAX_IMAGES_REACHED_ERROR" desc="Error text for the maximum number of files that can be uploaded. [ICU Syntax]">
+        {FILE_LIMIT, plural, =1 {Upload 1 image to use with your question} other {Upload up to # images to use with your question}}
+      </message>
+      <message name="IDS_NTP_COMPOSE_MAX_PDFS_REACHED_ERROR" desc="Error text for the maximum number of files that can be uploaded. [ICU Syntax]">
+        {FILE_LIMIT, plural, =1 {Upload 1 .pdf file to use with your question} other {Upload up to # .pdf files to use with your question}}
+      </message>
       <message name="IDS_NTP_COMPOSE_FILE_TYPE_NOT_ALLOWED_ERROR" desc="Error text displayed when user attempts to upload file in non-supported format.">
         Can't upload.  Try a different file format.
+      </message>
+      <message name="IDS_NTP_COMPOSE_FILE_UPLOAD_NOT_ALLOWED" desc="Error text displayed when a user attempts to upload file when attachments are not allowed in the current context.">
+        Can’t upload. Attachments are not allowed.
       </message>
       <message name="IDS_NTP_COMPOSE_FILE_UPLOAD_FAILED">
         Unexpected error, file upload failed.
@@ -8730,6 +8743,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_NTP_COMPOSE_MOST_RECENT_TABS" desc="Heading for a list of tabs that can be added to a contextual search. This is a subsection of a menu.">
         Most recent tabs
+      </message>
+      <message name="IDS_NTP_COMPOSEBOX_TAB_PICKER_ADD_TABS_TITLE" desc="Title for the Composebox tab picker when no tabs are selected.">
+        Add recent tabs
       </message>
       <message name="IDS_NTP_COMPOSE_ADD_IMAGE"  desc="Text for a button label that opens a menu so users can add an image to their search.">
         Add image
@@ -9729,6 +9745,15 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_READING_MODE_ENABLE_IMAGES_BUTTON_LABEL" desc="Accessibility label for the button that enables showing images in reading mode content.">
         Enable images
       </message>
+      <message name="IDS_READING_MODE_PIN_LABEL" desc="Accessibility label for the pin reading mode menu item in reading mode.">
+        Pin reading mode
+      </message>
+      <message name="IDS_READING_MODE_DISABLE_PIN_BUTTON_LABEL" desc="Accessibility label for the button that unpins reading mode from the toolbar.">
+        Pin reading mode
+      </message>
+      <message name="IDS_READING_MODE_ENABLE_PIN_BUTTON_LABEL" desc="Accessibility label for the button that pins reading mode to the toolbar.">
+        Unpin reading mode
+      </message>
       <message name="IDS_READING_MODE_COLORS_COMBOBOX_LABEL" desc="Accessibility label for the colors combobox of the reading mode feature.">
         Color theme
       </message>
@@ -9768,14 +9793,11 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_READING_MODE_HIGH_CONTRAST_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
         High contrast
       </message>
-      <message name="IDS_READING_MODE_LOW_CONTRAST_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Low contrast
+      <message name="IDS_READING_MODE_LOW_CONTRAST_LIGHT_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
+        Low contrast light
       </message>
-      <message name="IDS_READING_MODE_SEPIA_LIGHT_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Sepia light
-      </message>
-      <message name="IDS_READING_MODE_SEPIA_DARK_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
-        Sepia dark
+      <message name="IDS_READING_MODE_LOW_CONTRAST_DARK_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
+        Low contrast dark
       </message>
       <message name="IDS_READING_MODE_BLUE_COLOR_LABEL" desc="Combobox option for setting the color theme for the reading mode feature.">
         Blue
@@ -9875,6 +9897,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
       </message>
       <message name="IDS_READING_MODE_MORE_OPTIONS" desc="Accessibility label for button that contains more text style options for the reading mode feature.">
         More options
+      </message>
+      <message name="IDS_READING_MODE_SETTINGS" desc="Accessibility label for button that contains settings menu for the immersive reading mode feature.">
+        Settings
       </message>
       <message name="IDS_READING_MODE_VOICE_SPEED" desc="Accessibility label for button that opens a dropdown with options for changing the speed of the voice for Read Aloud.">
         Voice speed
@@ -10056,21 +10081,23 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <message name="IDS_TOOLTIP_OVERFLOW_BUTTON" desc="The tooltip for the overflow button">
         Hidden toolbar buttons
       </message>
-      <message name="IDS_TOOLTIP_EXTENSIONS_BUTTON_ALL_EXTENSIONS_BLOCKED" desc="The tooltip for the extensions button when all the extensions are blocked on the current site.">
+      <if expr="enable_extensions_core">
+      <message name="IDS_TOOLTIP_EXTENSIONS_BUTTON_ALL_EXTENSIONS_BLOCKED" desc="The tooltip for the extensions button when all the extensions are blocked on the current site." formatter_data="android_java">
         Extensions not allowed on this site
       </message>
-      <message name="IDS_TOOLTIP_EXTENSIONS_BUTTON_ANY_EXTENSION_HAS_ACCESS" desc="The tooltip for the extensions button when any extension has access to the current site.">
+      <message name="IDS_TOOLTIP_EXTENSIONS_BUTTON_ANY_EXTENSION_HAS_ACCESS" desc="The tooltip for the extensions button when any extension has access to the current site." formatter_data="android_java">
         Extensions allowed on this site
       </message>
       <message name="IDS_ACC_NAME_EXTENSIONS_BUTTON" desc="The accessible text for the extensions button.">
         Extensions menu
       </message>
-      <message name="IDS_ACC_NAME_EXTENSIONS_BUTTON_ALL_EXTENSIONS_BLOCKED" desc="The accessible text for the extensions button when all the extensions are blocked on the current site.">
+          <message name="IDS_ACC_NAME_EXTENSIONS_BUTTON_ALL_EXTENSIONS_BLOCKED" desc="The accessible text for the extensions button when all the extensions are blocked on the current site." formatter_data="android_java">
         Extensions not allowed on this site. Select to open menu
       </message>
-      <message name="IDS_ACC_NAME_EXTENSIONS_BUTTON_ANY_EXTENSION_HAS_ACCESS" desc="The accessible text for the extensions button when all the extensions are blocked on the current site.">
+      <message name="IDS_ACC_NAME_EXTENSIONS_BUTTON_ANY_EXTENSION_HAS_ACCESS" desc="The accessible text for the extensions button when all the extensions are blocked on the current site." formatter_data="android_java">
         Extensions allowed on this site. Select to open menu
       </message>
+      </if>
       <message name="IDS_TOOLTIP_EXTENSIONS_SITE_ACCESS_BUTTON" desc="The tooltip for the extensions site access button">
         Extension permissions
       </message>
@@ -10394,19 +10421,22 @@ Keep your key file in a safe place. You will need it to create new versions of y
       <if expr="use_titlecase">
         <then>
           <message name="IDS_SWITCH_TO_VERTICAL_TAB" desc="In Title Case: The button in context menu that switches to vertical tab view.">
-            Move Tabs To The Side
+            Move Tabs to the Side
           </message>
           <message name="IDS_SWITCH_TO_HORIZONTAL_TAB" desc="In Title Case: The button in context menu that switches to horizontal tab view.">
-            Move Tabs To The Top
+            Move Tabs to the Top
           </message>
           <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="In Title Case: The tooltip for the button in the top container that collapses the vertical tab strip.">
-            Collapse Vertical Tabs
+            Collapse Tabs
           </message>
           <message name="IDS_EXPAND_VERTICAL_TABS" desc="In Title Case: The tooltip for the button in the top container that expands the vertical tab strip.">
-            Expand Vertical Tabs
+            Expand Tabs
           </message>
           <message name="IDS_VERTICAL_TAB_GROUP_MORE_OPTIONS" is_accessibility_with_no_ui="true" desc="In Title Case: The accessibility label for the button in the tab group header that opens the editor bubble.">
             More Options
+          </message>
+          <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="In Title Case: The button in context menu that allows users to send feedback about vertical tabs.">
+            Send Feedback About the Tab Strip
           </message>
         </then>
         <else>
@@ -10417,13 +10447,16 @@ Keep your key file in a safe place. You will need it to create new versions of y
             Move tabs to the top
           </message>
           <message name="IDS_COLLAPSE_VERTICAL_TABS" desc="The tooltip for the button in the top container that collapses the vertical tab strip.">
-            Collapse vertical tabs
+            Collapse tabs
           </message>
           <message name="IDS_EXPAND_VERTICAL_TABS" desc="The tooltip for the button in the top container that expands the vertical tab strip.">
-            Expand vertical tabs
+            Expand tabs
           </message>
-          <message name="IDS_VERTICAL_TAB_GROUP_MORE_OPTIONS" is_accessibility_with_no_ui="true"  desc="In Title Case: The accessibility label for the button in the tab group header that opens the editor bubble.">
+          <message name="IDS_VERTICAL_TAB_GROUP_MORE_OPTIONS" is_accessibility_with_no_ui="true"  desc="The accessibility label for the button in the tab group header that opens the editor bubble.">
             More options
+          </message>
+          <message name="IDS_VERTICAL_TABS_SEND_FEEDBACK" desc="The button in context menu that allows users to send feedback about vertical tabs.">
+            Send feedback about the tab strip
           </message>
         </else>
       </if>
@@ -10444,6 +10477,9 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_RECENT_CHATS_TITLE" desc="In Title Case: The title for the recent chats container in the projects panel.">
             Recent Chats
           </message>
+          <message name="IDS_TAB_GROUP_MORE_OPTIONS" desc="In Title Case: The tooltip for the button in a tab group item that opens the options menu.">
+            More options
+          </message>
         </then>
         <else>
           <message name="IDS_VIEW_PROJECTS_PANEL" desc="The tooltip for the button in the top container that shows the projects panel.">
@@ -10458,8 +10494,32 @@ Keep your key file in a safe place. You will need it to create new versions of y
           <message name="IDS_RECENT_CHATS_TITLE" desc="In Title Case: The title for the recent chats container in the projects panel.">
             Recent chats
           </message>
+          <message name="IDS_TAB_GROUP_MORE_OPTIONS" desc="The tooltip for the button in a tab group item that opens the options menu.">
+            More options
+          </message>
         </else>
       </if>
+      <message name="IDS_TAB_GROUPS_NO_TAB_GROUPS" desc="Text indicating the user has no Tab groups.">
+        Organize your tabs by grouping them together and label them with a custom name and color
+      </message>
+      <message name="IDS_TAB_SEARCH_BUTTON_CXMENU_UNPIN" desc="Name of the tab search button context menu item for unpinning tab search.">
+        Unpin
+      </message>
+      <message name="IDS_TAB_SEARCH_BUTTON_CXMENU_PIN" desc="Name of the tab search button context menu item for pinning tab search.">
+        Pin
+      </message>
+      <message name="IDS_PROJECTS_PANEL_BUTTON_CXMENU_UNPIN" desc="Name of the projects panel button context menu item for unpinning the projects panel.">
+        Unpin
+      </message>
+      <message name="IDS_PROJECTS_PANEL_BUTTON_CXMENU_PIN" desc="Name of the projects panel button context menu item for pinning the projects panel.">
+        Pin
+      </message>
+      <message name="IDS_EVERYTHING_MENU_BUTTON_CXMENU_UNPIN" desc="Name of the everything menu button context menu item for unpinning the everything menu.">
+        Unpin
+      </message>
+      <message name="IDS_EVERYTHING_MENU_BUTTON_CXMENU_PIN" desc="Name of the everything menu button context menu item for pinning the everything menu.">
+        Pin
+      </message>
       <!-- /Projects Panel Strings -->
 
       <!-- Strings for intent picker -->
@@ -10540,17 +10600,30 @@ Keep your key file in a safe place. You will need it to create new versions of y
 
       <!--Desktop to iOS promo strings-->
       <if expr="not is_android">
-        <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_DECLINE" desc="The text inside the iOS promo bubble button allowing the user to decline.">
-          No thanks
-        </message>
-        <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_REMINDER_CONFIRMATION_TITLE" desc="The title text for the iOS promo bubble button that confirms the user will recieve a reminder sent to their iOS device.">
+        <if expr="use_titlecase">
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_ACCEPT_REMINDER" desc="The text inside the iOS promo bubble button allowing the user to accept by getting a reminder.">
+            Remind Me on iOS
+          </message>
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_DECLINE" desc="The text inside the iOS promo bubble button allowing the user to decline.">
+            No Thanks
+          </message>
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_REMINDER_CONFIRMATION_BUTTON" desc="The button text for the iOS promo bubble button that confirms the user will receive a reminder sent to their phone.">
+            Got It
+          </message>
+        </if>
+        <if expr="not use_titlecase">
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_ACCEPT_REMINDER" desc="The text inside the iOS promo bubble button allowing the user to accept by getting a reminder.">
+            Remind me on iOS
+          </message>
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_DECLINE" desc="The text inside the iOS promo bubble button allowing the user to decline.">
+            No thanks
+          </message>
+          <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_REMINDER_CONFIRMATION_BUTTON" desc="The button text for the iOS promo bubble button that confirms the user will receive a reminder sent to their phone.">
+            Got it
+          </message>
+        </if>
+        <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_REMINDER_CONFIRMATION_TITLE" desc="The title text for the iOS promo bubble button that confirms the user will receive a reminder sent to their iOS device.">
           Reminder sent to your <ph name="DEVICE_TYPE">$1<ex>iPad</ex></ph>
-        </message>
-        <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_REMINDER_CONFIRMATION_BUTTON" desc="The button text for the iOS promo bubble button that confirms the user will recieve a reminder sent to their phone.">
-          Got it
-        </message>
-        <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_BUTTON_ACCEPT_REMINDER" desc="The text inside the iOS promo bubble button allowing the user to accept by getting a reminder.">
-          Remind me on iOS
         </message>
         <message name="IDS_IOS_DESKTOP_PROMO_BUBBLE_LENS_FEATURE_NAME" desc="The product name for the Google Lens feature.">
           Google Lens
@@ -10578,7 +10651,7 @@ Keep your key file in a safe place. You will need it to create new versions of y
           No thanks
         </message>
         <message name="IDS_IOS_DESKTOP_PASSWORD_PROMO_BUBBLE_SUBTITLE" desc="The subtitle for the iOS desktop password promo bubble which lets the user know they can access their saved password on the Google Password Manager.">
-          You can access it on Google Password Manager.
+          You can access it on Google Password Manager
         </message>
         <message name="IDS_IOS_DESKTOP_PASSWORD_PROMO_NOTIFICATION_BODY" desc="The body for the iOS desktop Password promo notification.">
           Save and autofill your passwords to easily sign in to sites and apps
@@ -12259,9 +12332,6 @@ Check your passwords anytime in <ph name="GOOGLE_PASSWORD_MANAGER">$1<ex>Google 
       </if>
 
       <!-- Tab Search -->
-      <message name="IDS_TAB_SEARCH_PROMO" desc="Promo UI shown next to the tab search button to encourage it's use.">
-        To search your tabs, click here
-      </message>
       <message name="IDS_TAB_SEARCH_TOOLBAR_BUTTON_PROMO_TITLE" desc="Title text on the tab search toolbar button promo UI.">
         Tab search is now pinned to your toolbar
       </message>
@@ -12593,6 +12663,14 @@ Check your passwords anytime in <ph name="GOOGLE_PASSWORD_MANAGER">$1<ex>Google 
 
         <message name="IDS_SAVED_TAB_GROUPS_V2_INTRO_IPH_BOOKMARKS_BAR_NOT_SYNCED_BODY" desc="The text of an IPH that shows up when the browser is started with tab groups defaulted to saved, sync is off, and there is a bookmarks bar.">
           Your tab groups now automatically save
+        </message>
+
+        <message name="IDS_RESUMPTION_RAIL_IPH_TITLE" desc="The title text of an IPH that shows up to educate users about the Resumption Rail feature entrypoint.">
+          Tab groups have moved
+        </message>
+
+        <message name="IDS_RESUMPTION_RAIL_IPH_BODY" desc="The body text of an IPH that shows up to educate users about the Resumption Rail feature entrypoint.">
+          We’re moving tab groups to give your bookmarks more breathing room.
         </message>
 
       <!-- Saved Tab Group Error -->
@@ -13617,6 +13695,27 @@ Check your passwords anytime in <ph name="GOOGLE_PASSWORD_MANAGER">$1<ex>Google 
       </message>
       <message name="IDS_DEFAULT_BROWSER_CHANGED_NO_THANKS_BUTTON" desc="Label of the no button on the notification shown when the default browser setting changes.">
         No, thanks
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_MODAL_CONFIRM_BUTTON" desc="Label for the button to confirm setting the default browser.">
+        Open settings
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_MODAL_CANCEL_BUTTON" desc="Label for the button to cancel setting the default browser.">
+        Set later
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_STEPS_COMBINED" desc="Numbered instructions. $1 and $2 are the bold button names.">
+        1. Click <ph name="BUTTON_LABEL">$1<ex>Open settings</ex></ph> below&#xA;2. Click <ph name="BUTTON_2">$2<ex>Set default</ex></ph> in your Windows settings
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_OPEN_SETTINGS_LABEL" desc="Label for the 'Open settings' button. Also used inside the instructions.">
+        Open settings
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_SET_DEFAULT_LABEL" desc="Text corresponding to the button in Windows System Settings. Used inside the instructions.">
+        Set default
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_YES_LABEL" desc="Text corresponding to the Yes button in Windows notification. Used inside the instructions.">
+        Yes
+      </message>
+      <message name="IDS_DEFAULT_BROWSER_BUBBLE_DIALOG_SET_LATER_LABEL" desc="Label for the 'Set later' (decline) button.">
+        Set later
       </message>
 
       <!-- chrome://help -->
@@ -16365,6 +16464,9 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_MANAGE_PASSWORDS_AUTO_SIGNIN_TITLE_MD" desc="The title of the auto-signin toast in Material Design mode.">
         Signing in as
       </message>
+      <message name="IDS_MANAGE_PASSWORDS_AUTO_SIGNIN_TOAST_BODY" desc="The body of the auto-signin toast showing the username being signed in.">
+        Signed in as <ph name="USERNAME">$1<ex>user@example.com</ex></ph>
+      </message>
       <message name="IDS_AUTO_SIGNIN_FIRST_RUN_TITLE_MANY_DEVICES" desc="The title of the dialog during the autosign-in first run experience for the Chrome syncing users.">
         Sign in easily across devices
       </message>
@@ -17909,6 +18011,12 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_WEBAUTHN_ERROR_NO_PASSKEYS_DESCRIPTION" desc="Description in the dialog shown when the user could not sign in to a web site because their computer did not have any of the passkeys registered with the site.">
         There aren't any passkeys for <ph name="APP_NAME">$1<ex>google.com</ex></ph> on this device
       </message>
+      <message name="IDS_WEBAUTHN_ERROR_GPM_DISABLED_TITLE" desc="Title of the dialog shown when the user could not create a passkey for a website because Google Password Manager passkeys are turned off through settings or enterprise policy.">
+        Google Password Manager is turned off
+      </message>
+      <message name="IDS_WEBAUTHN_ERROR_GPM_DISABLED_DESCRIPTION" desc="Description of the dialog shown when the user could not create a passkey for a website because Google Password Manager passkeys are disabled through settings or enterprise policy.">
+        To create a passkey for <ph name="APP_NAME">$1<ex>google.com</ex></ph>, Google Password Manager must be on
+      </message>
       <message name="IDS_WEBAUTHN_BLUETOOTH_POWER_ON_AUTO_TITLE" desc="Title of the dialog informing the user that Chrome needs to turn on Bluetooth by itself so that security keys can be used over Bluetooth.">
         Turn on Bluetooth?
       </message>
@@ -18084,9 +18192,6 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
       <message name="IDS_WEBAUTHN_PLATFORM_AUTHENTICATOR_OFF_THE_RECORD_INTERSTITIAL_DENY" desc="Button label on a dialog that asks for the user's permission to set up device-based sign-in (i.e. using their computer's biometric sensor or screen unlock/PIN) on a website while browsing in Incognito mode.">
          No thanks
-      </message>
-      <message name="IDS_WEBAUTHN_MANAGE_DEVICES" desc="The text of a button that appear at the bottom of a dialog that lists options for signing into a website. If that list contains phones then a button with this label appears to let the user manage their list of phones/tablets. Clicking it opens a settings page that lists the known phones and lets the user delete or rename them.">
-         Manage devices
       </message>
       <message name="IDS_WEBAUTHN_CREATE_PASSKEY_TITLE" desc="The title of a dialog prompting the user to create a passkey for signing into a website. Refer to Glossary for the meaning of 'passkey'; do not translate it as 'password'.">
          Create a passkey for <ph name="APP_NAME">$1<ex>example.com</ex></ph>
@@ -18366,6 +18471,9 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
       <message name="IDS_WEBAUTHN_GPM_PASSKEY_DELETED_LINK" desc="Link text that directs the user to the Google Password Manager passwords page within a bubble that is displayed as a confirmation that a passkey was deleted in Google Password Manager. See IDS_WEBAUTHN_GPM_PASSKEY_DELETED_LABEL for more details.">
         Google Password Manager
+      </message>
+      <message name="IDS_WEBAUTHN_GPM_SETTINGS" desc="The label in a button that opens Google Password Manager settings.">
+        Settings
       </message>
 
       <!-- WebAuthn passkey / password selector UIs -->
@@ -19333,6 +19441,12 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_TOAST_MENU_BUTTON_NAME" desc="Accessible name of the 3-dot button to open the menu attached to the toast.">
         More actions
       </message>
+      <message name="IDS_TRANSLATE_TOAST_BODY" desc="Text to show on the toast when a page is automatically translated.">
+        Translated to <ph name="LANGUAGE">$1<ex>Arabic</ex></ph>
+      </message>
+      <message name="IDS_TRANSLATE_TOAST_UNDO_BUTTON" desc="Button on a toast notification that allows users to undo the translation.">
+        Undo
+      </message>
       <message name="IDS_LINK_COPIED_TOAST_BODY" desc="Text on a toast notification that is shown when a link is successfully copied.">
         Link copied
       </message>
@@ -19362,6 +19476,9 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
       <message name="IDS_GLIC_SHARE_IMAGE_FAILED_TOAST_BODY" desc="Text on a toast notification that is shown when sharing an image with Gemini fails (when using the 'Create image with Gemini' context menu item)">
         Could not share image with Gemini. Try again or try another image.
+      </message>
+      <message name="IDS_GLIC_SELECTION_OVERLAY_RENDERER_LABEL" desc="The label for the renderer process housing the Gemini's selection overlay.">
+        Gemini Selection Overlay
       </message>
       <message name="IDS_COPIED_TO_CLIPBOARD_TOAST_BODY" desc="Text on a toast notification that is shown when an item has been copied to clipboard.">
         Copied to clipboard
@@ -19486,11 +19603,8 @@ Please help our engineers fix this problem. Tell us what happened right before y
     <message name="IDS_IWA_INSTALLER_CONFIRM_TITLE" desc="Title of the confirmation popup that appears immediately before Isolated Web App installation">
       Do you want to continue and allow this software to make changes to your device?
     </message>
-    <message name="IDS_IWA_INSTALLER_CONFIRM_SUBTITLE" desc="Subtitle of the confirmation popup that appears immediately before Isolated Web App installation. $1 = IDS_IWA_INSTALLER_CONFIRM_LEARN_MORE">
-      To keep your device secure, you should only run and install software from trusted sources and developers. <ph name="LEARN_MORE">$1<ex>Learn more</ex></ph>
-    </message>
-    <message name="IDS_IWA_INSTALLER_CONFIRM_LEARN_MORE" desc="Link to a learn more page shown in the confirmation popup that appears immediately before Isolated Web App installation">
-      Learn more
+    <message name="IDS_IWA_INSTALLER_CONFIRM_SUBTITLE" desc="Subtitle of the confirmation popup that appears immediately before Isolated Web App installation.">
+      To keep your device secure, you should only run and install software from trusted sources and developers.
     </message>
     <message name="IDS_IWA_INSTALLER_CONFIRM_CONTINUE" desc="Text of the continue button in the confirmation popup that appears immediately before Isolated Web App installation">
       Continue
@@ -19500,6 +19614,12 @@ Please help our engineers fix this problem. Tell us what happened right before y
     </message>
     <message name="IDS_IWA_INSTALLER_INSTALL_FAILED_SUBTITLE" desc="Subtitle of the error dialog that is shown when an Isolated Web App failed to install">
       The installation could not be completed. Please try again or close this window
+    </message>
+    <message name="IDS_IWA_INSTALLER_INSTALL_FAILED_BUNDLE_NOT_ON_USER_INSTALL_ALLOWLIST_SUBTITLE" desc="Subtitle of the error dialog that is shown when an Isolated Web App failed to install because it's not on the user install allowlist">
+      This application can't be installed by the user. Please contact the developer
+    </message>
+    <message name="IDS_IWA_INSTALLER_INSTALL_FAILED_BUNDLE_BLOCKLISTED" desc="Subtitle of the error dialog that is shown when an Isolated Web App failed to install because it's on the blocklist">
+      This application has been blocked. Please contact the developer
     </message>
     <message name="IDS_IWA_INSTALLER_INSTALL_FAILED_RETRY" desc="Label of the retry button in the error dialog that is shown when an Isolated Web App failed to install">
       Retry
@@ -19744,6 +19864,16 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
     </if>
 
+    <!-- Chrome-specific PDF strings -->
+    <if expr="enable_glic and enable_pdf">
+      <message name="IDS_PDF_GLIC_SUMMARIZE" desc="Button label for the button to summarize PDFs.">
+        Summarize
+      </message>
+      <message name="IDS_PDF_GLIC_SUMMARIZE_TOOLTIP" desc="Tooltip for the button to summarize PDFs with Gemini.">
+        Summarize with Gemini
+      </message>
+    </if>
+
     <!-- Protected content identifiers permission -->
     <if expr="is_win">
       <message name="IDS_ALLOWED_PROTECTED_CONTENT_IDENTIFIERS_TITLE" desc="Title of the info bubble shown when a site has been allowed to use identifiers to play protected content.">
@@ -19833,6 +19963,36 @@ Please help our engineers fix this problem. Tell us what happened right before y
     <message name="IDS_TIPS_NOTIFICATIONS_BOTTOM_OMNIBOX_SUBTITLE" desc="Subtitle for the bottom omnibox tip notification.">
       Switch the position of your address bar for a customized browsing experience
     </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_PASSWORD_AUTOFILL_TITLE" desc="Title for the password autofill tip notification. [CHAR_LIMIT=32]">
+      Autofill your passwords
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_PASSWORD_AUTOFILL_SUBTITLE" desc="Subtitle for the password autofill tip notification.">
+      Create, save, and manage your passwords so you can easily sign in to sites and apps using Chrome
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_SIGNIN_TITLE" desc="Title for the sign-in tip notification. [CHAR_LIMIT=32]">
+      Make Chrome your own
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_SIGNIN_SUBTITLE" desc="Subtitle for the sign-in tip notification.">
+      Sign in to easily continue on all your devices
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_CREATE_TAB_GROUPS_TITLE" desc="Title for the create tab groups tip notification. [CHAR_LIMIT=32]">
+      Tidy up with tab groups
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_CREATE_TAB_GROUPS_SUBTITLE" desc="Subtitle for the create tab groups tip notification.">
+      Create tab groups that automatically save and update across all your devices
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_CUSTOMIZE_MVT_TITLE" desc="Title for the customize MVT tip notification. [CHAR_LIMIT=32]">
+      Customize your shortcuts
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_CUSTOMIZE_MVT_SUBTITLE" desc="Subtitle for the customize MVT tip notification.">
+      Tap and hold to pin your most visited websites for easy access next time
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_RECENT_TABS_TITLE" desc="Title for the recent tabs tip notification. [CHAR_LIMIT=32]">
+      Pick up where you left off
+    </message>
+    <message name="IDS_TIPS_NOTIFICATIONS_RECENT_TABS_SUBTITLE" desc="Subtitle for the recent tabs tip notification.">
+      You can reopen tabs that you've recently closed from wherever you use Chrome
+    </message>
 
     <!-- chrome://updater -->
     <if expr="is_linux or is_macosx or is_win">
@@ -19848,11 +20008,20 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_UPDATER_APP" desc="In Title Case: Title of the chip which filters logs by application (e.g. 'Google Chrome').">
         App
       </message>
+      <message name="IDS_UPDATER_APP_COLUMN" desc="Title of a column in a table displaying the list of applications managed by Chrome's updater which displays the application's name or identifier string.">
+        Application
+      </message>
       <message name="IDS_UPDATER_APPLY" desc="Label on a button to apply the selected filters.">
         Apply
       </message>
       <message name="IDS_UPDATER_APP_NAME_OR_ID" desc="Placeholder text in a search box asking the user to enter an application name or identifier string.">
         App Name or ID
+      </message>
+      <message name="IDS_UPDATER_APP_POLICIES" desc="Header for a section of the enterprise policy table detailing the policies in effect for a specific application.">
+        <ph name="APP_NAME">$1<ex>Google Chrome</ex></ph> policies
+      </message>
+      <message name="IDS_UPDATER_APP_STATES_QUERY_FAILED" desc="An error message indicating that the list of installed applications could not be retrieved from Chrome's updater.">
+        Failed to query installed applications.
       </message>
       <message name="IDS_UPDATER_CANCEL" desc="Label on a button to cancel the current action or close a menu.">
         Cancel
@@ -19896,8 +20065,41 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_UPDATER_END_DATE" desc="Label for the end date input field.">
         End Date:
       </message>
-      <message name="IDS_UPDATER_ERROR_DETAILS" desc="Details of an error encountered by the updater, including numeric category, code, and extra code values.">
-        Error: Category: <ph name="CATEGORY">$1<ex>1</ex></ph>, Code: <ph name="CODE">$2<ex>2</ex></ph>, Extra Code: <ph name="EXTRA_CODE">$3<ex>0</ex></ph>
+      <message name="IDS_UPDATER_ERROR_ACCESS_DENIED" desc="Error message indicating that Chrome's updater could not communicate with a remote server due to the request being blocked (e.g. by a firewall or proxy server).">
+        The update was blocked by network policy or a proxy server.
+      </message>
+      <message name="IDS_UPDATER_ERROR_CORRUPT" desc="Error message indicating that an update package is invalid or corrupted.">
+        The downloaded update does not contain the expected content.
+      </message>
+      <message name="IDS_UPDATER_ERROR_DISABLED" desc="Error message indicating that an action recorded in the event log could not be taken by Chrome's updater because it was disallowed by enterprise policy.">
+        The action was disallowed by the configured policies.
+      </message>
+      <message name="IDS_UPDATER_ERROR_DISK_FULL" desc="Error message indicating that an update could not be downloaded or applied because the disk is full.">
+        The update failed because the system lacks sufficient storage space.
+      </message>
+      <message name="IDS_UPDATER_ERROR_DOWNLOAD" desc="Generic error message indicating that Chrome's Updater encountered an issue while downloading content (e.g. an update).">
+        Failed to download content due to an unknown reason.
+      </message>
+      <message name="IDS_UPDATER_ERROR_INSTALL" desc="Generic error message indicating that an error occurred while installing an update.">
+        Installation failed due to an unknown reason.
+      </message>
+      <message name="IDS_UPDATER_ERROR_INSTALLER_FAILED" desc="Error message indicating that an application's (e.g. Chrome's) installer program failed to complete successfully.">
+        The application's installer program failed.
+      </message>
+      <message name="IDS_UPDATER_ERROR_NETWORK" desc="Error message indicating that a network communication error occurred with the update server.">
+        A network error occurred. Check your internet connection and network settings.
+      </message>
+      <message name="IDS_UPDATER_ERROR_RESTRICTED" desc="Error message indicating that an update check was refused by the server because the application is restricted in the user's region.">
+        The application is restricted in this region.
+      </message>
+      <message name="IDS_UPDATER_ERROR_UNPACK" desc="Generic error message indicating that an error occurred while unpacking an update package.">
+        The update package could not be unpacked.
+      </message>
+      <message name="IDS_UPDATER_ERROR_UPDATE_CHECK" desc="Generic error message indicating that an error occurred while checking for updates.">
+        The update check failed.
+      </message>
+      <message name="IDS_UPDATER_ERROR_UNKNOWN" desc="Generic error message indicating that an operation recorded in Chrome's updater's event log failed for a reason unknown to Chrome.">
+        The operation failed due to an unknown reason.
       </message>
       <message name="IDS_UPDATER_EVENT_LIST_TITLE" desc="Title for a section of the chrome://updater page which displays an event log detailing the activity of Chrome's updater on a user's system.">
         Event History
@@ -19962,6 +20164,9 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_UPDATER_INSTALL_SUMMARY" desc="Summary of an event in which software was installed, including the version.">
         Installed version <ph name="VERSION">$1<ex>1.2.3.4</ex></ph>
       </message>
+      <message name="IDS_UPDATER_INSTALLED_APPS_TITLE" desc="Title for a section of the chrome://updater page which displays a table of applications known to the updater on the user's system.">
+        Installed Applications
+      </message>
       <message name="IDS_UPDATER_INTERNAL" desc="Label used to indicate that a logged Chrome Updater event pertains to the updater itself and not an app managed by the updater (e.g. Google Chrome).">
         Internal
       </message>
@@ -19970,6 +20175,12 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
       <message name="IDS_UPDATER_LAST_STARTED_LABEL" desc="A label for a timestamp indicating the last time the Chrome Updater performed its periodic tasks.">
         Last Periodic Task Run:
+      </message>
+      <message name="IDS_UPDATER_NO_APPS_FOUND" desc="A message indicating that Chrome's updater is not managing any applications on the user's system.">
+        No applications are installed.
+      </message>
+      <message name="IDS_UPDATER_NO_POLICIES" desc="A message indicating that no enterprise policies are in effect for the Chrome Updater or any of its managed applications.">
+        No policies are in effect.
       </message>
       <message name="IDS_UPDATER_NO_UPDATER_FOUND" desc="A message indicating that Chrome's updater does not appear to be installed on the user's machine.">
         No updater installations could be found.
@@ -20006,6 +20217,27 @@ Please help our engineers fix this problem. Tell us what happened right before y
       </message>
       <message name="IDS_UPDATER_PERSISTED_DATA_SUMMARY" desc="Summary of an event indicating how many apps are registered.">
         <ph name="APP_COUNT">$1<ex>5</ex></ph> apps registered
+      </message>
+      <message name="IDS_UPDATER_POLICY_CONFLICT_WARNING" desc="Tooltip for a warning icon in the enterprise policy table indicating that a policy has been configured differently from multiple sources.">
+        Policy configured with conflicting values from multiple sources.
+      </message>
+      <message name="IDS_UPDATER_POLICY_IGNORED" desc="Label for a value of an enterprise policy that is being ignored because another source has higher priority.">
+        Ignored:
+      </message>
+      <message name="IDS_UPDATER_POLICY_NAME" desc="Title of a column in the enterprise policy table which displays the name of the policy.">
+        Policy Name
+      </message>
+      <message name="IDS_UPDATER_POLICY_OK" desc="Tooltip for a checkmark icon in the enterprise policy table indicating that a policy has been configured.">
+        Policy configured.
+      </message>
+      <message name="IDS_UPDATER_POLICY_SOURCE" desc="Title of a column in the enterprise policy table which displays the source of the policy (e.g. 'Platform', 'Cloud').">
+        Source
+      </message>
+      <message name="IDS_UPDATER_POLICY_STATUS" desc="Title of a column in the enterprise policy table which displays the status of the policy.">
+        Status
+      </message>
+      <message name="IDS_UPDATER_POLICY_VALUE" desc="Title of a column in the enterprise policy table which displays the value of the policy.">
+        Policy Value
       </message>
       <message name="IDS_UPDATER_PROCESS_SUMMARY" desc="Summary of an event that involved executing a command on the system, including the numeric exit code.">
         Process exited with code <ph name="EXIT_CODE">$1<ex>0</ex></ph>
@@ -20046,8 +20278,14 @@ Please help our engineers fix this problem. Tell us what happened right before y
       <message name="IDS_UPDATER_UPDATED_TO" desc="Summary of an update event that succeeded, including the new version.">
         Updated to version <ph name="VERSION">$1<ex>1.2.3.4</ex></ph>
       </message>
+      <message name="IDS_UPDATER_UPDATER_POLICIES" desc="Header for a section of the enterprise policy table detailing the policies in effect for the Chrome Updater itself.">
+        Updater policies
+      </message>
       <message name="IDS_UPDATER_UPDATER_VERSION" desc="Label indicating the version of the updater itself.">
         Updater version: <ph name="VERSION">$1<ex>1.2.3.4</ex></ph>
+      </message>
+      <message name="IDS_UPDATER_VERSION_COLUMN" desc="Title of the column in a table presenting the list of applications installed and managed by Chrome's updater.">
+        Version
       </message>
       <message name="IDS_UPDATER_VERSION_LABEL" desc="A label for the version of the updater.">
         Version:
@@ -20071,6 +20309,16 @@ Please help our engineers fix this problem. Tell us what happened right before y
         Source
       </message>
     </if>
+    <!-- chrome://feedback/report-unsafe-site -->
+    <message name="IDS_REPORT_UNSAFE_SITE_DIALOG_INCLUDE_SCREENSHOT_CHECKBOX_LABEL" desc="Label for checkbox to include screenshot in report unsafe-site-report sent to Google">
+      Include screenshot
+    </message>
+    <message name="IDS_REPORT_UNSAFE_SITE_DIALOG_SEND_BUTTON_LABEL" desc="Dialog button label to send unsafe-site-report to Google">
+      Send
+    </message>
+    <message name="IDS_REPORT_UNSAFE_SITE_DIALOG_URL_LABEL" desc="Label which denotes URL of the unsafe-site in report-unsafe-site dialog">
+      URL
+    </message>
   </messages>
 </release>
 </grit>

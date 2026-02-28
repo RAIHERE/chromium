@@ -86,7 +86,8 @@ class MockGlicKeyedService : public GlicKeyedService {
               (BrowserWindowInterface*,
                bool,
                mojom::InvocationSource,
-               std::optional<std::string>),
+               std::optional<std::string>,
+               bool),
               (override));
 
   bool IsWindowDetached() const override { return detached_; }
@@ -337,7 +338,8 @@ IN_PROC_BROWSER_TEST_F(GlicProfileManagerBrowserTest,
 #if BUILDFLAG(IS_CHROMEOS)
   session_manager::SessionManager::Get()->SwitchActiveSession(kAccountId1);
 #endif  //  BUILDFLAG(IS_CHROMEOS)
-  [[maybe_unused]] auto* browser1 = CreateBrowser(profile1);
+  auto* browser1 = CreateBrowser(profile1);
+  ui_test_utils::WaitForBrowserSetLastActive(browser1);
   EXPECT_EQ(profile1, profile_manager->GetProfileForLaunch());
 
   // profile2 is the most recently used profile but it isn't
@@ -345,10 +347,11 @@ IN_PROC_BROWSER_TEST_F(GlicProfileManagerBrowserTest,
 #if BUILDFLAG(IS_CHROMEOS)
   session_manager::SessionManager::Get()->SwitchActiveSession(kAccountId2);
 #endif  //  BUILDFLAG(IS_CHROMEOS)
-  CreateBrowser(profile2);
+  auto* browser2 = CreateBrowser(profile2);
+  ui_test_utils::WaitForBrowserSetLastActive(browser2);
   EXPECT_EQ(profile1, profile_manager->GetProfileForLaunch());
 
-#if !BUILDFLAG(IS_OZONE_WAYLAND)
+#if !BUILDFLAG(SUPPORTS_OZONE_WAYLAND)
   // profile0 is the most recently used profile
 #if BUILDFLAG(IS_CHROMEOS)
   session_manager::SessionManager::Get()->SwitchActiveSession(kAccountId0);
@@ -356,7 +359,7 @@ IN_PROC_BROWSER_TEST_F(GlicProfileManagerBrowserTest,
   browser()->window()->Activate();
   ui_test_utils::WaitForBrowserSetLastActive(browser());
   EXPECT_EQ(profile0, profile_manager->GetProfileForLaunch());
-#endif  // !BUILDFLAG(IS_OZONE_WAYLAND)
+#endif  // !BUILDFLAG(SUPPORTS_OZONE_WAYLAND)
 }
 
 class GlicProfileManagerPreloadingTest
@@ -380,7 +383,7 @@ class GlicProfileManagerPreloadingTest
     // We prevent any premature preloading by disabling it.
     GlicProfileManager::SetPrewarmingEnabledForTesting(false);
     GlicProfileManager::ForceConnectionTypeForTesting(
-        network::mojom::ConnectionType::CONNECTION_WIFI);
+        net::NetworkChangeNotifier::ConnectionType::CONNECTION_WIFI);
   }
 
   GlicProfileManagerPreloadingTest() : GlicProfileManagerPreloadingTest("0") {}
@@ -410,7 +413,8 @@ class GlicProfileManagerPreloadingTest
     return future.Get();
   }
 
-  void SetConnectionType(network::mojom::ConnectionType connection_type) {
+  void SetConnectionType(
+      net::NetworkChangeNotifier::ConnectionType connection_type) {
     GlicProfileManager::ForceConnectionTypeForTesting(connection_type);
   }
 
@@ -483,7 +487,7 @@ IN_PROC_BROWSER_TEST_P(GlicProfileManagerPreloadingTest,
     GTEST_SKIP() << "This test only applies if prewarming is enabled.";
   }
   ResetPrewarming();
-  SetConnectionType(network::mojom::ConnectionType::CONNECTION_2G);
+  SetConnectionType(net::NetworkChangeNotifier::ConnectionType::CONNECTION_2G);
   EXPECT_EQ(WaitForShouldPreload(),
             GlicPrewarmingChecksResult::kCellularConnection);
 }
@@ -603,14 +607,37 @@ IN_PROC_BROWSER_TEST_P(GlicProfileManagerDidSelectProfileTest,
   auto* service = GetMockGlicKeyedService(profile);
 
   if (IsTrustFREOnboardingEnabled()) {
-    EXPECT_CALL(*service, ToggleUI(testing::IsNull(), true,
+    EXPECT_CALL(*service, ToggleUI(testing::NotNull(), true,
                                    mojom::InvocationSource::kProfilePicker,
-                                   testing::Eq(std::nullopt)));
+                                   testing::Eq(std::nullopt), testing::_));
   } else {
     EXPECT_CALL(*service,
                 OpenFreDialogInNewTab(testing::NotNull(),
                                       mojom::InvocationSource::kProfilePicker));
   }
+
+  GlicProfileManager::GetInstance()->DidSelectProfile(profile);
+}
+
+IN_PROC_BROWSER_TEST_P(GlicProfileManagerDidSelectProfileTest,
+                       DidSelectProfile_Consented) {
+  // Create a profile that is eligible and has consented.
+  Profile* profile =
+#if BUILDFLAG(IS_CHROMEOS)
+      CreateNewUserSessionAndProfile(kAccountId1, /*allow_glic=*/true);
+#else
+      CreateNewProfile(/*signin_and_allow_glic=*/true);
+#endif  // BUILDFLAG(IS_CHROMEOS)
+  profile->GetPrefs()->SetInteger(
+      glic::prefs::kGlicCompletedFre,
+      static_cast<int>(glic::prefs::FreStatus::kCompleted));
+  ASSERT_TRUE(GlicEnabling::IsEnabledAndConsentForProfile(profile));
+
+  auto* service = GetMockGlicKeyedService(profile);
+
+  EXPECT_CALL(*service, ToggleUI(testing::IsNull(), true,
+                                 mojom::InvocationSource::kProfilePicker,
+                                 testing::Eq(std::nullopt), testing::_));
 
   GlicProfileManager::GetInstance()->DidSelectProfile(profile);
 }

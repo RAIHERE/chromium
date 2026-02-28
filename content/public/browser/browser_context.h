@@ -212,7 +212,8 @@ class CONTENT_EXPORT BrowserContext : public base::SupportsUserData {
   // head is determined. Returns `PrefetchHandle` to control prefetch resources.
   // This can be null when it can't add `PrefetchContainer` to
   // `PrefetchService`.
-  std::unique_ptr<content::PrefetchHandle> StartBrowserPrefetchRequest(
+  [[nodiscard]] std::unique_ptr<content::PrefetchHandle>
+  StartBrowserPrefetchRequest(
       const GURL& url,
       const std::string& embedder_histogram_suffix,
       bool javascript_enabled,
@@ -326,7 +327,7 @@ class CONTENT_EXPORT BrowserContext : public base::SupportsUserData {
   bool ShutdownStarted();
 
   // Returns a unique string associated with this browser context.
-  virtual const std::string& UniqueId();
+  virtual const std::string& UniqueId() const;
 
   // Gets media service for storing/retrieving video decoding performance stats.
   // Exposed here rather than StoragePartition because all SiteInstances should

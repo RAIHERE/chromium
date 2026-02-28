@@ -28,11 +28,24 @@ if (is_apple) {
 }
 
 declare_args() {
+  if (!is_win && !is_mac && !is_ios) {
+    # Link using a non-lld linker. See https://crbug.com/40208899
+    experimental_linker_path = ""
+  }
+}
+
+# Disable for host toolchain to prevent all sources from needing to be rebuilt
+# when toggling between linkers.
+if (!defined(experimental_linker_path) || !is_a_target_toolchain) {
+  experimental_linker_path = ""
+}
+
+declare_args() {
   # Set to true to use lld, the LLVM linker.
   # In late bring-up on macOS (see docs/mac_lld.md).
   # Tentatively used on iOS.
   # The default linker everywhere else.
-  use_lld = is_clang && current_os != "zos"
+  use_lld = is_clang && current_os != "zos" && experimental_linker_path == ""
 
   # If false, build using C++20; otherwise, build using C++23.
   use_cxx23 = true
@@ -49,9 +62,6 @@ declare_args() {
   # builds on Linux that could use a different version of the compiler.
   # With GCC, warnings in no-Chromium code are always not treated as errors.
   treat_warnings_as_errors = true
-
-  # Ignore unknown warning flags when using an older Clang version.
-  disable_unknown_warning_option = false
 
   # How clang should report warnings, either false to report in the usual
   # manner, or true to add source range information to the diagnostics in
@@ -339,9 +349,6 @@ if (symbol_level == -1) {
     symbol_level = 0
   }
 }
-
-# Split dwarf works only for symbol_level == 2.
-use_debug_fission = use_debug_fission && symbol_level == 2
 
 # Non-component debug builds with symbol_level = 2 are an undesirable (very slow
 # build times, almost two-minute link times) combination. This is only checked

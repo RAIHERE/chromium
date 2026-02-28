@@ -14,7 +14,6 @@
 #include "ui/base/models/image_model.h"
 #include "url/gurl.h"
 
-class TabStripModel;
 class TabResourceUsage;
 class ThumbnailImage;
 
@@ -24,11 +23,12 @@ class CollaborationMessagingTabData;
 
 namespace tabs {
 enum class TabAlert;
+class TabInterface;
 }  // namespace tabs
 
 // Wraps the state needed by the renderers.
 struct TabRendererData {
-  static TabRendererData FromTabInModel(const TabStripModel* model, int index);
+  static TabRendererData FromTabInterface(tabs::TabInterface* tab);
 
   TabRendererData();
   TabRendererData(const TabRendererData& other);
@@ -57,7 +57,7 @@ struct TabRendererData {
   bool blocked = false;
   std::vector<tabs::TabAlert> alert_state;
   bool should_hide_throbber = false;
-  bool should_render_empty_title = false;
+  bool should_render_loading_title = false;
   bool should_themify_favicon = false;
   bool is_tab_discarded = false;
   base::WeakPtr<tab_groups::CollaborationMessagingTabData>

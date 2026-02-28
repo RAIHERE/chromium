@@ -55,6 +55,7 @@
 #include "ui/gfx/geometry/vector2d_conversions.h"
 #include "ui/gfx/native_ui_types.h"
 #include "ui/views/actions/action_view_interface.h"
+#include "ui/views/focus/focus_manager.h"
 #include "ui/views/layout/layout_manager.h"
 #include "ui/views/layout/layout_types.h"
 #include "ui/views/paint_info.h"
@@ -1313,7 +1314,7 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // will be given a chance.
   virtual bool OnMouseWheel(const ui::MouseWheelEvent& event);
 
-  // See field for description.
+  // See `notify_enter_exit_on_child_` field for description.
   void SetNotifyEnterExitOnChild(bool notify);
   bool GetNotifyEnterExitOnChild() const;
 
@@ -1446,6 +1447,9 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
 
   // Request keyboard focus. The receiving view will become the focused view.
   virtual void RequestFocus();
+
+  // Request focus on this View with a reason.
+  void RequestFocusWithReason(FocusManager::FocusChangeReason reason);
 
   // Invoked when a view is about to be requested for focus due to the focus
   // traversal. Reverse is this request was generated going backward
@@ -1764,9 +1768,27 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // this function calls ScrollRectToVisible(GetLocalBounds()).
   void ScrollViewToVisible();
 
+  // Observer -----------------------------------------------------------------
+
   void AddObserver(ViewObserver* observer);
   void RemoveObserver(ViewObserver* observer);
   bool HasObserver(const ViewObserver* observer) const;
+
+  // Enables notifications on visible bounds changed for the provided view. Note
+  // that this has performance impacts, so use it sparingly.
+  class VIEWS_EXPORT ScopedNotifyObserversOnVisibleBoundsChanged {
+   public:
+    explicit ScopedNotifyObserversOnVisibleBoundsChanged(View& view);
+    ScopedNotifyObserversOnVisibleBoundsChanged(
+        const ScopedNotifyObserversOnVisibleBoundsChanged&) = delete;
+    ScopedNotifyObserversOnVisibleBoundsChanged& operator=(
+        const ScopedNotifyObserversOnVisibleBoundsChanged&) = delete;
+    ~ScopedNotifyObserversOnVisibleBoundsChanged();
+
+   private:
+    const raw_ref<View> view_;
+    std::optional<base::AutoReset<bool>> reset_;
+  };
 
   // Called when the accessible name of the View changed.
   virtual void OnAccessibleNameChanged(const std::u16string& new_name) {}
@@ -2407,7 +2429,14 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
 
   // Observers -----------------------------------------------------------------
 
-  base::ObserverList<ViewObserver>::Unchecked observers_;
+  // A ViewObserver handles an event that invokes other events, therefore is
+  // inherently reentrant.
+  base::ObserverList<ViewObserver,
+                     /*check_empty=*/false,
+                     base::ObserverListReentrancyPolicy::kAllowReentrancy>::
+      Unchecked observers_;
+
+  bool notify_observers_on_visible_bounds_change_ = false;
 
   // Creation and lifetime -----------------------------------------------------
 
@@ -2470,19 +2499,19 @@ class VIEWS_EXPORT View : public ui::LayerDelegate,
   // Whether this view is enabled in views subtree.
   bool enabled_in_views_subtree_ = true;
 
-  // When this flag is on, a View receives a mouse-enter and mouse-leave event
-  // even if a descendant View is the event-recipient for the real mouse
-  // events. When this flag is turned on, and mouse moves from outside of the
-  // view into a child view, both the child view and this view receives
-  // mouse-enter event. Similarly, if the mouse moves from inside a child view
-  // and out of this view, then both views receive a mouse-leave event.
-  // When this flag is turned off, if the mouse moves from inside this view into
-  // a child view, then this view receives a mouse-leave event. When this flag
-  // is turned on, it does not receive the mouse-leave event in this case.
-  // When the mouse moves from inside the child view out of the child view but
-  // still into this view, this view receives a mouse-enter event if this flag
-  // is turned off, but doesn't if this flag is turned on.
-  // This flag is initialized to false.
+  // Whether the parent should be notified when the mouse enters/exits a child.
+  //
+  // If true, this View is considered "entered" if the mouse is over it or ANY
+  // descendant.
+  //   - Mouse moves Parent -> Child: No OnMouseExited on Parent.
+  //   - Mouse moves Child -> Parent: No OnMouseEntered on Parent.
+  //   - Mouse moves Outside -> Child: OnMouseEntered on Parent AND Child.
+  //   - Mouse moves Child -> Outside: OnMouseExited on Parent AND Child.
+  //
+  // If false (default), this View is considered "entered" only if the mouse is
+  // over it and NOT over a descendant.
+  //   - Mouse moves Parent -> Child: OnMouseExited on Parent.
+  //   - Mouse moves Child -> Parent: OnMouseEntered on Parent.
   bool notify_enter_exit_on_child_ = false;
 
   // Whether or not RegisterViewForVisibleBoundsNotification on the RootView

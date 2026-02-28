@@ -42,6 +42,7 @@ bool SupportsInvalidation(CSSSelector::MatchType match) {
 bool SupportsInvalidation(CSSSelector::PseudoType type) {
   switch (type) {
     case CSSSelector::kPseudoEmpty:
+    case CSSSelector::kPseudoAnimatedImage:
     case CSSSelector::kPseudoFirstChild:
     case CSSSelector::kPseudoFirstOfType:
     case CSSSelector::kPseudoLastChild:
@@ -69,6 +70,7 @@ bool SupportsInvalidation(CSSSelector::PseudoType type) {
     case CSSSelector::kPseudoFocusVisible:
     case CSSSelector::kPseudoFocusWithin:
     case CSSSelector::kPseudoActive:
+    case CSSSelector::kPseudoActiveOption:
     case CSSSelector::kPseudoChecked:
     case CSSSelector::kPseudoEnabled:
     case CSSSelector::kPseudoFullPageMedia:
@@ -273,9 +275,10 @@ RuleInvalidationDataVisitor<VisitorType>::RuleInvalidationDataVisitor(
 template <RuleInvalidationDataVisitorType VisitorType>
 void RuleInvalidationDataVisitor<VisitorType>::InvalidationSetFeatures::Merge(
     const InvalidationSetFeatures& other) {
-  classes.AppendVector(other.classes);
-  attributes.AppendVector(other.attributes);
-  ids.AppendVector(other.ids);
+  classes.append_range(other.classes);
+  attributes.append_range(other.attributes);
+  custom_pseudo_names.append_range(other.custom_pseudo_names);
+  ids.append_range(other.ids);
   // Tag names that have been added to an invalidation set for an ID, a class,
   // or an attribute are called "emitted" tag names. Emitted tag names need to
   // go in a separate vector in order to correctly track which tag names to
@@ -288,11 +291,11 @@ void RuleInvalidationDataVisitor<VisitorType>::InvalidationSetFeatures::Merge(
   // Hence, when processing the rightmost :is(), we end up with li in the
   // emitted_tag_names vector, and span and ol in the regular tag_names vector.
   if (other.has_features_for_rule_set_invalidation) {
-    emitted_tag_names.AppendVector(other.tag_names);
+    emitted_tag_names.append_range(other.tag_names);
   } else {
-    tag_names.AppendVector(other.tag_names);
+    tag_names.append_range(other.tag_names);
   }
-  emitted_tag_names.AppendVector(other.emitted_tag_names);
+  emitted_tag_names.append_range(other.emitted_tag_names);
   max_direct_adjacent_selectors = std::max(max_direct_adjacent_selectors,
                                            other.max_direct_adjacent_selectors);
   invalidation_flags.Merge(other.invalidation_flags);
@@ -305,8 +308,7 @@ bool RuleInvalidationDataVisitor<
     VisitorType>::InvalidationSetFeatures::HasFeatures() const {
   return !classes.empty() || !attributes.empty() || !ids.empty() ||
          !tag_names.empty() || !emitted_tag_names.empty() ||
-         invalidation_flags.InvalidateCustomPseudo() ||
-         invalidation_flags.InvalidatesParts();
+         !custom_pseudo_names.empty() || invalidation_flags.InvalidatesParts();
 }
 
 template <RuleInvalidationDataVisitorType VisitorType>
@@ -679,7 +681,7 @@ void RuleInvalidationDataVisitor<VisitorType>::
   switch (selector.GetPseudoType()) {
     case CSSSelector::kPseudoWebKitCustomElement:
     case CSSSelector::kPseudoBlinkInternalElement:
-      features.invalidation_flags.SetInvalidateCustomPseudo(true);
+      features.NarrowToCustomPseudo(selector.Value());
       return;
     case CSSSelector::kPseudoSlotted:
       features.invalidation_flags.SetInvalidatesSlotted(true);
@@ -1873,6 +1875,15 @@ void RuleInvalidationDataVisitor<VisitorType>::AddFeaturesToInvalidationSet(
         InvalidationSetToSelectorMap::SelectorFeatureType::kTagName,
         emitted_tag_name);
   }
+  for (const auto& custom_pseudo_name : features.custom_pseudo_names) {
+    if constexpr (is_builder()) {
+      invalidation_set->AddCustomPseudoName(custom_pseudo_name);
+    }
+    InvalidationSetToSelectorMap::RecordInvalidationSetEntry(
+        invalidation_set,
+        InvalidationSetToSelectorMap::SelectorFeatureType::kCustomPseudoName,
+        custom_pseudo_name);
+  }
   for (const auto& class_name : features.classes) {
     if constexpr (is_builder()) {
       invalidation_set->AddClass(class_name);
@@ -1889,11 +1900,6 @@ void RuleInvalidationDataVisitor<VisitorType>::AddFeaturesToInvalidationSet(
         invalidation_set,
         InvalidationSetToSelectorMap::SelectorFeatureType::kAttribute,
         attribute);
-  }
-  if (features.invalidation_flags.InvalidateCustomPseudo()) {
-    if constexpr (is_builder()) {
-      invalidation_set->SetCustomPseudoInvalid();
-    }
   }
 }
 

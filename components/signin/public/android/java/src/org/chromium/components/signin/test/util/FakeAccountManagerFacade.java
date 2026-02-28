@@ -270,24 +270,19 @@ public class FakeAccountManagerFacade implements AccountManagerFacade {
     public void checkIsSubjectToParentalControls(
             CoreAccountInfo coreAccountInfo, ChildAccountStatusListener listener) {
 
+        final AccountCapabilities accountCapabilities;
         if (!SigninFeatureMap.sMigrateAccountManagerDelegate.isEnabled()) {
             AccountHolder accountHolder = getAccountHolder(coreAccountInfo.getId());
-            if (accountHolder.getAccountCapabilities().isSubjectToParentalControls()
-                    == Tribool.TRUE) {
-                listener.onStatusReady(true, coreAccountInfo);
-            } else {
-                listener.onStatusReady(false, /* childAccount= */ null);
-            }
-            return;
+            accountCapabilities = accountHolder.getAccountCapabilities();
+        } else {
+            FakePlatformAccount account = getPlatformAccount(coreAccountInfo.getGaiaId());
+            accountCapabilities = account.getAccountInfo().getAccountCapabilities();
         }
 
-        FakePlatformAccount account = getPlatformAccount(coreAccountInfo.getGaiaId());
-        if (account.getAccountInfo().getAccountCapabilities().isSubjectToParentalControls()
-                == Tribool.TRUE) {
-            listener.onStatusReady(true, coreAccountInfo);
-        } else {
-            listener.onStatusReady(false, /* childAccount= */ null);
-        }
+        boolean isChild = accountCapabilities.isSubjectToParentalControls() == Tribool.TRUE;
+        // Emulate the same behavior as production code and post on the UI thread.
+        ThreadUtils.postOnUiThread(
+                () -> listener.onStatusReady(isChild, isChild ? coreAccountInfo : null));
     }
 
     @Override
@@ -309,10 +304,11 @@ public class FakeAccountManagerFacade implements AccountManagerFacade {
 
     @Override
     public void updateCredentials(
-            Account account, Activity activity, @Nullable Callback<Boolean> callback) {}
+            CoreAccountInfo accountInfo, Activity activity, @Nullable Callback<Boolean> callback) {}
 
     @Override
-    public void confirmCredentials(Account account, Activity activity, Callback<Bundle> callback) {
+    public void confirmCredentials(
+            CoreAccountId accountId, Activity activity, Callback<Bundle> callback) {
         callback.onResult(new Bundle());
     }
 
@@ -513,24 +509,41 @@ public class FakeAccountManagerFacade implements AccountManagerFacade {
     /**
      * Blocks updates to the account lists returned by and {@link #getAccounts}. After this method
      * is called, subsequent calls to {@link #getAccounts} will return promises that won't be
-     * updated until the returned {@link AutoCloseable} is closed.
+     * updated until the returned {@link AutoCloseable} is closed. Any account addition/removal
+     * later on will not be reflected in {@link #getAccounts}. Use {@link
+     * #blockGetAccountsAndPopulateCache()} if you require the currently available accounts to
+     * populate the promise.
      *
-     * @param populateCache whether {@link #getAccounts} should return a fulfilled promise. If true,
-     *     then the promise will be fulfilled with the current list of available accounts. Any
-     *     account addition/removal later on will not be reflected in {@link #getAccounts}.
      * @return {@link AutoCloseable} that should be closed to unblock account updates.
      */
-    public UpdateBlocker blockGetAccounts(boolean populateCache) {
+    public UpdateBlocker blockGetAccounts() {
         ThreadUtils.runOnUiThreadBlocking(
                 () -> {
                     assert mBlockedGetAccountsPromise == null;
                     mBlockedGetAccountsPromise = new Promise<>();
-                    if (populateCache) {
-                        if (SigninFeatureMap.sMigrateAccountManagerDelegate.isEnabled()) {
-                            mBlockedGetAccountsPromise.fulfill(getPlatformAccountInfosInternal());
-                        } else {
-                            mBlockedGetAccountsPromise.fulfill(getAccountsInternal());
-                        }
+                });
+        return new UpdateBlocker();
+    }
+
+    /**
+     * Blocks updates to the account lists returned by and {@link #getAccounts}. After this method
+     * is called, subsequent calls to {@link #getAccounts} will return promises that won't be
+     * updated until the returned {@link AutoCloseable} is closed. The promise will be fulfilled
+     * with the current list of available accounts. Any account addition/removal later on will not
+     * be reflected in {@link #getAccounts}.
+     *
+     * @return {@link AutoCloseable} that should be closed to unblock account updates.
+     */
+    public UpdateBlocker blockGetAccountsAndPopulateCache() {
+        ThreadUtils.runOnUiThreadBlocking(
+                () -> {
+                    assert mBlockedGetAccountsPromise == null;
+                    mBlockedGetAccountsPromise = new Promise<>();
+
+                    if (SigninFeatureMap.sMigrateAccountManagerDelegate.isEnabled()) {
+                        mBlockedGetAccountsPromise.fulfill(getPlatformAccountInfosInternal());
+                    } else {
+                        mBlockedGetAccountsPromise.fulfill(getAccountsInternal());
                     }
                 });
         return new UpdateBlocker();

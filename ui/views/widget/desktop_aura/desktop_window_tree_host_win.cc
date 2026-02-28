@@ -322,9 +322,11 @@ void DesktopWindowTreeHostWin::Show(ui::mojom::WindowShowState show_state,
     pixel_restore_bounds =
         display::win::GetScreenWin()->DIPToScreenRect(nullptr, restore_bounds);
   }
-  message_handler_->Show(show_state, pixel_restore_bounds);
 
+  // Show content window first so that Widget::IsVisible() returns true during
+  // the synchronous HandleVisibilityChanged(true) triggered by ShowWindow().
   content_window()->Show();
+  message_handler_->Show(show_state, pixel_restore_bounds);
 }
 
 bool DesktopWindowTreeHostWin::IsVisible() const {
@@ -799,11 +801,13 @@ DesktopWindowTreeHostWin::RequestUnadjustedMovement() {
 
 void DesktopWindowTreeHostWin::LockMouse(aura::Window* window) {
   UpdateMouseLockRegion(window, true /*locked*/);
+  message_handler_->set_mouse_locked(true);
   WindowTreeHost::LockMouse(window);
 }
 
 void DesktopWindowTreeHostWin::UnlockMouse(aura::Window* window) {
   UpdateMouseLockRegion(window, false /*locked*/);
+  message_handler_->set_mouse_locked(false);
   WindowTreeHost::UnlockMouse(window);
 }
 

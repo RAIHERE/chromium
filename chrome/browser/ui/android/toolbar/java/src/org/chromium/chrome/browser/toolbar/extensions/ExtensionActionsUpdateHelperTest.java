@@ -23,7 +23,6 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.robolectric.annotation.LooperMode;
 
 import org.chromium.base.supplier.ObservableSuppliers;
 import org.chromium.base.supplier.SettableNullableObservableSupplier;
@@ -45,7 +44,6 @@ import org.chromium.ui.modelutil.PropertyModel;
 
 /** Tests for ExtensionActionsUpdateHelper. */
 @RunWith(BaseRobolectricTestRunner.class)
-@LooperMode(LooperMode.Mode.PAUSED)
 public class ExtensionActionsUpdateHelperTest {
     private static final int TAB1_ID = 111;
     private static final int TAB2_ID = 222;
@@ -81,9 +79,9 @@ public class ExtensionActionsUpdateHelperTest {
 
     @Before
     public void setUp() {
-        when(mTask.getOrCreateNativeBrowserWindowPtr()).thenReturn(BROWSER_WINDOW_POINTER);
+        when(mTask.getOrCreateNativeBrowserWindowPtr(mProfile)).thenReturn(BROWSER_WINDOW_POINTER);
 
-        mTaskModel = mFakeBridgeRule.getFakeBridge().getOrCreateTaskModel(mTask);
+        mTaskModel = mFakeBridgeRule.getFakeBridge().getOrCreateTaskModel(mTask, mProfile);
 
         mTab1 = new MockTab(TAB1_ID, mProfile);
         mTab2 = new MockTab(TAB2_ID, mProfile);
@@ -126,7 +124,9 @@ public class ExtensionActionsUpdateHelperTest {
                             return new ListItem(ListItemType.EXTENSION_ACTION, model);
                         });
 
-        mHelper = new ExtensionActionsUpdateHelper(mModels, mTask, mCurrentTabSupplier, mDelegate);
+        mHelper =
+                new ExtensionActionsUpdateHelper(
+                        mModels, mTask, mProfile, mCurrentTabSupplier, mDelegate);
     }
 
     @After

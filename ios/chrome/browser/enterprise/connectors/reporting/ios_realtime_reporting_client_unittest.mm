@@ -78,6 +78,10 @@ class IOSRealtimeReportingClientTest
 
 // Tests that uploading events succeed using the dictionary mapping the events.
 TEST_P(IOSRealtimeReportingClientTest, TestDeprecatedUmaEventUploadSucceeds) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      policy::kUploadRealtimeReportingEventsUsingProto);
+
   SetCloudPolicyClient(is_profile_reporting());
 
   ReportingSettings settings;
@@ -145,6 +149,10 @@ TEST_P(IOSRealtimeReportingClientTest, TestUmaEventUploadSucceeds) {
 
 // Tests that uploading events fails using the dictionary mapping the events.
 TEST_P(IOSRealtimeReportingClientTest, TestDeprecatedUmaEventUploadFails) {
+  base::test::ScopedFeatureList scoped_feature_list;
+  scoped_feature_list.InitAndDisableFeature(
+      policy::kUploadRealtimeReportingEventsUsingProto);
+
   SetCloudPolicyClient(is_profile_reporting());
 
   ReportingSettings settings;
@@ -222,6 +230,9 @@ TEST_F(IOSRealtimeReportingClientTest,
                               kAllReportingEnabledEvents.end());
   all_reporting_events.insert(kAllReportingOptInEvents.begin(),
                               kAllReportingOptInEvents.end());
+  // Saas usage event is independent from reporting connector, so it is
+  // neither enabled nor opt-in event.
+  all_reporting_events.insert(kKeySaasUsageEvent);
 
   EXPECT_EQ(all_reporting_events.size(), kEventNameToUmaEnumMap.size());
   for (std::string eventName : all_reporting_events) {

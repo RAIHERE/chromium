@@ -59,12 +59,13 @@ class TestPrefetchContainerObserver final : public PrefetchContainer::Observer {
   void WaitForComplete() { on_complete_loop_.Run(); }
 
  private:
-  void OnWillBeDestroyed(PrefetchContainer& prefetch_container) override {}
-  void OnGotInitialEligibility(PrefetchContainer& prefetch_container,
+  void OnWillBeDestroyed(const PrefetchContainer& prefetch_container) override {
+  }
+  void OnGotInitialEligibility(const PrefetchContainer& prefetch_container,
                                PreloadingEligibility eligibility) override {}
-  void OnDeterminedHead(PrefetchContainer& prefetch_container) override {}
+  void OnDeterminedHead(const PrefetchContainer& prefetch_container) override {}
   void OnPrefetchCompletedOrFailed(
-      PrefetchContainer& prefetch_container,
+      const PrefetchContainer& prefetch_container,
       const network::URLLoaderCompletionStatus& completion_status,
       const std::optional<int>& response_code) override {
     on_complete_loop_.Quit();
@@ -139,7 +140,9 @@ base::WeakPtr<PrefetchStreamingURLLoader> CreateStreamingURLLoaderForTests(
       [](NotReachedTagForTestsOr<base::RunLoop*> on_response_received,
          std::optional<PrefetchErrorOnResponseReceived>
              error_on_response_received,
-         network::mojom::URLResponseHead* head) {
+         base::WeakPtr<PrefetchContainer> prefetch_container,
+         network::mojom::URLResponseHead* head)
+          -> std::optional<PrefetchErrorOnResponseReceived> {
         if (std::holds_alternative<NotReachedTagForTests>(
                 on_response_received)) {
           NOTREACHED();
@@ -147,9 +150,31 @@ base::WeakPtr<PrefetchStreamingURLLoader> CreateStreamingURLLoaderForTests(
         if (auto run_loop = std::get<0>(on_response_received)) {
           run_loop->Quit();
         }
-        return error_on_response_received;
+        if (error_on_response_received) {
+          return error_on_response_received;
+        }
+        // Perform the checks in `PrefetchService::OnPrefetchResponseStarted()`,
+        // to align the tests with non-test code as much as possible. Notable
+        // difference is that when `prefetch_container` is nullptr, it's a test
+        // without creating `PrefetchContainer` (rather than `PrefetchContainer`
+        // is gone), and thus perform the rest of checks instead of
+        // early-returning.
+        if (prefetch_container && prefetch_container->IsDecoy()) {
+          return PrefetchErrorOnResponseReceived::kPrefetchWasDecoy;
+        }
+        if (!head->headers) {
+          return PrefetchErrorOnResponseReceived::kFailedInvalidHeaders;
+        }
+        int response_code = head->headers->response_code();
+        if (response_code < 200 || response_code >= 300) {
+          return PrefetchErrorOnResponseReceived::kFailedNon2XX;
+        }
+        if (PrefetchServiceHTMLOnly() && head->mime_type != "text/html") {
+          return PrefetchErrorOnResponseReceived::kFailedMIMENotSupported;
+        }
+        return std::nullopt;
       },
-      on_response_received, error_on_response_received);
+      on_response_received, error_on_response_received, prefetch_container);
 
   auto on_receive_redirect_callback = base::BindRepeating(
       [](NotReachedTagForTestsOr<OnPrefetchReceiveRedirectTestFuture*>
@@ -188,6 +213,16 @@ base::WeakPtr<PrefetchStreamingURLLoader> CreateStreamingURLLoaderForTests(
   }
 
   return streaming_loader;
+}
+
+network::mojom::URLResponseHeadPtr SuccessfulPrefetchResponseHeadForTesting() {
+  network::mojom::URLResponseHeadPtr head =
+      network::mojom::URLResponseHead::New();
+  head->headers =
+      net::HttpResponseHeaders::Builder(net::HttpVersion(1, 1), "200 OK")
+          .Build();
+  head->mime_type = "text/html";
+  return head;
 }
 
 void MakeServableStreamingURLLoaderForTest(
@@ -288,11 +323,12 @@ void MakeServableStreamingURLLoaderWithRedirectForTest(
                          network::mojom::URLResponseHead::New());
 
   test_url_loader_factory.AddResponse(
-      original_url, network::mojom::URLResponseHead::New(), "test body", status,
-      std::move(redirects), network::TestURLLoaderFactory::kResponseDefault);
+      original_url, SuccessfulPrefetchResponseHeadForTesting(), "test body",
+      status, std::move(redirects),
+      network::TestURLLoaderFactory::kResponseDefault);
   auto [redirect_info, redirect_head] = on_receive_redirect.Take();
 
-  prefetch_container->AddRedirectHop(redirect_info);
+  prefetch_container->AddRedirectHop(redirect_info.new_url);
 
   CHECK(weak_streaming_loader);
   weak_streaming_loader->HandleRedirect(PrefetchRedirectStatus::kFollow,
@@ -354,7 +390,7 @@ void MakeServableStreamingURLLoadersWithNetworkTransitionRedirectForTest(
       network::TestURLLoaderFactory::kResponseOnlyRedirectsNoDestination);
   auto [redirect_info, redirect_head] = on_receive_redirect.Take();
 
-  prefetch_container->AddRedirectHop(redirect_info);
+  prefetch_container->AddRedirectHop(redirect_info.new_url);
 
   CHECK(weak_first_streaming_loader);
   weak_first_streaming_loader->HandleRedirect(
@@ -383,8 +419,8 @@ void MakeServableStreamingURLLoadersWithNetworkTransitionRedirectForTest(
 
   network::URLLoaderCompletionStatus status(net::OK);
   test_url_loader_factory.AddResponse(
-      redirect_url, network::mojom::URLResponseHead::New(), "test body", status,
-      network::TestURLLoaderFactory::Redirects(),
+      redirect_url, SuccessfulPrefetchResponseHeadForTesting(), "test body",
+      status, network::TestURLLoaderFactory::Redirects(),
       network::TestURLLoaderFactory::kResponseDefault);
 
   on_response_received_loop.Run();
@@ -508,7 +544,7 @@ void TestPrefetchService::PrefetchUrl(
 }
 
 void TestPrefetchService::OnPrefetchCompletedOrFailed(
-    PrefetchContainer& prefetch_container,
+    const PrefetchContainer& prefetch_container,
     const network::URLLoaderCompletionStatus& completion_status,
     const std::optional<int>& response_code) {
   // Skip `active_prefetch_` check and related prefetch queue processing in
@@ -748,55 +784,12 @@ WithPrefetchRearchParam::~WithPrefetchRearchParam() = default;
 
 // static
 std::vector<PrefetchRearchParam> PrefetchRearchParam::Params() {
-  return {PrefetchRearchParam{
-              .prefetch_scheduler = false,
-              .prefetch_scheduler_progress_sync_best_effort = false,
-              .graceful_notification = false,
-          },
-          PrefetchRearchParam{
-              .prefetch_scheduler = true,
-              .prefetch_scheduler_progress_sync_best_effort = false,
-              .graceful_notification = false,
-          },
-          PrefetchRearchParam{
-              .prefetch_scheduler = true,
-              .prefetch_scheduler_progress_sync_best_effort = true,
-              .graceful_notification = false,
-          },
-          PrefetchRearchParam{
-              .prefetch_scheduler = false,
-              .prefetch_scheduler_progress_sync_best_effort = false,
-              .graceful_notification = true,
-          },
-          PrefetchRearchParam{
-              .prefetch_scheduler = true,
-              .prefetch_scheduler_progress_sync_best_effort = false,
-              .graceful_notification = true,
-          },
-          PrefetchRearchParam{
-              .prefetch_scheduler = true,
-              .prefetch_scheduler_progress_sync_best_effort = true,
-              .graceful_notification = true,
-          }};
+  return {
+      PrefetchRearchParam{},
+  };
 }
 
 void WithPrefetchRearchParam::InitRearchFeatures() {
-  if (param_.prefetch_scheduler) {
-    feature_list_prefetch_scheduler_.InitWithFeaturesAndParameters(
-        {{
-            features::kPrefetchScheduler,
-            {
-                {"kPrefetchSchedulerProgressSyncBestEffort",
-                 param_.prefetch_scheduler_progress_sync_best_effort ? "true"
-                                                                     : "false"},
-            },
-        }},
-        {});
-  }
-  if (!param_.graceful_notification) {
-    feature_list_graceful_notification_.InitAndDisableFeature(
-        features::kPrefetchGracefulNotification);
-  }
 }
 
 PrefetchServiceInjectedEligibilityCheckFuture::

@@ -21,7 +21,7 @@
 
 namespace {
 
-// Default value of the mount the scroll must exceed to begin entering and
+// Default value of the amount the scroll must exceed to begin entering and
 // exiting fullscreen when the `kFullscreenScrollThreshold` feature is enabled.
 constexpr CGFloat kScrollThresholdDefault = 10;
 
@@ -491,7 +491,7 @@ void FullscreenModel::SetProgress(CGFloat progress) {
 }
 
 void FullscreenModel::OnScrollViewSizeBroadcasted(CGSize scroll_view_size) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetScrollViewHeight(scroll_view_size.height);
 }
 
@@ -501,27 +501,27 @@ void FullscreenModel::OnScrollViewContentSizeBroadcasted(CGSize content_size) {
 
 void FullscreenModel::OnScrollViewContentInsetBroadcasted(
     UIEdgeInsets content_inset) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetTopContentInset(content_inset.top);
 }
 
 void FullscreenModel::OnContentScrollOffsetBroadcasted(CGFloat offset) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetYContentOffset(offset);
 }
 
 void FullscreenModel::OnScrollViewIsScrollingBroadcasted(bool scrolling) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetScrollViewIsScrolling(scrolling);
 }
 
 void FullscreenModel::OnScrollViewIsZoomingBroadcasted(bool zooming) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetScrollViewIsZooming(zooming);
 }
 
 void FullscreenModel::OnScrollViewIsDraggingBroadcasted(bool dragging) {
-  CHECK(base::FeatureList::IsEnabled(web::features::kSmoothScrollingDefault));
+  CHECK(web::features::ShouldUseBroadcasterForSmoothScrolling());
   SetScrollViewIsDragging(dragging);
 }
 

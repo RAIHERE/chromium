@@ -12,6 +12,7 @@
 #include "chrome/browser/ui/tabs/tab_renderer_data.h"
 #include "chrome/browser/ui/tabs/vertical_tab_strip_state.h"
 #include "chrome/browser/ui/views/frame/tab_strip_region_view.h"
+#include "chrome/browser/ui/views/tabs/tab_hover_card_controller.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_controller.h"
 #include "chrome/browser/ui/views/tabs/vertical/vertical_tab_strip_view.h"
 #include "ui/base/metadata/metadata_header_macros.h"
@@ -47,7 +48,6 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   METADATA_HEADER(VerticalTabStripRegionView, TabStripRegionView)
 
  public:
-  static constexpr int kResizeAreaWidth = 6;
   // TODO(crbug.com/465833741): Replace constant with derived value based on
   // caption buttons.
   static constexpr int kUncollapsedMinWidth = 126;
@@ -69,7 +69,7 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   ~VerticalTabStripRegionView() override;
 
   views::Separator* tabs_separator_for_testing() {
-    return tab_strip_view_->tabs_separator_for_testing();
+    return tab_strip_view_->GetTabsSeparator();
   }
   views::ResizeArea* resize_area_for_testing() { return resize_area_; }
   VerticalPinnedTabContainerView* GetPinnedTabsContainer();
@@ -81,7 +81,7 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
     return target_collapse_state_;
   }
 
-  bool is_animating_for_testing() { return resize_animation_.is_animating(); }
+  bool is_animating() { return resize_animation_.is_animating(); }
 
   VerticalTabStripTopContainer* GetTopContainer() {
     return top_button_container_;
@@ -111,10 +111,8 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   void InitializeTabStrip() override;
   void ResetTabStrip() override;
   bool IsTabStripEditable() const override;
-  void DisableTabStripEditingForTesting() const override;
+  void DisableTabStripEditingForTesting() override;
   bool IsTabStripCloseable() const override;
-  bool IsAnimating() const override;
-  void StopAnimating() override;
   void UpdateLoadingAnimations(const base::TimeDelta& elapsed_time) override;
   std::optional<int> GetFocusedTabIndex() const override;
   const TabRendererData& GetTabRendererData(int tab_index) override;
@@ -130,8 +128,15 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   BrowserRootView::DropTarget* GetDropTarget(
       gfx::Point loc_in_local_coords) override;
   views::View* GetViewForDrop() override;
+  bool CanDrop(const OSExchangeData& data) override;
+  bool GetDropFormats(int* formats,
+                      std::set<ui::ClipboardFormatType>* format_types) override;
+  void OnDragEntered(const ui::DropTargetEvent& event) override;
+  int OnDragUpdated(const ui::DropTargetEvent& event) override;
+  void OnDragExited() override;
   void SetTabStripObserver(TabStripObserver* observer) override;
   views::View* GetTabStripView() override;
+  bool TraverseUsingUpDownKeys() override;
 
   // views::ResizeAreaDelegate:
   void OnResize(int resize_amount, bool done_resizing) override;
@@ -144,10 +149,10 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   // These methods provide the toolbar height and exclusion width, before the
   // layout of this view, for use in calculating positioning of child views. If
   // an exclusion width is provided, nothing can be rendered within the
-  // rectangle defined by `(exclusion_width, toolbar_height)` that is aligned to
-  // the leading, top corner.
-  void SetToolbarHeightForLayout(const int toolbar_height);
-  void SetExclusionWidthForLayout(const int exclusion_width);
+  // rectangle defined by `(caption_button_width, toolbar_height)` that is
+  // aligned to the leading, top corner.
+  void SetToolbarHeightForLayout(int toolbar_height);
+  void SetCaptionButtonWidthForLayout(int caption_button_width);
 
   TabDragTarget* GetTabDragTarget(const gfx::Point& point_in_screen);
 
@@ -158,11 +163,17 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   void OnCollapsedStateChanged(
       tabs::VerticalTabStripStateController* state_controller);
   void UpdateCollapseState(tabs::VerticalTabStripState new_state);
-  void ResizeToWidth(int width);
 
   void UpdateColors();
 
   bool IsFrameActive() const;
+
+  // Returns the bounds within which tabs can be dragged in the vertical tab
+  // strip.
+  gfx::Rect GetTabStripDraggableBounds() const;
+
+  void RecordNewTabButtonPressed();
+  void OnChildrenAdded();
 
   raw_ptr<BrowserView> browser_view_;
 
@@ -175,6 +186,7 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   raw_ptr<VerticalTabStripBottomContainer> bottom_button_container_ = nullptr;
   raw_ptr<views::View> gemini_button_ = nullptr;
   raw_ptr<views::ResizeArea> resize_area_ = nullptr;
+  int resize_area_width_;
   raw_ptr<views::FlexLayout> flex_layout_ = nullptr;
 
   // The drag handler is a view (required for capturing mouse inputs during
@@ -186,8 +198,11 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
 
   const raw_ptr<TabStripModel> tab_strip_model_ = nullptr;
   const raw_ptr<tabs::VerticalTabStripStateController> state_controller_;
+  raw_ptr<actions::ActionItem> root_action_item_ = nullptr;
+  std::unique_ptr<TabHoverCardController> hover_card_controller_;
   base::CallbackListSubscription collapsed_state_changed_subscription_;
   base::CallbackListSubscription paint_as_active_subscription_;
+  std::optional<base::CallbackListSubscription> on_children_added_subscription_;
 
   // The width of the vertical tabstrip at the beginning of the current resize
   // operation. Is std::nullopt when not resizing.
@@ -205,9 +220,8 @@ class VerticalTabStripRegionView final : public TabStripRegionView,
   // (GetCurrentValue() -> 1).
   gfx::SlideAnimation resize_animation_;
 
-  // The width of the exclusion zone. This is used to determine when to toggle
-  // the collapse state of the state controller.
-  std::optional<int> exclusion_width_ = std::nullopt;
+  // Used to track the time needed to create a new tab from the new tab button.
+  std::optional<base::TimeTicks> new_tab_button_pressed_start_time_;
 };
 
 #endif  // CHROME_BROWSER_UI_VIEWS_FRAME_VERTICAL_TAB_STRIP_REGION_VIEW_H_

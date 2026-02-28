@@ -10,7 +10,6 @@
 
 #include "base/feature_list.h"
 #include "base/metrics/field_trial_params.h"
-#include "build/branding_buildflags.h"
 #include "build/build_config.h"
 #include "chrome/common/buildflags.h"
 #include "extensions/buildflags/buildflags.h"
@@ -30,6 +29,11 @@ BASE_DECLARE_FEATURE(kCreateNewTabGroupAppMenuTopLevel);
 BASE_DECLARE_FEATURE(kDseIntegrity);
 BASE_DECLARE_FEATURE(kFewerUpdateConfirmations);
 #endif
+
+BASE_DECLARE_FEATURE(kDesktopGlowUp);
+BASE_DECLARE_FEATURE(kGlassToolbar);
+
+BASE_DECLARE_FEATURE(kDetachedTabs);
 
 #if BUILDFLAG(ENABLE_EXTENSIONS)
 
@@ -56,6 +60,15 @@ BASE_DECLARE_FEATURE(kPdfInfoBar);
 enum class PdfInfoBarTrigger { kPdfLoad = 0, kStartup = 1 };
 
 BASE_DECLARE_FEATURE_PARAM(PdfInfoBarTrigger, kPdfInfoBarTrigger);
+
+BASE_DECLARE_FEATURE(kSeparateDefaultAndPinPrompt);
+BASE_DECLARE_FEATURE_PARAM(int, kSeparateDefaultAndPinPromptRandSeed);
+BASE_DECLARE_FEATURE_PARAM(int, kSeparateDefaultAndPinPromptPinMaxCount);
+BASE_DECLARE_FEATURE_PARAM(int, kSeparateDefaultAndPinPromptPinCooldownDays);
+BASE_DECLARE_FEATURE_PARAM(int, kSeparateDefaultAndPinPromptDefaultMaxCount);
+BASE_DECLARE_FEATURE_PARAM(int,
+                           kSeparateDefaultAndPinPromptDefaultCooldownDays);
+BASE_DECLARE_FEATURE_PARAM(int, kSeparateDefaultAndPinPromptMessageVersion);
 #endif  // BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC)
 
 #if BUILDFLAG(IS_MAC) || BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX)
@@ -148,15 +161,6 @@ BASE_DECLARE_FEATURE(kSideBySide);
 
 BASE_DECLARE_FEATURE(kSideBySideLinkMenuNewBadge);
 
-enum class SidePanelRelativeAlignment {
-  // Shows the toolbar and content height side panels on the same side.
-  kShowPanelsOnSameSide,
-  // Shows the toolbar and content height side panels on opposite sides.
-  kShowPanelsOnOppositeSides,
-};
-BASE_DECLARE_FEATURE_PARAM(SidePanelRelativeAlignment,
-                           kSidePanelRelativeAlignment);
-
 BASE_DECLARE_FEATURE(kTabDuplicateMetrics);
 
 BASE_DECLARE_FEATURE(kTabGroupsCollapseFreezing);
@@ -165,6 +169,7 @@ BASE_DECLARE_FEATURE(kTabGroupHoverCards);
 #if !BUILDFLAG(IS_ANDROID)
 // General improvements to tab group menus
 BASE_DECLARE_FEATURE(kTabGroupMenuImprovements);
+bool IsTabGroupMenuImprovementsEnabled();
 BASE_DECLARE_FEATURE(kTabGroupMenuMoreEntryPoints);
 bool IsTabGroupMenuMoreEntryPointsEnabled();
 
@@ -264,6 +269,14 @@ BASE_DECLARE_FEATURE(kThreeButtonPasswordSaveDialog);
 // of the browser.
 BASE_DECLARE_FEATURE(kToolbarHeightSidePanel);
 
+// Feature which uses a flyover animation for animating side panels (and
+// expansion/contraction of the Vertical Tab Strip).
+//
+// Call `UseSidePanelFlyoverAnimation()` instead of checking this feature
+// directly.
+BASE_DECLARE_FEATURE(kSidePanelFlyoverAnimation);
+bool UseSidePanelFlyoverAnimation();
+
 // TODO(crbug.com/460764864): Cleanup all the enterprise badging feature flags.
 BASE_DECLARE_FEATURE(kEnterpriseProfileBadgingForMenu);
 BASE_DECLARE_FEATURE(kEnterpriseBadgingForNtpFooter);
@@ -314,14 +327,9 @@ BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationEnableAll);
 
 // The following feature params indicate whether individual features should
 // have their page actions controlled using the new framework.
-BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationLensOverlay);
-BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationMemorySaver);
-BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationTranslate);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationIntentPicker);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationZoom);
-BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationOfferNotification);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationFileSystemAccess);
-BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationPwaInstall);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationPriceInsights);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationDiscounts);
 BASE_DECLARE_FEATURE_PARAM(bool, kPageActionsMigrationManagePasswords);
@@ -356,17 +364,6 @@ BASE_DECLARE_FEATURE(kByDateHistoryInSidePanel);
 // Controls whether to use the TabStrip browser api's controller.
 BASE_DECLARE_FEATURE(kTabStripBrowserApi);
 
-// Controls where tab search lives in the browser. By default, the tab search
-// feature lives in the tab strip. The feature moves to the toolbar button if
-// the user is in the US and `kLaunchedTabSearchToolbarButton` is enabled or if
-// `kTabstripComboButton` is enabled and `kTabSearchToolbarButton` is true.
-BASE_DECLARE_FEATURE(kTabstripComboButton);
-BASE_DECLARE_FEATURE(kLaunchedTabSearchToolbarButton);
-
-BASE_DECLARE_FEATURE_PARAM(bool, kTabSearchToolbarButton);
-
-bool HasTabSearchToolbarButton();
-
 #if !BUILDFLAG(IS_ANDROID)
 // Controls whether to add new tabs to active tab group or to the end of the
 // tab strip.
@@ -375,6 +372,10 @@ BASE_DECLARE_FEATURE(kNewTabAddsToActiveGroup);
 bool IsNewTabAddsToActiveGroupEnabled();
 
 bool IsWebUIReloadButtonEnabled();
+
+bool IsWebUIHomeButtonEnabled();
+
+bool IsWebUIBackForwardButtonEnabled();
 
 bool IsWebUISplitTabsButtonEnabled();
 
@@ -401,6 +402,8 @@ bool IsAndroidAnimatedProgressBarInBrowserEnabled();
 BASE_DECLARE_FEATURE(kWhatsNewDesktopRefresh);
 
 BASE_DECLARE_FEATURE(kTabGroupsFocusing);
+BASE_DECLARE_FEATURE_PARAM(bool, kTabGroupsFocusingPinnedTabs);
+BASE_DECLARE_FEATURE_PARAM(bool, kTabGroupsFocusingDefaultToFocused);
 
 #if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_MAC) || BUILDFLAG(IS_LINUX)
 BASE_DECLARE_FEATURE(kUpdaterUI);

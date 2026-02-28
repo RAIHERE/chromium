@@ -218,6 +218,16 @@ FormStructureBrowserTest::FormStructureBrowserTest()
           features::kAutofillIgnoreCheckableElements,
           // TODO(crbug.com/369503318): Remove once launched.
           features::kAutofillSupportSplitZipCode,
+          // TODO(crbug.com/479503511): Remove once launched.
+          features::kAutofillNewRegexForPhoneCountryCode,
+          // TODO(crbug.com/479503511): Remove once launched.
+          features::kAutofillImprovePhoneFieldParser,
+          // TODO(crbug.com/479503511): Remove once launched.
+          features::kAutofillNewAugmentedPhoneCountryCodeRegex,
+          // TODO(crbug.com/479503511): Remove once launched.
+          features::kAutofillPreferPhoneCountryCodeTypeOverCountryHtmlType,
+          // TODO(crbug.com/479503511): Remove once launched.
+          features::kAutofillImprovePhoneNumberRationalization,
       },
       // Disabled
       {

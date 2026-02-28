@@ -29,6 +29,7 @@ class TestAppBannerManagerDesktop;
 // Manages web app banners for desktop platforms.
 class AppBannerManagerDesktop
     : public AppBannerManager,
+      public AppBannerManager::Delegate,
       public content::WebContentsUserData<AppBannerManagerDesktop>,
       public web_app::WebAppInstallManagerObserver {
  public:
@@ -51,7 +52,7 @@ class AppBannerManagerDesktop
   static CreateAppBannerManagerForTesting
       override_app_banner_manager_desktop_for_testing_;
 
-  // AppBannerManager overrides.
+  // AppBannerManager::Delegate overrides.
   bool CanRequestAppBanner() const override;
   InstallableParams ParamsToPerformInstallableWebAppCheck() override;
   bool ShouldDoNativeAppCheck(
@@ -61,7 +62,7 @@ class AppBannerManagerDesktop
                                    const blink::mojom::Manifest& manifest,
                                    NativeCheckCallback callback) override;
   void OnWebAppInstallableCheckedNoErrors(
-      const ManifestId& manifest_id) const override;
+      const ManifestId& manifest_id) override;
   base::expected<void, InstallableStatusCode> CanRunWebAppInstallableChecks(
       const blink::mojom::Manifest& manifest) override;
   bool IsSupportedNonWebAppPlatform(
@@ -69,17 +70,14 @@ class AppBannerManagerDesktop
   bool IsRelatedNonWebAppInstalled(
       const blink::Manifest::RelatedApplication& related_app) const override;
   void MaybeShowAmbientBadge(const InstallBannerConfig& config) override;
-  base::WeakPtr<AppBannerManager> GetWeakPtrForThisNavigation() override;
   void InvalidateWeakPtrsForThisNavigation() override;
   void ResetCurrentPageData() override;
-  void OnMlInstallPrediction(base::PassKey<MLInstallabilityPromoter>,
-                             std::string result_label) override;
+  void OnMlInstallPrediction(std::string result_label) override;
   void ShowBannerUi(WebappInstallSource install_source,
                     const InstallBannerConfig& config) override;
 
   // Called when the web app install initiated by a banner has completed.
-  // Virtual for testing.
-  virtual void DidFinishCreatingWebApp(
+  void DidFinishCreatingWebApp(
       const webapps::ManifestId& manifest_id,
       base::WeakPtr<AppBannerManagerDesktop> is_navigation_current,
       const webapps::AppId& app_id,
